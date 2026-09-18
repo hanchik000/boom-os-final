@@ -197,10 +197,16 @@ export async function seedInitialData() {
     { id: 'perm_print_execute', code: 'print.execute', name: 'Print Receipts', module: 'print', description: 'Create print jobs' },
     { id: 'perm_print_reprint', code: 'print.reprint', name: 'Reprint Receipts', module: 'print', description: 'Reprint previously generated documents' },
     { id: 'perm_waiter_status_view', code: 'waiters.status.view', name: 'View Waiter Status', module: 'waiters', description: 'View operational waiter qualification status' },
-    { id: 'perm_waiter_status_manage', code: 'waiters.status.manage', name: 'Manage Waiter Status', module: 'waiters', description: 'Change waiter qualification status' }
+    { id: 'perm_waiter_status_manage', code: 'waiters.status.manage', name: 'Manage Waiter Status', module: 'waiters', description: 'Change waiter qualification status' },
+    // waiters.ts gates its entire management router (list waiters, view/change waiter status,
+    // issue/revoke waiter POS codes) behind this permission before any route-specific check
+    // runs (see requireWaiterCodeManager's own stated intent: GM/BM/Owner/SuperAdmin). It was
+    // never registered as a grantable permission at all, silently locking the whole router to
+    // superusers only -- add it alongside the waiter-status permissions it gates together with.
+    { id: 'perm_waiter_codes_manage', code: 'waiter_codes.manage', name: 'Manage Waiter POS Codes', module: 'waiters', description: 'List waiters and issue, revoke or view waiter POS access codes and status' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }

@@ -171,7 +171,11 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
       const qtyRow = await tx.queryOne<any>('SELECT (CAST(? AS DECIMAL(12,4)) - CAST(? AS DECIMAL(12,4))) AS remaining_qty, (CAST(? AS DECIMAL(12,2)) * (CAST(? AS DECIMAL(12,4)) - CAST(? AS DECIMAL(12,4)))) AS remaining_subtotal',[item.quantity,reqQty,item.price_snapshot,item.quantity,reqQty]);
       if (Number(qtyRow.remaining_qty) < 0) throw Object.assign(new Error('INVALID_REMOVAL_QUANTITY'),{httpStatus:409});
       const fullRemoval = Number(qtyRow.remaining_qty) === 0;
-      await tx.execute(`UPDATE order_items SET quantity=?,subtotal=CAST(? AS numeric),status=?,removed_quantity=removed_quantity+CAST(? AS numeric),removed_at=?,removed_by=?,removal_reason=? WHERE id=?`,[String(qtyRow.remaining_qty),fullRemoval?'0.00':String(qtyRow.remaining_subtotal),fullRemoval?'REMOVED':'ACTIVE',reqQty,now,req.user!.id,a.reason,item.id]);
+      // order_items.quantity is INTEGER, but remaining_qty above is computed as DECIMAL(12,4)
+      // (to support a fractional requested_quantity) and always arrives here as text with 4
+      // decimal places (e.g. "1.0000") -- Postgres rejects a direct text-to-integer bind for
+      // that shape (42804), so round it through NUMERIC first, same as the DB's own rounding.
+      await tx.execute(`UPDATE order_items SET quantity=CAST(CAST(? AS numeric) AS integer),subtotal=CAST(? AS numeric),status=?,removed_quantity=removed_quantity+CAST(? AS numeric),removed_at=?,removed_by=?,removal_reason=? WHERE id=?`,[String(qtyRow.remaining_qty),fullRemoval?'0.00':String(qtyRow.remaining_subtotal),fullRemoval?'REMOVED':'ACTIVE',reqQty,now,req.user!.id,a.reason,item.id]);
       const subtotalRow = await tx.queryOne<any>(`SELECT COALESCE(SUM(CASE WHEN status='ACTIVE' THEN subtotal ELSE 0 END),0) AS subtotal FROM order_items WHERE order_id=?`,[order.id]);
       const subtotal = String(subtotalRow.subtotal);
       const branchConfig = await tx.queryOne<any>(`SELECT percent FROM service_charge_configs WHERE branch_id=? AND status='ACTIVE'`,[order.branch_id]);
@@ -183,7 +187,7 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
       const finalAmount = String(totalRow.final_amount);
       await tx.execute(`UPDATE orders SET subtotal=CAST(? AS numeric),service_charge=CAST(? AS numeric),final_amount=CAST(? AS numeric),updated_at=? WHERE id=?`,[subtotal,service,finalAmount,now,order.id]);
       await tx.execute(`UPDATE order_item_removal_approvals SET status='APPROVED',approver_user_id=?,decided_at=?,decision_reason=? WHERE id=? AND status='PENDING'`,[req.user!.id,now,decisionReason,approvalId]);
-      await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:a.branch_id,action:'MANAGER_APPROVAL',entityType:'ORDER_ITEM_REMOVAL',entityId:approvalId,oldValues:{status:'PENDING'},newValues:{type:'REMOVE_ITEM',status:'APPROVED',approver_user_id:req.user!.id,requested_quantity:reqQty,reason:a.reason,decision_reason:decisionReason}});
+      await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:a.branch_id,action:'MANAGER_APPROVAL',entityType:'ORDER_ITEM_REMOVAL',entityId:approvalId,oldValues:{status:'PENDING'},newValues:{type:'REMOVE_ITEM',status:'APPROVED',approver_user_id:req.user!.id,requested_quantity:reqQty,reason:a.reason,decision_reason:decisionReason},req});
       return {approval:await tx.queryOne<any>('SELECT * FROM order_item_removal_approvals WHERE id=?',[approvalId]),order:await tx.queryOne<any>('SELECT * FROM orders WHERE id=?',[order.id])};
     });
     res.json(result);
