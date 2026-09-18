@@ -18,13 +18,15 @@ import {
   BriefcaseBusiness,
   Boxes,
   ClipboardCheck,
-  MonitorCog
+  MonitorCog,
+  CreditCard,
+  Printer
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'orderApprovals' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -49,6 +51,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
     { id: 'menu', key: 'nav.inventory', icon: UtensilsCrossed, permission: 'menu.view' },
     { id: 'inventory', key: 'nav.inventory', icon: Boxes, permission: 'inventory.view' },
     { id: 'operations', key: 'nav.orders', icon: MonitorCog, permission: 'orders.view' },
+    { id: 'cashierPos', key: 'nav.cashierPos', icon: CreditCard, permission: 'payments.create' },
+    { id: 'receiptSettings', key: 'nav.receiptSettings', icon: Printer, permission: 'print.manage' },
     { id: 'orderApprovals', key: 'nav.orders', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
     { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },
     { id: 'audit', key: 'nav.audit', icon: History, permission: 'audit.view' },

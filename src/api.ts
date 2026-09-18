@@ -214,9 +214,21 @@ export const api = {
     return request<{ orders:any[] }>(`/api/orders?${q.toString()}`);
   },
   confirmOrder: (id:string) => request<{ order:any }>(`/api/orders/${id}/confirm`, { method:'POST' }),
+  getOrder: (id:string) => request<{ order:any }>(`/api/orders/${id}`),
+  updateOrderNotes: (id:string, data:{ customer_note?:string|null; internal_note?:string|null }) => request<{ order:any }>(`/api/orders/${id}/notes`,{method:'PATCH',body:JSON.stringify(data)}),
+  updateOrderItemNote: (orderId:string, itemId:string, comment:string|null) => request<{ item:any }>(`/api/orders/${orderId}/items/${itemId}/note`,{method:'PATCH',body:JSON.stringify({comment})}),
   getPayments: (params?: { branch_id?: string }) => { const q=new URLSearchParams(); if(params?.branch_id) q.set('branch_id',params.branch_id); return request<{payments:any[]}>(`/api/payments?${q.toString()}`); },
-  createPayment: (data:{order_id:string;method:string;amount:string},idempotencyKey:string) => request<{payment:any;replayed?:boolean}>('/api/payments',{method:'POST',headers:{'Idempotency-Key':idempotencyKey},body:JSON.stringify(data)}),
+  createPayment: (data:{order_id:string;method:string;amount:string},idempotencyKey:string,posSessionToken?:string) => request<{payment:any;replayed?:boolean}>('/api/payments',{method:'POST',headers:{'Idempotency-Key':idempotencyKey,...(posSessionToken?{'X-Pos-Session-Token':posSessionToken}:{})},body:JSON.stringify(data)}),
   refundPayment: (id:string) => request<{payment:any}>(`/api/payments/${id}/refund`,{method:'POST'}),
+  // Operator POS (short-lived cashier session token, gates payments.create/refund for CASHIER)
+  unlockOperatorPos: (data:{ password:string; branch_id:string; device_id?:string }) => request<{ unlocked:boolean; session_id:string; session_token:string }>('/api/operator-pos/unlock',{method:'POST',body:JSON.stringify(data)}),
+  lockOperatorPos: (branch_id:string) => request<{ locked:boolean }>('/api/operator-pos/lock',{method:'POST',body:JSON.stringify({branch_id})}),
+  // Print / Receipt engine
+  getPrintProfiles: (branch_id?:string) => request<{ profiles:any[] }>(`/api/print/profiles${branch_id?`?branch_id=${encodeURIComponent(branch_id)}`:''}`),
+  createPrintProfile: (data:any) => request<{ profile:any }>('/api/print/profiles',{method:'POST',body:JSON.stringify(data)}),
+  updatePrintProfile: (id:string, data:any) => request<{ profile:any }>(`/api/print/profiles/${id}`,{method:'PUT',body:JSON.stringify(data)}),
+  createPrintJob: (data:{ branch_id:string; order_id?:string; print_type:string; printer_name?:string; copy_number?:number }) => request<{ job:any }>('/api/print/jobs',{method:'POST',body:JSON.stringify(data)}),
+  reprintJob: (id:string) => request<{ job:any }>(`/api/print/jobs/${id}/reprint`,{method:'POST'}),
   getCashShifts: (params?: { branch_id?: string }) => { const q=new URLSearchParams(); if(params?.branch_id) q.set('branch_id',params.branch_id); return request<{shifts:any[]}>(`/api/cash-shifts?${q.toString()}`); },
   getCurrentCashShift: (branch_id?:string) => request<{shift:any|null}>(`/api/cash-shifts/current${branch_id?`?branch_id=${encodeURIComponent(branch_id)}`:''}`),
   openCashShift: (branch_id:string,opening_cash:string) => request<{shift:any}>('/api/cash-shifts',{method:'POST',body:JSON.stringify({branch_id,opening_cash})}),

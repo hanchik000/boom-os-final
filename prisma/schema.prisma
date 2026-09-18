@@ -467,6 +467,7 @@ model Order {
   final_amount       Decimal     @db.Decimal(12,2)
   idempotency_key    String?
   notes              String?
+  internal_notes     String?
   created_at         String
   updated_at         String
   confirmed_at       String?

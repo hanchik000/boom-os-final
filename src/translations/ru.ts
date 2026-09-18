@@ -12,6 +12,8 @@ export const ru = {
   "nav.rbacTest": "RBAC Тест-консоль",
   "nav.inventory": "Склад и Inventory",
   "nav.orders": "Согласования заказов",
+  "nav.cashierPos": "Касса",
+  "nav.receiptSettings": "Дизайн чека",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

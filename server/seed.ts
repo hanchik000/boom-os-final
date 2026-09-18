@@ -229,7 +229,10 @@ export async function seedInitialData() {
   // can never unlock a session and payments.create becomes permanently unreachable for it,
   // even though CASHIER already holds payments.create itself (Stage 28 runtime-confirmed).
   if (roleCashier) {
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator']) {
+    // print.view/execute/reprint let the cashier preview and print/reprint receipts for their
+    // own branch (Stage 29 Cashier POS); print.manage (receipt design settings) intentionally
+    // stays manager-only, matching the existing grant to GENERAL_MANAGER/BRANCH_MANAGER above.
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }

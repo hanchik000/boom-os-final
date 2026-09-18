@@ -18,7 +18,7 @@
     "test:stage2": "tsx tests/stage2_auth_rbac.ts",
     "test:stage1.hardening": "node tests/stage1_hardening.mjs",
     "test:stage7": "node tests/stage7_waiter_codes.mjs",
-    "test:static": "npm run test:stage1.hardening && npm run test:stage7 && npm run test:stage11 && npm run test:stage12 && npm run test:stage12.contract && npm run test:stage13 && npm run test:stage14 && npm run test:stage15 && npm run test:stage16 && npm run test:stage16.1 && npm run test:stage17 && npm run test:stage18 && npm run test:stage18.2 && npm run test:stage18.3 && npm run test:stage18.4 && npm run test:stage18.6 && npm run test:stage18.7 && npm run test:stage18.8 && npm run test:async && npm run test:isolation && npm run test:tenant && npm run test:invariants && npm run test:stage24 && npm run test:stage25 && npm run test:stage26 && npm run test:stage27.5",
+    "test:static": "npm run test:stage1.hardening && npm run test:stage7 && npm run test:stage11 && npm run test:stage12 && npm run test:stage12.contract && npm run test:stage13 && npm run test:stage14 && npm run test:stage15 && npm run test:stage16 && npm run test:stage16.1 && npm run test:stage17 && npm run test:stage18 && npm run test:stage18.2 && npm run test:stage18.3 && npm run test:stage18.4 && npm run test:stage18.6 && npm run test:stage18.7 && npm run test:stage18.8 && npm run test:async && npm run test:isolation && npm run test:tenant && npm run test:invariants && npm run test:stage24 && npm run test:stage25 && npm run test:stage26 && npm run test:stage27.5 && npm run test:stage29",
     "test:stage11": "node tests/stage11_empty_baseline_static.mjs",
     "test:stage12": "node tests/stage12_clean_source_static.mjs",
     "test:stage12.contract": "node tests/stage12_clean_runtime_contract_static.mjs",
@@ -54,7 +54,9 @@
     "test:e2e:rbacconfid": "node tests/stage26_rbac_confidentiality_e2e.mjs",
     "test:stage27.5": "node tests/stage27_phase25_p1_fixes_static.mjs",
     "test:e2e:stage27.5": "node tests/stage27_phase25_p1_fixes_e2e.mjs",
-    "test:e2e:stage28.5": "node tests/stage28_5_cashier_pos_operator_e2e.mjs"
+    "test:e2e:stage28.5": "node tests/stage28_5_cashier_pos_operator_e2e.mjs",
+    "test:stage29": "node tests/stage29_cashier_pos_receipt_static.mjs",
+    "test:e2e:stage29": "node tests/stage29_cashier_pos_receipt_e2e.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

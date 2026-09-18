@@ -200,5 +200,41 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
 router.post('/removal-requests/:approvalId/approve', authenticateToken, requirePermission('orders.item_remove.approve'), async (req,res) => decideRemoval(req,res,true));
 router.post('/removal-requests/:approvalId/reject', authenticateToken, requirePermission('orders.item_remove.approve'), async (req,res) => decideRemoval(req,res,false));
 
+// Order-level notes. `notes` is customer-facing (pre-existing field, set at creation, now also
+// editable); `internal_notes` is staff-only and must never be selected onto a customer receipt.
+router.patch('/:id/notes', authenticateToken, requirePermission('orders.confirm'), async(req,res)=>{
+  const o=await queryOne<any>('SELECT id,branch_id,notes,internal_notes FROM orders WHERE id=?',[req.params.id]);
+  if(!o){res.status(404).json({error:'NOT_FOUND',code:'ORDER_NOT_FOUND',message:'Order not found.',details:{}});return;}
+  if(!allowed(req,o.branch_id)){res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Order belongs to an unauthorized branch.',details:{}});return;}
+  const hasCustomer=Object.prototype.hasOwnProperty.call(req.body||{},'customer_note');
+  const hasInternal=Object.prototype.hasOwnProperty.call(req.body||{},'internal_note');
+  if(!hasCustomer&&!hasInternal){res.status(400).json({error:'VALIDATION_ERROR',code:'NOTE_FIELDS_REQUIRED',message:'customer_note or internal_note is required.',details:{}});return;}
+  const customerNote=hasCustomer?(req.body.customer_note?String(req.body.customer_note).trim().slice(0,1000):null):o.notes;
+  const internalNote=hasInternal?(req.body.internal_note?String(req.body.internal_note).trim().slice(0,1000):null):o.internal_notes;
+  const now=new Date().toISOString();
+  await transaction(async(tx)=>{
+    await tx.execute('UPDATE orders SET notes=?,internal_notes=?,updated_at=? WHERE id=?',[customerNote,internalNote,now,o.id]);
+    await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:o.branch_id,action:'ORDER_NOTES_UPDATED',entityType:'ORDER',entityId:o.id,oldValues:{notes:o.notes,internal_notes:o.internal_notes},newValues:{notes:customerNote,internal_notes:internalNote},req});
+  });
+  res.json({order:await queryOne<any>('SELECT * FROM orders WHERE id=?',[o.id])});
+});
+
+// Item-level note (order_items.comment). Kitchen/KDS already reads order_items.* directly
+// (kds.ts), so an updated comment is visible there without any KDS change.
+router.patch('/:id/items/:itemId/note', authenticateToken, requirePermission('orders.confirm'), async(req,res)=>{
+  const o=await queryOne<any>('SELECT id,branch_id FROM orders WHERE id=?',[req.params.id]);
+  if(!o){res.status(404).json({error:'NOT_FOUND',code:'ORDER_NOT_FOUND',message:'Order not found.',details:{}});return;}
+  if(!allowed(req,o.branch_id)){res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Order belongs to an unauthorized branch.',details:{}});return;}
+  const item=await queryOne<any>('SELECT id,comment FROM order_items WHERE id=? AND order_id=? AND status=\'ACTIVE\'',[req.params.itemId,o.id]);
+  if(!item){res.status(404).json({error:'NOT_FOUND',code:'ORDER_ITEM_NOT_FOUND',message:'Order item not found.',details:{}});return;}
+  const comment=req.body?.comment?String(req.body.comment).trim().slice(0,500):null;
+  const now=new Date().toISOString();
+  await transaction(async(tx)=>{
+    await tx.execute('UPDATE order_items SET comment=? WHERE id=?',[comment,item.id]);
+    await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:o.branch_id,action:'ORDER_ITEM_NOTE_UPDATED',entityType:'ORDER_ITEM',entityId:item.id,oldValues:{comment:item.comment},newValues:{comment},req});
+  });
+  res.json({item:await queryOne<any>('SELECT * FROM order_items WHERE id=?',[item.id])});
+});
+
 router.get('/:id', authenticateToken, requirePermission('orders.view'), async(req,res)=>{const o=await queryOne<any>('SELECT o.*,u.full_name AS waiter_name,t.code AS table_code FROM orders o LEFT JOIN users u ON u.id=o.waiter_user_id LEFT JOIN dining_tables t ON t.id=o.table_id WHERE o.id=?',[req.params.id]); if(!o){res.status(404).json({error:'NOT_FOUND',code:'ORDER_NOT_FOUND',message:'Order not found.',details:{}});return;} if(!allowed(req,o.branch_id)){res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Order belongs to an unauthorized branch.',details:{}});return;} const items=await query<any>('SELECT * FROM order_items WHERE order_id=? ORDER BY created_at',[o.id]); for(const item of items) item.modifiers=await query<any>('SELECT * FROM order_item_modifiers WHERE order_item_id=? ORDER BY created_at',[item.id]); res.json({order:{...o,items}});});
 export default router;
