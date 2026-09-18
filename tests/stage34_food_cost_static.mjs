@@ -56,9 +56,14 @@ check('consumption still correctly multiplies recipe ingredient quantity by orde
 check('each order_item records its own recipe_version_snapshot and recipe_cost_snapshot at the moment of consumption', /UPDATE order_items SET recipe_version_snapshot=\?,recipe_cost_snapshot=CAST\(\? AS numeric\) WHERE id=\?/.test(paymentsTs));
 check('SALE stock movements now also carry a unit_cost, consistent with PURCHASE movements', /INSERT INTO stock_movements \(id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at\)[\s\S]{0,300}stock\.id,'SALE',required,String\(stock\.average_cost/.test(paymentsTs));
 
-// --- refund: still reverses via the ledger (literal historical quantities), never recomputed from the current recipe
-check('restoreInventoryForOrder is unchanged in spirit: it still reverses the literal SALE stock_movements rows, never re-deriving from the current recipe', /async function restoreInventoryForOrder[\s\S]{0,400}SELECT inventory_item_id,quantity FROM stock_movements WHERE branch_id=\? AND reference_type='ORDER' AND reference_id=\? AND type='SALE'/.test(paymentsTs));
-check('restoreInventoryForOrder never queries the recipes or recipe_ingredients tables (refund correctness does not depend on today\'s recipe)', (() => { const fn = paymentsTs.slice(paymentsTs.indexOf('async function restoreInventoryForOrder'), paymentsTs.indexOf('// Stage 34: quantities and unit costs')); return !/recipes|recipe_ingredients/.test(fn); })());
+// --- refund / closure: any reversal still uses the literal historical ledger rows, never today's recipe
+// Stage 34.1 replaced the unconditional restore-on-refund with an explicitly approved inventory
+// decision (server/order-closure.ts). What survives unchanged, and is asserted here, is that a
+// reversal or a write-off is always valued from the recorded SALE stock_movements rows -- never
+// re-derived from the CURRENT recipe.
+const closureTs = fs.readFileSync(new URL('../server/order-closure.ts', import.meta.url), 'utf8');
+check('the reversal/write-off reads the literal SALE stock_movements rows for that order', /SELECT inventory_item_id,quantity,unit_cost FROM stock_movements WHERE branch_id=\? AND reference_type='ORDER' AND reference_id=\? AND type='SALE'/.test(closureTs));
+check('reversing an already-consumed order never queries the recipes tables (correctness does not depend on today\'s recipe)', (() => { const fn = closureTs.slice(closureTs.indexOf('if (treatment === \'RESTORE_STOCK\')'), closureTs.indexOf('const prod = await productionSnapshot(tx, order.id);')); return !/recipes|recipe_ingredients/.test(fn); })());
 
 // --- inventory counts: controlled, ledger-backed, never a silent direct stock mutation
 check('inventory counts apply their delta through the same stock_movements ADJUSTMENT ledger every other manual movement uses', /itemId,'ADJUSTMENT',String\(magRow\.mag\),'INVENTORY_COUNT'/.test(inventoryTs));
@@ -72,7 +77,8 @@ check('profitability never reads credit_transactions or payments directly (credi
 
 // --- RBAC: minimum new permissions, reused where possible
 check('food_cost.view permission is seeded', /code: 'food_cost\.view'/.test(seedTs));
-check('food_cost.view granted to the same manager role set as operations.view/dashboard.view', /'operations\.view','food_cost\.view'\]/.test(seedTs));
+// Membership, not the literal end of the list -- later stages legitimately extend it.
+check('food_cost.view granted to the same manager role set as operations.view/dashboard.view', (() => { const m = seedTs.match(/const stage17RolePerms = \[([^\]]*)\]/); if (!m) return false; const g = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')); return ['dashboard.view', 'operations.view', 'food_cost.view'].every(c => g.includes(c)); })());
 check('recipe mutations reuse the existing inventory.manage permission (no redundant recipe.manage permission introduced)', /router\.post\('\/recipes\/:id\/versions', requirePermission\('inventory\.manage'\)/.test(inventoryTs) && !/code: 'recipe\.manage'/.test(seedTs));
 check('every food-cost report route requires food_cost.view server-side', (foodCostTs.match(/requirePermission\('food_cost\.view'\)/g) || []).length >= 5);
 check('every food-cost route enforces branch authorization via the standard allowed(req,branch) helper, never trusting a frontend branch_id blindly', (foodCostTs.match(/if \(!branchId \|\| !allowed\(req, branchId\)\)/g) || []).length >= 5);

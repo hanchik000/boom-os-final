@@ -52,6 +52,8 @@ model User {
   credit_transactions_as_cashier CreditTransaction[] @relation("CreditTransactionsAsCashier")
   credit_transactions_as_approver CreditTransaction[] @relation("CreditTransactionsAsApprover")
   inventory_counts    InventoryCount[]
+  order_closures_requested OrderClosure[] @relation("OrderClosureRequester")
+  order_closures_approved  OrderClosure[] @relation("OrderClosureApprover")
 
   @@index([email], map: "idx_users_email")
   @@index([phone], map: "idx_users_phone")
@@ -191,6 +193,7 @@ model Branch {
   credit_accounts        CreditAccount[]
   credit_transactions    CreditTransaction[]
   inventory_counts       InventoryCount[]
+  order_closures         OrderClosure[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -491,6 +494,7 @@ model Order {
   service_charge_ledger ServiceChargeLedger[]
   print_jobs PrintJob[]
   credit_transactions CreditTransaction[]
+  closures           OrderClosure[]
 
   @@unique([branch_id, order_number], map: "orders_branch_order_number_key")
   @@unique([branch_id, idempotency_key], map: "orders_branch_idempotency_key_key")
@@ -500,6 +504,43 @@ model Order {
   @@index([status], map: "idx_orders_status")
   @@index([created_at], map: "idx_orders_created")
   @@map("orders")
+}
+
+// Stage 34.1: the controlled cancellation / "closed by establishment" workflow. A refund is never
+// an arbitrary historical action -- it is authorised by an APPROVED row here. The row also carries
+// the explicit inventory decision (write off / leave as consumed / restore) and the production
+// state at request time, because refunding money and restoring ingredients are independent facts:
+// food that has already been produced is never returned to stock.
+model OrderClosure {
+  id                  String   @id
+  branch_id           String
+  order_id            String
+  type                String   // CANCELLATION | CLOSED_BY_ESTABLISHMENT
+  reason              String
+  comment             String?
+  inventory_treatment String   // WRITE_OFF | NO_WRITE_OFF | RESTORE_STOCK
+  refund_requested    Boolean  @default(false)
+  status              String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  production_state    String   // NOT_STARTED | QUEUED | PREPARING | READY | SERVED (snapshot at request)
+  requester_user_id   String?
+  requester_role      String?
+  approver_user_id    String?
+  decision_reason     String?
+  refund_payment_id   String?
+  inventory_applied   Boolean  @default(false)
+  paid_at_request     Boolean  @default(false)
+  write_off_cost      Decimal? @db.Decimal(14, 4)
+  created_at          String
+  decided_at          String?
+
+  branch    Branch @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order     Order  @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  requester User?  @relation("OrderClosureRequester", fields: [requester_user_id], references: [id], onDelete: SetNull)
+  approver  User?  @relation("OrderClosureApprover", fields: [approver_user_id], references: [id], onDelete: SetNull)
+
+  @@index([branch_id, status, created_at], map: "idx_order_closures_branch_status_created")
+  @@index([order_id, status], map: "idx_order_closures_order_status")
+  @@map("order_closures")
 }
 
 model OrderItem {
@@ -944,7 +985,11 @@ model StockMovement {
   inventory_item_id String
   type             String
   quantity         Decimal @db.Decimal(14,4)
-  unit_cost        Decimal? @db.Decimal(14,2)
+  // Stage 34.1: widened from DECIMAL(14,2) to DECIMAL(14,4). Stage 34 started stamping the
+  // ingredient's weighted-average cost (itself DECIMAL(14,4)) onto SALE movements, and two
+  // decimals silently rounded it (0.0250/kg was stored as 0.03), corrupting every cost read back
+  // from the ledger. It now carries the same precision as inventory_items.average_cost.
+  unit_cost        Decimal? @db.Decimal(14,4)
   reference_type   String?
   reference_id     String?
   reason           String?

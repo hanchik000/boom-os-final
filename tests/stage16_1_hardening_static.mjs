@@ -4,6 +4,7 @@ const root=process.cwd();
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
 const orders=read('server/routes/orders.ts');
 const payments=read('server/routes/payments.ts');
+const closureCore=read('server/order-closure.ts');
 const menu=read('server/routes/menu.ts');
 const kds=read('server/routes/kds.ts');
 const waiter=read('src/components/WaiterPOSView.tsx');
@@ -20,8 +21,13 @@ const checks=[
   [menu.includes('/^\\d+(?:\\.\\d{1,2})?$/'), 'Menu prices/modifier deltas must be non-negative precise decimals'],
   [orders.includes("status='AVAILABLE'") && orders.includes('releaseTableIfNoActiveOrders'), 'Tables must be released after terminal order lifecycle'],
   [payments.includes("!['READY'].includes(order.status)") && payments.includes('KDS_NOT_READY_FOR_PAYMENT'), 'Payment must wait for cashier confirmation and kitchen readiness'],
-  [payments.includes("'RETURN'") && payments.includes('restoreInventoryForOrder'), 'Refund must restore inventory with RETURN movements'],
-  [payments.includes("p.method==='CASH'"), 'Only cash refunds affect expected cash'],
+  // Stage 34.1 deliberately REPLACES the original "a refund restores inventory" invariant: a
+  // refund only exists as the financial half of an approved closure, and produced food is never
+  // put back on the shelf. A RETURN movement now only comes from an explicitly approved
+  // RESTORE_STOCK decision, which is itself refused once production has started.
+  [!/restoreInventoryForOrder\s*\(/.test(payments), 'A refund must never restore inventory on its own'],
+  [closureCore.includes("treatment === 'RESTORE_STOCK'") && closureCore.includes("'RETURN'") && closureCore.includes("inventory_treatment === 'RESTORE_STOCK' && prod.started"), 'A RETURN movement must only follow an approved RESTORE_STOCK decision taken before production started'],
+  [closureCore.includes("p.method === 'CASH'"), 'Only cash refunds affect expected cash'],
   [mig.includes(`WHERE "status" = 'OPEN'`), 'One open cash shift per branch must be enforced at database level'],
   [kds.includes("next === 'COMPLETED' ? 'READY'"), 'KDS completion must not mark an unpaid order completed'],
   [read('server/routes/orders.ts').includes("'PREPARING','READY'"), 'Manager-approved item removal must remain available through kitchen-ready state before payment'],

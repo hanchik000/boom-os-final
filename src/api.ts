@@ -273,6 +273,15 @@ export const api = {
   approveItemRemoval: (approvalId:string, reason?:string) => request<{ approval:any; order:any }>(`/api/orders/removal-requests/${approvalId}/approve`, { method:'POST', body: JSON.stringify({ reason }) }),
   rejectItemRemoval: (approvalId:string, reason?:string) => request<{ approval:any }>(`/api/orders/removal-requests/${approvalId}/reject`, { method:'POST', body: JSON.stringify({ reason }) }),
 
+  // Stage 34.1 -- controlled cancellation / "closed by establishment". `inventory_treatment` is
+  // always supplied explicitly by the person making the request; the UI never defaults it.
+  getMyWaiterOrders: () => waiterRequest<{ branch_id:string; orders:any[] }>('/api/orders/pos/mine'),
+  requestWaiterOrderClosure: (orderId:string, body:{ reason:string; comment?:string|null; inventory_treatment:'WRITE_OFF'|'NO_WRITE_OFF'|'RESTORE_STOCK' }) => waiterRequest<{ closure:any }>(`/api/orders/${orderId}/closure-requests`, { method:'POST', body: JSON.stringify({ type:'CANCELLATION', ...body }) }),
+  requestOrderClosure: (orderId:string, body:{ type:'CANCELLATION'|'CLOSED_BY_ESTABLISHMENT'; reason:string; comment?:string|null; inventory_treatment:'WRITE_OFF'|'NO_WRITE_OFF'|'RESTORE_STOCK'; refund_requested?:boolean }) => request<{ closure:any }>(`/api/orders/${orderId}/closure-requests`, { method:'POST', body: JSON.stringify(body) }),
+  getOrderClosures: (params?: { branch_id?:string; status?:string }) => { const q=new URLSearchParams(); if(params?.branch_id) q.set('branch_id',params.branch_id); if(params?.status) q.set('status',params.status); return request<{ branch_id:string; closures:any[] }>(`/api/orders/closure-requests?${q.toString()}`); },
+  approveOrderClosure: (closureId:string, reason?:string) => request<{ closure:any; order:any }>(`/api/orders/closure-requests/${closureId}/approve`, { method:'POST', body: JSON.stringify({ reason }) }),
+  rejectOrderClosure: (closureId:string, reason?:string) => request<{ closure:any; order:any }>(`/api/orders/closure-requests/${closureId}/reject`, { method:'POST', body: JSON.stringify({ reason }) }),
+
   // Branches
   getBranches: (params?: { status?: string; search?: string }) => {
     const query = new URLSearchParams();

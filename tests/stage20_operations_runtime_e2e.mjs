@@ -327,15 +327,40 @@ assert.equal(reEvaluated.body.earned.length, earnedRows.length, 'KPI evaluation 
 assert.equal(reEvaluated.body.earned[0].id, earnedRows[0].id, 'KPI re-evaluation must return the existing ledger row');
 checks.push('KPI metric_value persisted and evaluation idempotent');
 
-// Refund must reverse the payment, restore stock and move the shift's refund total.
-const refund = await request(`/api/payments/${paymentId}/refund`, {
+// Stage 34.1: a refund is only ever the financial half of an APPROVED closure, and it never puts
+// produced food back on the shelf. An arbitrary refund is refused outright.
+const rogueRefund = await request(`/api/payments/${paymentId}/refund`, {
   method: 'POST', headers: posHeaders, body: JSON.stringify({ reason: 'Клиент отказался' }),
 });
-expect('refund payment', refund.status, 200, refund.body);
+expect('arbitrary historical refund is refused without an approved closure', rogueRefund.status, 409, rogueRefund.body);
+
+const approver = await request('/api/users', {
+  method: 'POST', headers: auth,
+  body: JSON.stringify({
+    full_name: 'S20 Управляющий', email: `s20m-${stamp}@boom.local`, phone: `+9938${stamp % 1000000}`,
+    password: 'ManagerPass12345!', branch_id: branchId, roles: ['BRANCH_MANAGER'], allowed_branches: [branchId],
+  }),
+});
+expect('create closure approver', approver.status, 201, approver.body);
+const approverLogin = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ login: `s20m-${stamp}@boom.local`, password: 'ManagerPass12345!' }) });
+expect('login closure approver', approverLogin.status, 200, approverLogin.body);
+const approverAuth = { authorization: `Bearer ${approverLogin.body.token}` };
+
+const closureReq = await request(`/api/orders/${orderId}/closure-requests`, {
+  method: 'POST', headers: auth,
+  body: JSON.stringify({ type: 'CLOSED_BY_ESTABLISHMENT', reason: 'Клиент отказался', inventory_treatment: 'WRITE_OFF', refund_requested: true }),
+});
+expect('request establishment closure with refund', closureReq.status, 201, closureReq.body);
+const closureApprove = await request(`/api/orders/closure-requests/${closureReq.body.closure.id}/approve`, { method: 'POST', headers: approverAuth, body: '{}' });
+expect('approve establishment closure', closureApprove.status, 200, closureApprove.body);
+assert.equal(closureApprove.body.order.status, 'CLOSED_BY_ESTABLISHMENT', 'approved establishment closure must close the order');
 
 const afterRefund = await request(`/api/inventory/items?branch_id=${branchId}`, { headers: auth });
-assertMoney('current_stock restored by refund',
-  String(afterRefund.body.items.find(i => i.id === invItemId).current_stock), '15');
+assertMoney('current_stock is NOT restored by a refund -- the food was already produced',
+  String(afterRefund.body.items.find(i => i.id === invItemId).current_stock), '11');
+assertMoney('the production loss is valued at the real consumed cost (4 x 1.25)',
+  String(closureApprove.body.closure.write_off_cost), '5');
+checks.push('refund reverses money only; produced ingredients are written off, never restored');
 
 // ------------------------------------------- cash shift CLOSE (Z-report) lifecycle
 const xReport = await request(`/api/cash-shifts/${shiftId}/x-report`, { headers: posHeaders });
@@ -395,6 +420,6 @@ expect('reserved module answers 501', reserved.status, 501, reserved.body);
 
 console.log(`STAGE 20 OPERATIONS RUNTIME E2E: PASS (${checks.length} checks)`);
 console.log('Covered: service charge config + ledger, inventory receiving/write-off/transfer/low-stock,');
-console.log('recipes, recipe consumption on payment, refund reversal + stock restore, KPI evaluation with');
+console.log('recipes, recipe consumption on payment, approved-closure refund without stock restore, KPI evaluation with');
 console.log('persisted metric_value, cash shift OPEN -> X -> Z with expected/actual/difference persisted,');
 console.log('and Decimal serialization across all touched endpoints.');

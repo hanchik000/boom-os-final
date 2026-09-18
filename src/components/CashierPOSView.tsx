@@ -124,6 +124,17 @@ export const CashierPOSView: React.FC = () => {
   };
 
   // ---- Active orders
+  // Stage 34.1 -- "ЗАКРЫТО ЗАВЕДЕНИЕМ". The cashier may only REQUEST it; a manager approves.
+  // The product decision (write off / do not write off) is always picked here explicitly, never
+  // defaulted and never inferred from whether money is being refunded.
+  const [closureOpen, setClosureOpen] = useState(false);
+  const [closureReason, setClosureReason] = useState('');
+  const [closureComment, setClosureComment] = useState('');
+  const [closureTreatment, setClosureTreatment] = useState<'' | 'WRITE_OFF' | 'NO_WRITE_OFF'>('');
+  const [closureRefund, setClosureRefund] = useState(false);
+  const [closureBusy, setClosureBusy] = useState(false);
+  const [closureError, setClosureError] = useState('');
+  const [closureSent, setClosureSent] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
@@ -301,6 +312,18 @@ export const CashierPOSView: React.FC = () => {
       } catch { setPayError(friendlyError(e, ru)); }
     } finally { setPaying(false); }
   };
+
+  const submitClosure = async () => {
+    if (!detail || closureBusy || !closureReason.trim() || !closureTreatment) return;
+    setClosureBusy(true); setClosureError('');
+    try {
+      await api.requestOrderClosure(detail.id, { type: 'CLOSED_BY_ESTABLISHMENT', reason: closureReason.trim(), comment: closureComment.trim() || null, inventory_treatment: closureTreatment, refund_requested: closureRefund });
+      setClosureSent(true);
+      await loadOrders(true);
+    } catch (e: any) { setClosureError(friendlyError(e, ru)); }
+    finally { setClosureBusy(false); }
+  };
+  const openClosure = () => { setClosureReason(''); setClosureComment(''); setClosureTreatment(''); setClosureRefund(Boolean(selectedPaid)); setClosureError(''); setClosureSent(false); setClosureOpen(true); };
 
   // ---- Receipt preview / print / reprint
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -518,6 +541,11 @@ export const CashierPOSView: React.FC = () => {
                     {ru ? `ОПЛАТИТЬ ${money(detail.final_amount)}` : `TÖLEG ${money(detail.final_amount)}`}
                   </button>
                 )}
+                {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT'].includes(detail.status) && (
+                  <button className="btn w-full bg-purple-600/20 border border-purple-500/40 text-purple-200 font-semibold py-2" onClick={openClosure}>
+                    {ru ? 'ЗАКРЫТО ЗАВЕДЕНИЕМ' : 'KÄRHANA TARAPYNDAN ÝAPYLDY'}
+                  </button>
+                )}
               </div>
             </div>
           ) : null}
@@ -577,6 +605,53 @@ export const CashierPOSView: React.FC = () => {
         </div>
       )}
       {/* ---- Payment dialog ---- */}
+      {closureOpen && detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !closureBusy && setClosureOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h2 className="text-white text-lg font-bold">{ru ? 'Закрыто заведением' : 'Kärhana tarapyndan ýapyldy'} · #{detail.order_number}</h2>
+              <p className="text-slate-400 text-xs mt-1">{ru ? 'Кассир только отправляет запрос — решение принимает менеджер.' : 'Kassir diňe haýyş iberýär — karary menejer kabul edýär.'}</p>
+            </div>
+            {closureSent ? (
+              <>
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-3">{ru ? 'Запрос отправлен менеджеру на подтверждение.' : 'Haýyş menejere tassyklamaga iberildi.'}</div>
+                <div className="flex justify-end"><button className="btn" onClick={() => setClosureOpen(false)}>{ru ? 'Закрыть' : 'Ýap'}</button></div>
+              </>
+            ) : (
+              <>
+                {closureError && <div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{closureError}</div>}
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Причина (обязательно)' : 'Sebäp (hökmany)'}</span>
+                  <input className="field w-full" value={closureReason} onChange={e => setClosureReason(e.target.value)} placeholder={ru ? 'Например: жалоба на качество' : 'Meselem: hil boýunça şikaýat'} />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Комментарий' : 'Teswir'}</span>
+                  <input className="field w-full" value={closureComment} onChange={e => setClosureComment(e.target.value)} />
+                </label>
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Что делать с продуктами? (обязательно)' : 'Önümler bilen näme etmeli? (hökmany)'}</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" className={`p-3 rounded-lg border text-left text-sm ${closureTreatment === 'WRITE_OFF' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-700 text-slate-300'}`} onClick={() => setClosureTreatment('WRITE_OFF')}>{ru ? 'Списать продукты' : 'Önümleri hasapdan aýyrmak'}</button>
+                    <button type="button" className={`p-3 rounded-lg border text-left text-sm ${closureTreatment === 'NO_WRITE_OFF' ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-700 text-slate-300'}`} onClick={() => setClosureTreatment('NO_WRITE_OFF')}>{ru ? 'Не списывать продукты' : 'Önümleri hasapdan aýyrmazlyk'}</button>
+                  </div>
+                  <p className="text-[11px] text-slate-500">{ru ? 'Приготовленные блюда не возвращаются на склад — возврат денег не равен возврату ингредиентов.' : 'Taýýarlanan tagamlar ammara gaýtarylmaýar — pul gaýtarmak önümleri gaýtarmak däldir.'}</p>
+                </div>
+                {selectedPaid && (
+                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                    <input type="checkbox" checked={closureRefund} onChange={e => setClosureRefund(e.target.checked)} />
+                    {ru ? 'Вернуть деньги гостю' : 'Myhmana puly gaýtarmak'}
+                  </label>
+                )}
+                <div className="flex gap-2 justify-end">
+                  <button className="btn" disabled={closureBusy} onClick={() => setClosureOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
+                  <button className="btn bg-purple-500 text-slate-950 font-semibold" disabled={closureBusy || !closureReason.trim() || !closureTreatment} onClick={() => void submitClosure()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {payDialogOpen && detail && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4">

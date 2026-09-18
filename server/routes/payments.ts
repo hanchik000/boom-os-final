@@ -4,6 +4,7 @@ import { query, queryOne, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { requireOperatorPosSession } from './operator-pos';
 import { applyCreditSale } from './credit';
+import { refundPaymentFinancials } from '../order-closure';
 const router=Router();
 const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT']);
 function cents(v:unknown){const s=String(v??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(s))throw new Error('INVALID_MONEY');const [a,b='']=s.split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));}
@@ -30,16 +31,15 @@ async function recordServiceChargeLedger(tx:TxClient, order:any, actorId:string,
 }
 
 async function releaseTableIfNoActiveOrders(tx:TxClient, tableId:string, branchId:string, now:string) {
-  const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED') LIMIT 1`,[tableId,branchId]);
+  const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED','CLOSED_BY_ESTABLISHMENT') LIMIT 1`,[tableId,branchId]);
   if(!active) await tx.execute(`UPDATE dining_tables SET status='AVAILABLE',updated_at=? WHERE id=? AND branch_id=? AND status='OCCUPIED'`,[now,tableId,branchId]);
 }
-async function restoreInventoryForOrder(tx:TxClient, orderId:string, branchId:string, userId:string, now:string) {
-  const movements=await tx.query<any>(`SELECT inventory_item_id,quantity FROM stock_movements WHERE branch_id=? AND reference_type='ORDER' AND reference_id=? AND type='SALE'`,[branchId,orderId]);
-  for(const m of movements){
-    await tx.execute(`UPDATE inventory_items SET current_stock=current_stock+CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?`,[m.quantity,now,m.inventory_item_id,branchId]);
-    await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,m.inventory_item_id,'RETURN',m.quantity,'PAYMENT_REFUND',orderId,'Restored after payment refund',userId,now]);
-  }
-}
+// Stage 34.1: the former restoreInventoryForOrder helper -- which unconditionally put every consumed
+// ingredient back on the shelf whenever a payment was refunded -- was deleted. Refunding money is
+// not returning ingredients: by construction a payment only exists once the kitchen ticket reached
+// READY, so every refundable order is an order whose food was already produced and can never be
+// restored. What happens to the products is now an explicit, manager-approved decision carried on
+// the order_closures row and applied by applyInventoryTreatment in ../order-closure.
 
 // Stage 34: quantities and unit costs are both stored with up to 4 decimal places
 // (inventory_items.average_cost, recipe_ingredients.quantity are both DECIMAL(14,4)); these
@@ -86,6 +86,33 @@ router.post('/',requirePermission('payments.create'),requireOperatorPosSession,a
       await consumeInventoryForOrder(tx,orderId,order.branch_id,req.user!.id,now);
       await recordServiceChargeLedger(tx, order, req.user!.id, now);
       await tx.execute(`UPDATE orders SET status='COMPLETED',updated_at=? WHERE id=?`,[now,orderId]); if(order.table_id) await releaseTableIfNoActiveOrders(tx,order.table_id,order.branch_id,now); await tx.execute(`UPDATE kds_tickets SET status='COMPLETED',completed_at=COALESCE(completed_at,?),updated_at=? WHERE order_id=? AND status<>'CANCELLED'`,[now,now,orderId]);await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:order.branch_id,action:'PAYMENT_CREATED',entityType:'PAYMENT',entityId:paymentId,newValues:{order_id:orderId,method,amount:text(requested)},req});return {payment:await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[paymentId]),replayed:false};});res.status(result.replayed?200:201).json(result);}catch(e:any){const map:any={ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],ORDER_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','ORDER_NOT_READY_FOR_PAYMENT'],KDS_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','KDS_NOT_READY_FOR_PAYMENT'],PAYMENT_AMOUNT_MUST_EQUAL_REMAINING:[409,'INVALID_STATE','PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'],OPEN_SHIFT_REQUIRED:[409,'INVALID_STATE','OPEN_SHIFT_REQUIRED'],INSUFFICIENT_STOCK:[409,'INVALID_STATE','INSUFFICIENT_STOCK'],INVENTORY_ITEM_NOT_FOUND:[409,'INVALID_STATE','INVENTORY_ITEM_NOT_FOUND'],CREDIT_ACCOUNT_REQUIRED:[400,'VALIDATION_ERROR','CREDIT_ACCOUNT_REQUIRED'],CREDIT_ACCOUNT_NOT_FOUND:[404,'NOT_FOUND','CREDIT_ACCOUNT_NOT_FOUND'],CREDIT_LIMIT_EXCEEDED:[409,'INVALID_STATE','CREDIT_LIMIT_EXCEEDED']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:e.details||{}});throw e;}});
-router.post('/:id/refund',requirePermission('payments.refund'),requireOperatorPosSession,async(req,res)=>{const now=new Date().toISOString();try{const result=await transaction(async(tx)=>{const p=await tx.queryOne<any>('SELECT * FROM payments WHERE id=? FOR UPDATE',[req.params.id]);if(!p)throw Object.assign(new Error('PAYMENT_NOT_FOUND'),{httpStatus:404});if(!allowed(req,p.branch_id))throw Object.assign(new Error('BRANCH_ACCESS_DENIED'),{httpStatus:403});if(p.status!=='PAID')throw Object.assign(new Error('PAYMENT_NOT_REFUNDABLE'),{httpStatus:409});await tx.execute(`UPDATE payments SET status='REFUNDED',refunded_at=?,updated_at=? WHERE id=? AND status='PAID'`,[now,now,p.id]);if(p.cash_shift_id && p.method==='CASH')await tx.execute(`UPDATE cash_shifts SET refunds=refunds+CAST(? AS numeric),expected_cash=opening_cash+cash_sales-(refunds+CAST(? AS numeric))-voids,updated_at=? WHERE id=?`,[p.amount,p.amount,now,p.cash_shift_id]);if(p.method==='CREDIT'){const creditTx=await tx.queryOne<any>(`SELECT * FROM credit_transactions WHERE payment_id=? AND type='CREDIT'`,[p.id]);if(creditTx){const account=await tx.queryOne<any>('SELECT * FROM credit_accounts WHERE id=? FOR UPDATE',[creditTx.credit_account_id]);if(account){await tx.execute('UPDATE credit_accounts SET current_balance=current_balance-CAST(? AS numeric),updated_at=? WHERE id=?',[p.amount,now,account.id]);await tx.execute(`INSERT INTO credit_transactions (id,credit_account_id,type,amount,order_id,payment_id,branch_id,cashier_user_id,note,created_at) VALUES (?,?,'ADJUSTMENT',CAST(? AS numeric),?,?,?,?,?,?)`,[`ctx_${crypto.randomUUID()}`,account.id,`-${p.amount}`,p.order_id,p.id,p.branch_id,req.user!.id,'Reversed by payment refund',now]);}}}await restoreInventoryForOrder(tx,p.order_id,p.branch_id,req.user!.id,now);
-    await tx.execute(`UPDATE service_charge_ledger SET status='REVERSED' WHERE order_id=? AND status='EARNED'`,[p.order_id]);await tx.execute(`UPDATE orders SET status='REFUNDED',updated_at=? WHERE id=?`,[now,p.order_id]);const refundedOrder=await tx.queryOne<any>('SELECT table_id FROM orders WHERE id=?',[p.order_id]);if(refundedOrder?.table_id)await releaseTableIfNoActiveOrders(tx,refundedOrder.table_id,p.branch_id,now);await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:p.branch_id,action:'PAYMENT_REFUNDED',entityType:'PAYMENT',entityId:p.id,oldValues:{status:'PAID'},newValues:{status:'REFUNDED',amount:p.amount},req});return await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[p.id]);});res.json({payment:result});}catch(e:any){const map:any={PAYMENT_NOT_FOUND:[404,'NOT_FOUND','PAYMENT_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],PAYMENT_NOT_REFUNDABLE:[409,'INVALID_STATE','PAYMENT_NOT_REFUNDABLE']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});throw e;}});
+// Stage 34.1: a refund is never an arbitrary historical action. It is only ever the financial
+// half of an APPROVED cancellation / establishment closure, and it never touches inventory -- the
+// product decision was applied independently when that closure was approved.
+router.post('/:id/refund',requirePermission('payments.refund'),requireOperatorPosSession,async(req,res)=>{
+  const now=new Date().toISOString();
+  try{
+    const result=await transaction(async(tx)=>{
+      const p=await tx.queryOne<any>('SELECT * FROM payments WHERE id=? FOR UPDATE',[req.params.id]);
+      if(!p)throw Object.assign(new Error('PAYMENT_NOT_FOUND'),{httpStatus:404});
+      if(!allowed(req,p.branch_id))throw Object.assign(new Error('BRANCH_ACCESS_DENIED'),{httpStatus:403});
+      if(p.status!=='PAID')throw Object.assign(new Error('PAYMENT_NOT_REFUNDABLE'),{httpStatus:409});
+      const closure=await tx.queryOne<any>(`SELECT * FROM order_closures WHERE order_id=? AND status='APPROVED' AND refund_requested=true AND refund_payment_id IS NULL ORDER BY decided_at DESC LIMIT 1 FOR UPDATE`,[p.order_id]);
+      if(!closure)throw Object.assign(new Error('REFUND_REQUIRES_APPROVED_CLOSURE'),{httpStatus:409});
+      await refundPaymentFinancials(tx,p,req.user!.id,req,now);
+      await tx.execute(`UPDATE service_charge_ledger SET status='REVERSED' WHERE order_id=? AND status='EARNED'`,[p.order_id]);
+      const finalStatus=closure.type==='CLOSED_BY_ESTABLISHMENT'?'CLOSED_BY_ESTABLISHMENT':'REFUNDED';
+      await tx.execute(`UPDATE orders SET status=?,updated_at=? WHERE id=?`,[finalStatus,now,p.order_id]);
+      await tx.execute('UPDATE order_closures SET refund_payment_id=? WHERE id=?',[p.id,closure.id]);
+      const refundedOrder=await tx.queryOne<any>('SELECT table_id FROM orders WHERE id=?',[p.order_id]);
+      if(refundedOrder?.table_id)await releaseTableIfNoActiveOrders(tx,refundedOrder.table_id,p.branch_id,now);
+      return await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[p.id]);
+    });
+    res.json({payment:result});
+  }catch(e:any){
+    const map:any={PAYMENT_NOT_FOUND:[404,'NOT_FOUND','PAYMENT_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],PAYMENT_NOT_REFUNDABLE:[409,'INVALID_STATE','PAYMENT_NOT_REFUNDABLE'],REFUND_REQUIRES_APPROVED_CLOSURE:[409,'INVALID_STATE','REFUND_REQUIRES_APPROVED_CLOSURE']};
+    if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});
+    throw e;
+  }
+});
 export default router;

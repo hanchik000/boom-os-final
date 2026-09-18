@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { query, queryOne, execute, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { getWaiterSession } from './waiters';
+import { CLOSURE_TYPES, INVENTORY_TREATMENTS, CLOSABLE_ORDER_STATUSES, CLOSED_ORDER_STATUSES, productionSnapshot, applyApprovedClosure } from '../order-closure';
 
 const router=Router();
 
@@ -17,7 +18,7 @@ function allowed(req:Request,b:string){return Boolean(req.user?.isSuperUser||req
 function id(){return crypto.randomUUID();}
 
 async function releaseTableIfNoActiveOrders(tx:TxClient, tableId:string, branchId:string, now:string) {
-  const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED') LIMIT 1`,[tableId,branchId]);
+  const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED','CLOSED_BY_ESTABLISHMENT') LIMIT 1`,[tableId,branchId]);
   if(!active) await tx.execute(`UPDATE dining_tables SET status='AVAILABLE',updated_at=? WHERE id=? AND branch_id=? AND status='OCCUPIED'`,[now,tableId,branchId]);
 }
 
@@ -199,6 +200,164 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
 }
 router.post('/removal-requests/:approvalId/approve', authenticateToken, requirePermission('orders.item_remove.approve'), async (req,res) => decideRemoval(req,res,true));
 router.post('/removal-requests/:approvalId/reject', authenticateToken, requirePermission('orders.item_remove.approve'), async (req,res) => decideRemoval(req,res,false));
+
+// ---------------------------------------------------------------------------
+// Stage 34.1 -- controlled cancellation / "closed by establishment".
+//
+// A refund is never an arbitrary historical action. The only path to one is
+// REQUEST -> MANAGER APPROVAL -> FINANCIAL REFUND, and the inventory outcome travels with that
+// same request as an explicit, user-chosen decision: refunding money and returning ingredients
+// are independent facts, and produced food is never returned to stock. A waiter raises the
+// request from the POS but can never finalise it alone.
+// ---------------------------------------------------------------------------
+
+function closureAuth(handler: (req: Request, res: any) => Promise<any>) {
+  return async (req: Request, res: any, next: any) => {
+    try {
+      const session = await getWaiterSession(req);
+      if (session) { (req as any).waiterSession = session; return await handler(req, res); }
+      authenticateToken(req, res, () => {
+        requirePermission('orders.closure.request')(req, res, () => { handler(req, res).catch(next); });
+      });
+    } catch (e) { next(e); }
+  };
+}
+
+// The waiter's own open orders, for the POS "OTKAZ" action. Waiter-session scoped: it can only
+// ever return orders this waiter raised in this waiter's branch.
+router.get('/pos/mine', async (req, res) => {
+  const session = await getWaiterSession(req);
+  if (!session) return res.status(401).json({error:'WAITER_SESSION_INVALID',code:'WAITER_SESSION_INVALID',message:'Valid Waiter POS session required.',details:{}});
+  const orders = await query<any>(`SELECT o.id,o.order_number,o.order_type,o.status,o.final_amount,o.created_at,t.code AS table_code,k.status AS kds_status,k.started_at AS production_started_at,(SELECT c.status FROM order_closures c WHERE c.order_id=o.id AND c.status='PENDING' LIMIT 1) AS pending_closure FROM orders o LEFT JOIN dining_tables t ON t.id=o.table_id LEFT JOIN kds_tickets k ON k.order_id=o.id WHERE o.branch_id=? AND o.waiter_user_id=? AND o.status IN ('PENDING_CONFIRMATION','CONFIRMED','PREPARING','READY') ORDER BY o.created_at DESC LIMIT 50`,[session.branch_id,session.user_id]);
+  res.json({branch_id: session.branch_id, orders});
+});
+
+router.post('/:id/closure-requests', closureAuth(async (req, res) => {
+  const session = (req as any).waiterSession || null;
+  const orderId = String(req.params.id);
+  const type = String(req.body?.type || '').toUpperCase();
+  const treatment = String(req.body?.inventory_treatment || '').toUpperCase();
+  const reason = String(req.body?.reason || '').trim().slice(0, 500);
+  const comment = String(req.body?.comment || '').trim().slice(0, 1000) || null;
+  const refundRequested = req.body?.refund_requested === true;
+  if (!(CLOSURE_TYPES as readonly string[]).includes(type)) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_CLOSURE_TYPE',message:'type must be CANCELLATION or CLOSED_BY_ESTABLISHMENT.',details:{}});
+  // The product decision is never inferred from the refund decision and never defaulted: the
+  // requester must state it, and the stated, approved value is the source of truth.
+  if (!(INVENTORY_TREATMENTS as readonly string[]).includes(treatment)) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVENTORY_TREATMENT_REQUIRED',message:'inventory_treatment must be explicitly chosen: WRITE_OFF, NO_WRITE_OFF or RESTORE_STOCK.',details:{}});
+  if (!reason) return res.status(400).json({error:'VALIDATION_ERROR',code:'CLOSURE_REASON_REQUIRED',message:'A reason is required.',details:{}});
+  if (session && type !== 'CANCELLATION') return res.status(403).json({error:'FORBIDDEN',code:'CLOSURE_TYPE_NOT_ALLOWED_FOR_WAITER',message:'A waiter may only request a cancellation.',details:{}});
+  if (session && refundRequested) return res.status(403).json({error:'FORBIDDEN',code:'WAITER_CANNOT_REQUEST_REFUND',message:'A refund may only be requested from the cashier POS.',details:{}});
+  const now = new Date().toISOString();
+  const closureId = `ocl_${crypto.randomUUID()}`;
+  try {
+    const closure = await transaction(async (tx) => {
+      const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [orderId]);
+      if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), {httpStatus:404});
+      if (session) {
+        if (order.branch_id !== session.branch_id || order.waiter_user_id !== session.user_id) throw Object.assign(new Error('ORDER_ACCESS_DENIED'), {httpStatus:403});
+      } else if (!allowed(req, order.branch_id)) throw Object.assign(new Error('BRANCH_ACCESS_DENIED'), {httpStatus:403});
+      if (CLOSED_ORDER_STATUSES.includes(order.status)) throw Object.assign(new Error('ORDER_ALREADY_CLOSED'), {httpStatus:409});
+      if (!CLOSABLE_ORDER_STATUSES.includes(order.status)) throw Object.assign(new Error('ORDER_NOT_CLOSABLE'), {httpStatus:409});
+      const pending = await tx.queryOne<any>(`SELECT id FROM order_closures WHERE order_id=? AND status='PENDING' FOR UPDATE`, [orderId]);
+      if (pending) throw Object.assign(new Error('CLOSURE_ALREADY_PENDING'), {httpStatus:409});
+      const prod = await productionSnapshot(tx, orderId);
+      if (treatment === 'RESTORE_STOCK' && prod.started) throw Object.assign(new Error('INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION'), {httpStatus:409});
+      const paidRow = await tx.queryOne<any>(`SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE order_id=? AND status='PAID'`, [orderId]);
+      const paid = Number(paidRow?.paid || 0) > 0;
+      if (refundRequested && !paid) throw Object.assign(new Error('REFUND_REQUIRES_PAID_ORDER'), {httpStatus:409});
+      const requesterId = session ? session.user_id : req.user!.id;
+      const requesterRole = session ? 'WAITER' : (req.user!.roleCodes[0] || 'USER');
+      await tx.execute(`INSERT INTO order_closures (id,branch_id,order_id,type,reason,comment,inventory_treatment,refund_requested,status,production_state,requester_user_id,requester_role,paid_at_request,inventory_applied,created_at) VALUES (?,?,?,?,?,?,?,?, 'PENDING',?,?,?,?,false,?)`, [closureId, order.branch_id, orderId, type, reason, comment, treatment, refundRequested, prod.state, requesterId, requesterRole, paid, now]);
+      await insertAuditLog(tx.execute, {userId:requesterId, branchId:order.branch_id, action:'ORDER_CLOSURE_REQUESTED', entityType:'ORDER_CLOSURE', entityId:closureId, newValues:{type, status:'PENDING', order_id:orderId, order_status:order.status, reason, comment, inventory_treatment:treatment, refund_requested:refundRequested, production_state:prod.state, paid_at_request:paid, requester_user_id:requesterId, requester_role:requesterRole}, req});
+      return await tx.queryOne<any>('SELECT * FROM order_closures WHERE id=?', [closureId]);
+    });
+    res.status(201).json({closure});
+  } catch (e:any) {
+    const map:any={ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],ORDER_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','ORDER_ACCESS_DENIED'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],ORDER_ALREADY_CLOSED:[409,'INVALID_STATE','ORDER_ALREADY_CLOSED'],ORDER_NOT_CLOSABLE:[409,'INVALID_STATE','ORDER_NOT_CLOSABLE'],CLOSURE_ALREADY_PENDING:[409,'CONFLICT','CLOSURE_ALREADY_PENDING'],INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION:[409,'INVALID_STATE','INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION'],REFUND_REQUIRES_PAID_ORDER:[409,'INVALID_STATE','REFUND_REQUIRES_PAID_ORDER']};
+    if(map[e.message]) return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});
+    throw e;
+  }
+}));
+
+router.get('/closure-requests', authenticateToken, requirePermission('orders.closure.approve'), async (req, res) => {
+  const branchId = typeof req.query.branch_id === 'string' ? req.query.branch_id : (req.user!.branch_id || '');
+  if (!branchId || !allowed(req, branchId)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Branch is outside your access scope.',details:{}});
+  const status = typeof req.query.status === 'string' ? String(req.query.status).toUpperCase() : 'PENDING';
+  if (!['PENDING','APPROVED','REJECTED'].includes(status)) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_CLOSURE_STATUS',message:'Invalid closure status.',details:{}});
+  const closures = await query<any>(`SELECT c.*,o.order_number,o.order_type,o.status AS order_status,o.final_amount,t.code AS table_code,u.full_name AS requester_name,a.full_name AS approver_name FROM order_closures c JOIN orders o ON o.id=c.order_id LEFT JOIN dining_tables t ON t.id=o.table_id LEFT JOIN users u ON u.id=c.requester_user_id LEFT JOIN users a ON a.id=c.approver_user_id WHERE c.branch_id=? AND c.status=? ORDER BY c.created_at ASC LIMIT 200`, [branchId, status]);
+  res.json({branch_id: branchId, closures});
+});
+
+async function decideClosure(req: Request, res: any, approve: boolean) {
+  const closureId = String(req.params.closureId);
+  const decisionReason = String(req.body?.reason || '').trim().slice(0, 500) || null;
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      const c = await tx.queryOne<any>('SELECT * FROM order_closures WHERE id=? FOR UPDATE', [closureId]);
+      if (!c) throw Object.assign(new Error('CLOSURE_NOT_FOUND'), {httpStatus:404});
+      if (!allowed(req, c.branch_id)) throw Object.assign(new Error('BRANCH_ACCESS_DENIED'), {httpStatus:403});
+      if (c.status !== 'PENDING') throw Object.assign(new Error('CLOSURE_ALREADY_DECIDED'), {httpStatus:409});
+      if (c.requester_user_id === req.user!.id) throw Object.assign(new Error('SELF_APPROVAL_FORBIDDEN'), {httpStatus:403});
+      if (!approve) {
+        await tx.execute(`UPDATE order_closures SET status='REJECTED',approver_user_id=?,decided_at=?,decision_reason=? WHERE id=? AND status='PENDING'`, [req.user!.id, now, decisionReason, closureId]);
+        await insertAuditLog(tx.execute, {userId:req.user!.id, branchId:c.branch_id, action:'ORDER_CLOSURE_REJECTED', entityType:'ORDER_CLOSURE', entityId:closureId, oldValues:{status:'PENDING'}, newValues:{status:'REJECTED', approver_user_id:req.user!.id, decision_reason:decisionReason}, req});
+        return {closure: await tx.queryOne<any>('SELECT * FROM order_closures WHERE id=?', [closureId]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [c.order_id])};
+      }
+      if (c.refund_requested && !(req.user!.isSuperUser || req.user!.permissions.includes('payments.refund'))) throw Object.assign(new Error('REFUND_PERMISSION_REQUIRED'), {httpStatus:403});
+      const applied = await applyApprovedClosure(tx, c, req.user!.id, req, now);
+      if (decisionReason) await tx.execute('UPDATE order_closures SET decision_reason=? WHERE id=?', [decisionReason, closureId]);
+      return {closure: await tx.queryOne<any>('SELECT * FROM order_closures WHERE id=?', [closureId]), order: applied.order};
+    });
+    res.json(result);
+  } catch (e:any) {
+    const map:any={CLOSURE_NOT_FOUND:[404,'NOT_FOUND','CLOSURE_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],CLOSURE_ALREADY_DECIDED:[409,'INVALID_STATE','CLOSURE_ALREADY_DECIDED'],SELF_APPROVAL_FORBIDDEN:[403,'FORBIDDEN','SELF_APPROVAL_FORBIDDEN'],REFUND_PERMISSION_REQUIRED:[403,'FORBIDDEN','REFUND_PERMISSION_REQUIRED'],ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION:[409,'INVALID_STATE','INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION']};
+    if(map[e.message]) return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});
+    throw e;
+  }
+}
+router.post('/closure-requests/:closureId/approve', authenticateToken, requirePermission('orders.closure.approve'), async (req,res) => decideClosure(req,res,true));
+router.post('/closure-requests/:closureId/reject', authenticateToken, requirePermission('orders.closure.approve'), async (req,res) => decideClosure(req,res,false));
+
+// Automatic cancellation of abandoned orders, driven by the two configurable thresholds
+// ORDER_CONFIRMATION_TIMEOUT and KITCHEN_ACCEPT_TIMEOUT. It is explicitly invoked (never a hidden
+// background mutation) and is only ever permitted BEFORE production starts -- an order whose
+// kitchen ticket has already been started is never auto-cancelled, because its ingredients are
+// already committed and that decision belongs to a human.
+router.post('/closures/auto-cancel', authenticateToken, requirePermission('orders.closure.approve'), async (req, res) => {
+  const branchId = typeof req.body?.branch_id === 'string' ? req.body.branch_id : (req.user!.branch_id || '');
+  if (!branchId || !allowed(req, branchId)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Branch is outside your access scope.',details:{}});
+  const settings = await query<any>(`SELECT key,value FROM system_settings WHERE key IN ('ORDER_CONFIRMATION_TIMEOUT','KITCHEN_ACCEPT_TIMEOUT')`);
+  const get = (k:string, d:number) => { const raw = settings.find(s=>s.key===k)?.value; const n = Number(raw); return Number.isFinite(n) && n >= 0 ? n : d; };
+  const confirmTimeout = get('ORDER_CONFIRMATION_TIMEOUT', 15), kitchenTimeout = get('KITCHEN_ACCEPT_TIMEOUT', 10);
+  const now = new Date(), nowIso = now.toISOString();
+  const confirmCutoff = new Date(now.getTime() - confirmTimeout * 60000).toISOString();
+  const kitchenCutoff = new Date(now.getTime() - kitchenTimeout * 60000).toISOString();
+  const candidates = await query<any>(`SELECT o.id,o.status,o.created_at,o.confirmed_at,k.status AS kds_status,k.started_at FROM orders o LEFT JOIN kds_tickets k ON k.order_id=o.id WHERE o.branch_id=? AND o.status IN ('PENDING_CONFIRMATION','CONFIRMED') ORDER BY o.created_at ASC LIMIT 200`, [branchId]);
+  const cancelled: string[] = [];
+  for (const o of candidates) {
+    const overdue = o.status === 'PENDING_CONFIRMATION'
+      ? String(o.created_at) < confirmCutoff
+      : (String(o.confirmed_at || o.created_at) < kitchenCutoff && (!o.kds_status || o.kds_status === 'NEW'));
+    if (!overdue) continue;
+    if (o.started_at || ['PREPARING','READY','COMPLETED'].includes(String(o.kds_status))) continue; // production started -- never automatic
+    const closureId = `ocl_${crypto.randomUUID()}`;
+    await transaction(async (tx) => {
+      const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [o.id]);
+      if (!order || !['PENDING_CONFIRMATION','CONFIRMED'].includes(order.status)) return;
+      const prod = await productionSnapshot(tx, order.id);
+      if (prod.started) return;
+      const pending = await tx.queryOne<any>(`SELECT id FROM order_closures WHERE order_id=? AND status='PENDING' FOR UPDATE`, [order.id]);
+      if (pending) return;
+      const reason = order.status === 'PENDING_CONFIRMATION' ? 'ORDER_CONFIRMATION_TIMEOUT' : 'KITCHEN_ACCEPT_TIMEOUT';
+      await tx.execute(`INSERT INTO order_closures (id,branch_id,order_id,type,reason,comment,inventory_treatment,refund_requested,status,production_state,requester_user_id,requester_role,paid_at_request,inventory_applied,created_at) VALUES (?,?,?,'CANCELLATION',?,?,'NO_WRITE_OFF',false,'PENDING',?,?, 'SYSTEM',false,false,?)`, [closureId, order.branch_id, order.id, reason, `Automatic cancellation after ${reason === 'ORDER_CONFIRMATION_TIMEOUT' ? confirmTimeout : kitchenTimeout} minutes`, prod.state, req.user!.id, nowIso]);
+      const closure = await tx.queryOne<any>('SELECT * FROM order_closures WHERE id=?', [closureId]);
+      await applyApprovedClosure(tx, closure, req.user!.id, req, nowIso);
+      cancelled.push(order.id);
+    });
+  }
+  res.json({branch_id: branchId, order_confirmation_timeout_minutes: confirmTimeout, kitchen_accept_timeout_minutes: kitchenTimeout, cancelled_order_ids: cancelled, cancelled_count: cancelled.length});
+});
 
 // Order-level notes. `notes` is customer-facing (pre-existing field, set at creation, now also
 // editable); `internal_notes` is staff-only and must never be selected onto a customer receipt.

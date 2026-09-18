@@ -223,10 +223,16 @@ export async function seedInitialData() {
     // reporting. Distinct from inventory.view (raw stock counts) because these figures reveal
     // cost structure and margin, which should stay manager-level even for staff who can already
     // see stock levels.
-    { id: 'perm_food_cost_view', code: 'food_cost.view', name: 'View Food Cost Reports', module: 'food_cost', description: 'View recipe cost, food cost %, gross margin, ingredient economics and menu profitability' }
+    { id: 'perm_food_cost_view', code: 'food_cost.view', name: 'View Food Cost Reports', module: 'food_cost', description: 'View recipe cost, food cost %, gross margin, ingredient economics and menu profitability' },
+    // Stage 34.1: controlled cancellation / "closed by establishment". Requesting is separated
+    // from approving on purpose -- a waiter or cashier may raise the request but can never
+    // finalise it alone, because the request decides both an order's fate and (independently)
+    // whether produced food is written off and whether money leaves the till.
+    { id: 'perm_order_closure_request', code: 'orders.closure.request', name: 'Request Order Closure', module: 'orders', description: 'Request a cancellation or an establishment closure of an order (requires manager approval)' },
+    { id: 'perm_order_closure_approve', code: 'orders.closure.approve', name: 'Approve Order Closure', module: 'orders', description: 'Approve or reject a cancellation / establishment closure, its inventory treatment and its refund' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -255,7 +261,7 @@ export async function seedInitialData() {
     // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
     // within their own approved limit; credit.manage_limit (set limits, approve over-limit
     // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay']) {
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }
@@ -266,6 +272,11 @@ export async function seedInitialData() {
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_kds_warning_minutes','KDS_PREP_WARNING_MINUTES','15','number','Minutes an order may stay in PREPARING before Live Operations flags it WARNING.',now,now]);
+  // Stage 34.1 auto-cancel windows. Both are configurable operational thresholds, never hardcoded
+  // in route or UI code, and an automatic cancellation is only ever permitted while production has
+  // not started -- see POST /api/orders/closures/auto-cancel.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_order_confirmation_timeout','ORDER_CONFIRMATION_TIMEOUT','15','number','Minutes an order may stay in PENDING_CONFIRMATION before it becomes eligible for automatic cancellation.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_kitchen_accept_timeout','KITCHEN_ACCEPT_TIMEOUT','10','number','Minutes a confirmed order may wait for the kitchen to start production before it becomes eligible for automatic cancellation.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_kds_delayed_minutes','KDS_PREP_DELAYED_MINUTES','25','number','Minutes an order may stay in PREPARING before Live Operations flags it DELAYED.',now,now]);
 
   // 3. No demo franchises, branches, employees or operational users are created here.

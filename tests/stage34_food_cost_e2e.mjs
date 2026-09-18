@@ -150,7 +150,9 @@ const beefAfterSaleA = (await request(`/api/inventory/items?branch_id=${A1.id}`,
 dbCheck('8/35. consumption = 150g * 4 = 600g exactly (order quantity correctly multiplies recipe quantity)', moneyEq(Number(beefBeforeSale.current_stock) - Number(beefAfterSaleA.current_stock), '600'), { before: beefBeforeSale.current_stock, after: beefAfterSaleA.current_stock });
 const movements = (await request(`/api/inventory/movements?branch_id=${A1.id}`, { headers: MGR_A1.headers })).body.movements;
 const saleMovement = movements.find(m => m.reference_id === orderA.id && m.type === 'SALE');
-dbCheck('9. inventory ledger has a real SALE movement with the correct quantity and unit_cost', !!saleMovement && moneyEq(saleMovement.quantity, '600') && moneyEq(saleMovement.unit_cost, '0.0250'), saleMovement);
+// Exact, not tolerance-based: a 2-decimal comparison here would not notice the ledger rounding
+// 0.0250 to 0.03, which is precisely the defect Stage 34.1 widened the column to fix.
+dbCheck('9. inventory ledger has a real SALE movement with the correct quantity and the FULL 4-decimal unit_cost', !!saleMovement && moneyEq(saleMovement.quantity, '600') && Number(saleMovement.unit_cost) === 0.025, saleMovement);
 
 const orderAItems = (await request(`/api/orders/${orderA.id}`, { headers: MGR_A1.headers })).body.order.items;
 dbCheck('historical snapshot recorded: version 1, cost = 600g*0.025 = 15.00', orderAItems[0].recipe_version_snapshot === 1 && moneyEq(orderAItems[0].recipe_cost_snapshot, '15.00'), orderAItems[0]);
@@ -175,12 +177,19 @@ dbCheck('new order snapshot is version 2, cost = 170*0.025=4.25', orderBItems[0]
 const orderARecheck = (await request(`/api/orders/${orderA.id}`, { headers: MGR_A1.headers })).body.order;
 dbCheck('15/24. order A (sold under v1) STILL shows version 1 / cost 15.00 after the recipe changed to v2 -- historical snapshot integrity', orderARecheck.items[0].recipe_version_snapshot === 1 && moneyEq(orderARecheck.items[0].recipe_cost_snapshot, '15.00'), orderARecheck.items[0]);
 
-// ================================================================== 10/11/36. REFUND -> exact historical restoration (600g, not 4*170=680g)
+// ================================================================== 10/11/36. REFUND -> money back, produced ingredients NOT back
+// Stage 34.1 supersedes the original "refund restores stock" semantics: order A was paid, which by
+// construction means its food had already been produced, so the refund never returns ingredients.
+// The historical-quantity rule is preserved where it still applies -- the production loss is valued
+// from the recorded v1 consumption (600g), never from what the current v2 recipe would compute (680g).
 const beefBeforeRefund = (await request(`/api/inventory/items?branch_id=${A1.id}`, { headers: MGR_A1.headers })).body.items.find(i => i.id === beef.id);
-const refundA = await request(`/api/payments/${payA.body.payment.id}/refund`, { method: 'POST', headers: { ...MGR_A1.headers, 'x-pos-session-token': posToken }, body: '{}' });
-expect('10. refund order A', refundA.status, 200, refundA.body);
+const closureA = await request(`/api/orders/${orderA.id}/closure-requests`, { method: 'POST', headers: CASHIER_A1.headers, body: JSON.stringify({ type: 'CANCELLATION', reason: 'Guest complaint', inventory_treatment: 'WRITE_OFF', refund_requested: true }) });
+expect('10a. cashier requests a cancellation with a refund for order A', closureA.status, 201, closureA.body);
+const refundA = await request(`/api/orders/closure-requests/${closureA.body.closure.id}/approve`, { method: 'POST', headers: MGR_A1.headers, body: '{}' });
+expect('10. manager approves -> order A is refunded', refundA.status, 200, refundA.body);
 const beefAfterRefund = (await request(`/api/inventory/items?branch_id=${A1.id}`, { headers: MGR_A1.headers })).body.items.find(i => i.id === beef.id);
-dbCheck('11/36. refund restores EXACTLY 600g (the historical v1 consumption), not 680g (what the current v2 recipe would compute)', moneyEq(Number(beefAfterRefund.current_stock) - Number(beefBeforeRefund.current_stock), '600'), { before: beefBeforeRefund.current_stock, after: beefAfterRefund.current_stock });
+dbCheck('11/36. the refund restores NOTHING -- the 600g that were produced stay off the shelf', Number(beefAfterRefund.current_stock) === Number(beefBeforeRefund.current_stock), { before: beefBeforeRefund.current_stock, after: beefAfterRefund.current_stock });
+dbCheck('11b. the production loss is valued from the HISTORICAL v1 consumption (600g * 0.025 = 15.00), not from the current v2 recipe (680g)', moneyEq(refundA.body.closure.write_off_cost, '15.00'), refundA.body.closure);
 
 // ================================================================== 38. PROFITABILITY (period) -- credit sale included as revenue, refunded order excluded
 const custR = await request('/api/credit/customers', { method: 'POST', headers: CASHIER_A1.headers, body: JSON.stringify({ branch_id: A1.id, name: 'S34 Debtor', phone: `+99364${stamp % 1000000}` }) });

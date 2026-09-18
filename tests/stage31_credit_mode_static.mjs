@@ -43,8 +43,14 @@ check('Z-report expected_cash reconciliation includes credit_repayments', /CAST\
 // --- RBAC: cashier-issue-within-limit vs manager-only-limit-changes, reusing existing RBAC
 check('5 credit permissions are seeded (view/issue/repay/manage_limit/reports)', ['credit.view', 'credit.issue', 'credit.repay', 'credit.manage_limit', 'credit.reports'].every(c => seedTs.includes(`code: '${c}'`)));
 check('CASHIER role is granted credit.view/issue/repay but not credit.manage_limit or credit.reports in its own grant loop', (() => {
-  const m = seedTs.match(/for \(const code of \[[^\]]*'credit\.view','credit\.issue','credit\.repay'\]\) \{/);
-  return !!m && !m[0].includes('credit.manage_limit') && !m[0].includes('credit.reports');
+  // Parse the cashier grant loop's own list rather than pinning its exact tail: later stages
+  // legitimately extend it (Stage 34.1 adds orders.closure.request), and what matters is
+  // membership, not ordering.
+  const m = seedTs.match(/for \(const code of \[([^\]]*'credit\.repay'[^\]]*)\]\) \{/);
+  if (!m) return false;
+  const granted = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, ''));
+  return ['credit.view', 'credit.issue', 'credit.repay'].every(c => granted.includes(c))
+    && !granted.includes('credit.manage_limit') && !granted.includes('credit.reports');
 })());
 check('setting a credit limit requires credit.manage_limit', /router\.put\('\/accounts\/:id\/limit', requirePermission\('credit\.manage_limit'\)/.test(creditTs));
 check('over-limit credit sale requires the manage_limit permission via the existing RBAC system, not a new approval table', /if \(opts\.amount > available && !opts\.isManager\)/.test(creditTs) && !/CREATE TABLE.*approval/i.test(creditTs));

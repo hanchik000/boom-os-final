@@ -218,8 +218,12 @@ dbCheck('25d. restricted staff data is not present', dashLimited.body.staff === 
 ok('orders section (a permission this role DOES have) is still present', !!dashLimited.body.orders, dashLimited.body.orders);
 
 // ================================================================== 22. REFUND handling
-const refundR = await request(`/api/payments/${payCash.body.payment.id}/refund`, { method: 'POST', headers: { ...MGR_A1.headers, 'x-pos-session-token': posToken }, body: '{}' });
-expect('manager refunds the cash payment', refundR.status, 200, refundR.body);
+// Stage 34.1: the refund is reached through the approved-closure flow -- the cashier requests it,
+// a manager approves it -- because an arbitrary historical refund is no longer possible.
+const refundClosure = await request(`/api/orders/${payCash.body.payment.order_id}/closure-requests`, { method: 'POST', headers: CASHIER_A1.headers, body: JSON.stringify({ type: 'CANCELLATION', reason: 'Guest complaint', inventory_treatment: 'WRITE_OFF', refund_requested: true }) });
+expect('cashier requests a cancellation with a refund', refundClosure.status, 201, refundClosure.body);
+const refundR = await request(`/api/orders/closure-requests/${refundClosure.body.closure.id}/approve`, { method: 'POST', headers: MGR_A1.headers, body: '{}' });
+expect('manager approves the refund of the cash payment', refundR.status, 200, refundR.body);
 const dashAfterRefund = await request(`/api/dashboard/manager?branch_id=${A1.id}&start=${encodeURIComponent(windowStartIso)}&end=${encodeURIComponent(new Date(Date.now() + 5000).toISOString())}`, { headers: MGR_A1.headers });
 dbCheck('22. refund is reflected in the financial refunds section using existing payment semantics', moneyEq(dashAfterRefund.body.financial.refunds.total, cashAmount.toFixed(2)), dashAfterRefund.body.financial.refunds);
 
