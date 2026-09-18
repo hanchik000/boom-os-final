@@ -561,14 +561,16 @@ router.get('/:id/branches', requirePermission('franchises.view'), async (req: Re
 // POST /api/franchises/:id/branches/:branchId (Assign existing branch to franchise)
 router.post('/:id/branches/:branchId', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id, branchId } = req.params;
-  // Moving a branch between franchises changes who can see its data, so the caller must
-  // hold both the target franchise and the branch itself. Superusers are exempt, as everywhere.
-  if (!(await canUserAccessFranchise(req.user!, id))) {
-    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
-    return;
-  }
-  if (!req.user!.isSuperUser && !req.user!.allowedBranchIds.includes(branchId)) {
-    res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: { branch_id: branchId } });
+  // Re-parenting a branch is a change to the tenant hierarchy itself (§8: FRANCHISE ->
+  // BRANCH), not an operation inside one branch. Holding the branch and holding a branch of
+  // the target franchise is not enough: a user with branches in two franchises satisfies
+  // both and could still move a branch between them. Restricted to superuser semantics.
+  if (!req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_STRUCTURE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may move a branch between franchises.',
+      details: { franchise_id: id, branch_id: branchId }
+    });
     return;
   }
 
@@ -615,14 +617,16 @@ router.post('/:id/branches/:branchId', requirePermission('franchises.update'), a
 // DELETE /api/franchises/:id/branches/:branchId (Remove branch from franchise without deleting the branch itself)
 router.delete('/:id/branches/:branchId', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id, branchId } = req.params;
-  // Moving a branch between franchises changes who can see its data, so the caller must
-  // hold both the target franchise and the branch itself. Superusers are exempt, as everywhere.
-  if (!(await canUserAccessFranchise(req.user!, id))) {
-    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
-    return;
-  }
-  if (!req.user!.isSuperUser && !req.user!.allowedBranchIds.includes(branchId)) {
-    res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: { branch_id: branchId } });
+  // Re-parenting a branch is a change to the tenant hierarchy itself (§8: FRANCHISE ->
+  // BRANCH), not an operation inside one branch. Holding the branch and holding a branch of
+  // the target franchise is not enough: a user with branches in two franchises satisfies
+  // both and could still move a branch between them. Restricted to superuser semantics.
+  if (!req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_STRUCTURE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may move a branch between franchises.',
+      details: { franchise_id: id, branch_id: branchId }
+    });
     return;
   }
 

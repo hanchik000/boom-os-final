@@ -215,10 +215,15 @@ holders: self-grant, grant-all, primary-branch move, and widening another user.
 - **Attaching the first branch to an empty franchise** is now impossible for a non-superuser,
   because `canUserAccessFranchise` cannot pass on a franchise with no branches. Superusers,
   who create franchises, are unaffected. This is the safe direction but it is a narrowing.
+  SUPERSEDED BY STAGE 23: branch re-parenting is now superuser-only entirely. Stage 23 proved
+  the Stage 22 guard here was insufficient — a user holding branches in two franchises
+  satisfies both the franchise gate and the branch check, and could still move a branch
+  between them. See `docs/STAGE-23-CROSS-FRANCHISE-AUTHORIZATION.md`.
 - **GENERAL_MANAGER** remains branch-scoped in code while the seed describes it as
   network-wide. Not changed; expanding it would widen access.
 - **`GET /:id/orders`** returns an empty stub (`connected: false`), so franchise order
   isolation could not be exercised against real rows and is unproven for the eventual
   implementation.
-- **Not covered:** franchise isolation for promotions/CRM/BOOMCARD (not implemented), the
-  frontend, and a user holding branches across *two different franchises* simultaneously.
+- **Not covered:** franchise isolation for promotions/CRM/BOOMCARD (not implemented) and the
+  frontend. A user holding branches across two different franchises was covered in Stage 23,
+  which found and fixed the re-parenting defect noted above.
