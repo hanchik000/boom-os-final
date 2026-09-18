@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const files=['server/routes/public-menu.ts','src/components/CustomerMenuView.tsx','prisma/migrations/20260909130000_stage18_smart_search/migration.sql','src/api.ts','server.ts'];
+for(const f of files) assert.ok(fs.existsSync(f),`missing ${f}`);
+const route=fs.readFileSync('server/routes/public-menu.ts','utf8');
+assert.match(route,/router\.get\('\/smart-search'/); assert.match(route,/branch_id/); assert.match(route,/smart_tags_ru/); assert.match(route,/No dishes or prices are invented/);
+assert.match(route,/normalize\(/); assert.match(route,/people/); assert.match(route,/maxBudget/);
+const app=fs.readFileSync('src/App.tsx','utf8'); assert.match(app,/publicScreen.*customer/); assert.match(app,/CustomerMenuView/);
+const migration=fs.readFileSync('prisma/migrations/20260909130000_stage18_smart_search/migration.sql','utf8'); assert.match(migration,/smart_tags_ru/); assert.match(migration,/smart_tags_tk/);
+console.log('Stage 18 Smart Search static checks: PASS');

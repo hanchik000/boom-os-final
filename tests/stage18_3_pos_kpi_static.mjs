@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const pos=fs.readFileSync('server/routes/operator-pos.ts','utf8');
+const payments=fs.readFileSync('server/routes/payments.ts','utf8');
+const kpi=fs.readFileSync('server/routes/kpi.ts','utf8');
+assert.match(pos,/x-pos-session-token/);
+assert.match(pos,/expires_at>\?/);
+assert.match(pos,/status='ACTIVE'/);
+assert.match(pos,/status='LOCKED'/);
+assert.match(pos,/last_seen_at/);
+assert.match(pos,/UPDATE operator_pos_sessions SET status='LOCKED'/);
+assert.match(payments,/requireOperatorPosSession/);
+assert.match(payments,/waiter_profiles wp WHERE wp\.user_id=\?/);
+assert.match(kpi,/orders o ON o.id=p.order_id/);
+assert.match(kpi,/o\.waiter_user_id=\?/);
+assert.match(kpi,/attribution/);
+assert.match(kpi,/role_code && !roles\.has/);
+console.log('STAGE 18.3 POS/KPI STATIC ACCEPTANCE: 12/12 passed');

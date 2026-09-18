@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+
+const route = fs.readFileSync('server/routes/waiters.ts', 'utf8');
+const schema = fs.readFileSync('prisma/schema.prisma', 'utf8');
+const migration = fs.readFileSync('prisma/migrations/20260908000600_waiter_pos_sessions/migration.sql', 'utf8');
+const users = fs.readFileSync('server/routes/users.ts', 'utf8');
+const api = fs.readFileSync('src/api.ts', 'utf8');
+const waiterUi = fs.readFileSync('src/components/WaiterPOSView.tsx', 'utf8');
+const app = fs.readFileSync('src/App.tsx', 'utf8');
+const openapi = fs.readFileSync('server/openapi.ts', 'utf8');
+
+assert.match(route, /router\.post\('\/authenticate-code'/);
+assert.match(route, /requirePermission\('waiter_codes\.manage'\)/);
+assert.match(route, /GENERAL_MANAGER/);
+assert.match(route, /BRANCH_MANAGER/);
+assert.match(route, /WAITER_CODE_MANAGER_ONLY/);
+assert.match(route, /wac\.code_hash=\?/);
+assert.match(route, /u\.branch_id=wac\.branch_id/);
+assert.match(route, /waiter_pos_sessions/);
+assert.match(route, /X-Waiter-Session|x-waiter-session/);
+assert.match(route, /WAITER_CODE_ATTEMPTS_EXCEEDED/);
+assert.match(route, /status='REVOKED'/);
+assert.match(route, /Previous code and active POS sessions are no longer valid/);
+assert.match(schema, /model WaiterAccessCode/);
+assert.match(schema, /model WaiterPosSession/);
+assert.match(migration, /CREATE TABLE "waiter_pos_sessions"/);
+assert.match(migration, /token_hash/);
+assert.match(users, /WAITER_CODE_REVOKED_BRANCH_CHANGE/);
+assert.match(users, /WAITER_CODE_REVOKED_ROLE_CHANGE/);
+assert.match(users, /WAITER_CODE_REVOKED_STATUS_CHANGE/);
+assert.match(users, /waiter_pos_sessions SET status='REVOKED'/);
+assert.match(api, /getStoredWaiterSession/);
+assert.match(api, /authenticateWaiterCode: \(code: string, deviceId: string\)/);
+assert.match(api, /getWaiterSession/);
+assert.match(api, /logoutWaiter/);
+assert.match(waiterUi, /boom_waiter_device_id/);
+assert.match(waiterUi, /setStoredWaiterSession/);
+assert.match(waiterUi, /api\.getWaiterSession/);
+assert.match(waiterUi, /api\.logoutWaiter/);
+assert.match(app, /screen[\s\S]*waiter/);
+assert.match(openapi, /\/api\/waiters\/authenticate-code/);
+assert.match(openapi, /\/api\/waiters\/session/);
+
+console.log('Stage 7 hardened waiter POS static acceptance: PASSED');

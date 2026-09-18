@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const schema=fs.readFileSync('prisma/schema.prisma','utf8');
+const menu=fs.readFileSync('server/routes/menu.ts','utf8');
+const orders=fs.readFileSync('server/routes/orders.ts','utf8');
+const api=fs.readFileSync('src/api.ts','utf8');
+const app=fs.readFileSync('src/App.tsx','utf8');
+const sidebar=fs.readFileSync('src/components/Sidebar.tsx','utf8');
+const migration='prisma/migrations/20260908001200_menu_modifiers/migration.sql';
+assert(fs.existsSync(migration));
+for(const name of ['MenuModifierGroup','MenuModifier','OrderItemModifier']) assert(schema.includes(`model ${name}`));
+for(const x of ['menu_modifier_groups','menu_modifiers','order_item_modifiers','price_delta_snapshot']) assert(fs.readFileSync(migration,'utf8').includes(x));
+for(const x of ["/items/:itemId/modifiers","/modifier-groups/:groupId/modifiers","menu.manage","MENU_ITEM_NOT_FOUND"]) assert(menu.includes(x));
+for(const x of ['modifier_ids','MODIFIER_UNAVAILABLE','MODIFIER_SELECTION_INVALID','order_item_modifiers']) assert(orders.includes(x));
+for(const x of ['getMenuAdmin','createModifierGroup','createModifier','modifier_ids']) assert(api.includes(x));
+assert(app.includes('MenuEngineView') && app.includes("currentTab === 'menu'"));
+assert(sidebar.includes("id: 'menu'") && sidebar.includes("permission: 'menu.view'"));
+console.log('Stage 16 menu/modifiers static acceptance: PASS');

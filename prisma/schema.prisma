@@ -1,0 +1,989 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String                  @id
+  full_name           String
+  phone               String                  @unique
+  email               String                  @unique
+  password_hash       String
+  avatar_url          String?
+  status              String                  @default("ACTIVE")
+  employment_status   String                  @default("ACTIVE")
+  disciplinary_status String                  @default("NONE")
+  joined_at           String?
+  status_reason       String?
+  status_changed_at   String?
+  status_changed_by   String?
+  branch_id           String?
+  created_at          String
+  updated_at          String
+  last_login_at       String?
+  deleted_at          String?
+
+  branch              Branch?                 @relation("PrimaryBranchUsers", fields: [branch_id], references: [id], onDelete: SetNull)
+  user_roles          UserRole[]
+  branch_access       UserBranchAccess[]
+  status_history      EmployeeStatusHistory[]
+  audit_logs          AuditLog[]
+  settings_updated    SystemSetting[]
+  auth_sessions       AuthSession[]
+  waiter_pos_sessions  WaiterPosSession[]
+  employee_profile    EmployeeProfile?
+  waiter_access_code  WaiterAccessCode?
+  waiter_profile      WaiterProfile?
+  waiter_status_history WaiterStatusHistory[]
+  service_charge_allocations ServiceChargeAllocation[]
+  service_charge_ledger ServiceChargeLedger[]
+  kpi_rules           KpiRule[]
+  kpi_ledger          KpiLedger[]
+  operator_pos_sessions OperatorPosSession[]
+  print_jobs          PrintJob[]
+  cash_shifts          CashShift[]
+  payments             Payment[]
+  orders_as_waiter     Order[]                 @relation("WaiterOrders")
+
+  @@index([email], map: "idx_users_email")
+  @@index([phone], map: "idx_users_phone")
+  @@index([branch_id], map: "idx_users_branch_id")
+  @@index([status], map: "idx_users_status")
+  @@index([employment_status], map: "idx_users_employment_status")
+  @@index([disciplinary_status], map: "idx_users_disciplinary_status")
+  @@map("users")
+}
+
+
+model AuthSession {
+  id          String   @id
+  user_id     String
+  token_hash  String   @unique
+  expires_at  String
+  created_at  String
+  last_seen_at String?
+  revoked_at  String?
+  ip_address  String?
+  user_agent  String?
+
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_auth_sessions_user")
+  @@index([expires_at], map: "idx_auth_sessions_expires")
+  @@index([revoked_at], map: "idx_auth_sessions_revoked")
+  @@map("auth_sessions")
+}
+
+model Role {
+  id               String           @id
+  code             String           @unique
+  name             String
+  description      String?
+  is_system        Int              @default(0)
+  status           String           @default("ACTIVE")
+  created_at       String
+  updated_at       String
+
+  user_roles       UserRole[]
+  role_permissions RolePermission[]
+
+  @@index([code], map: "idx_roles_code")
+  @@index([status], map: "idx_roles_status")
+  @@map("roles")
+}
+
+model Permission {
+  id               String           @id
+  code             String           @unique
+  name             String
+  module           String
+  description      String?
+  created_at       String
+
+  role_permissions RolePermission[]
+
+  @@index([code], map: "idx_permissions_code")
+  @@index([module], map: "idx_permissions_module")
+  @@map("permissions")
+}
+
+model RolePermission {
+  id            String     @id
+  role_id       String
+  permission_id String
+  created_at    String
+
+  role          Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
+  @@index([role_id], map: "idx_role_permissions_role")
+  @@index([permission_id], map: "idx_role_permissions_perm")
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id         String   @id
+  user_id    String
+  role_id    String
+  created_at String
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, role_id])
+  @@index([user_id], map: "idx_user_roles_user")
+  @@index([role_id], map: "idx_user_roles_role")
+  @@map("user_roles")
+}
+
+model Branch {
+  id           String             @id
+  name         String
+  code         String             @unique
+  address      String
+  phone        String
+  timezone     String             @default("Asia/Ashgabat")
+  currency     String             @default("TMT")
+  status       String             @default("ACTIVE")
+  franchise_id String?
+  created_at   String
+  updated_at   String
+
+  franchise    Franchise?         @relation(fields: [franchise_id], references: [id], onDelete: SetNull)
+  users        User[]             @relation("PrimaryBranchUsers")
+  user_access  UserBranchAccess[]
+  audit_logs   AuditLog[]
+  waiter_codes         WaiterAccessCode[]
+  waiter_pos_sessions  WaiterPosSession[]
+  menu_categories       MenuCategory[]
+  menu_items            MenuItem[]
+  dining_areas          DiningArea[]
+  dining_tables         DiningTable[]
+  orders                Order[]
+  order_sequence        BranchOrderSequence?
+  cash_shifts            CashShift[]
+  payments               Payment[]
+  kds_tickets            KdsTicket[]
+  inventory_items        InventoryItem[]
+  order_item_removal_approvals OrderItemRemovalApproval[]
+  recipes                Recipe[]
+  suppliers              Supplier[]
+  purchases              Purchase[]
+  stock_movements        StockMovement[]
+  service_charge_config ServiceChargeConfig?
+  service_charge_ledger ServiceChargeLedger[]
+  kpi_rules              KpiRule[]
+  kpi_ledger             KpiLedger[]
+  operator_pos_sessions  OperatorPosSession[]
+  print_profiles         PrintProfile[]
+  print_jobs             PrintJob[]
+  menu_modifier_groups   MenuModifierGroup[]
+
+  @@index([code], map: "idx_branches_code")
+  @@index([status], map: "idx_branches_status")
+  @@index([franchise_id], map: "idx_branches_franchise")
+  @@map("branches")
+}
+
+model UserBranchAccess {
+  id         String   @id
+  user_id    String
+  branch_id  String
+  created_at String
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  branch     Branch   @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, branch_id])
+  @@index([user_id], map: "idx_user_branch_user")
+  @@index([branch_id], map: "idx_user_branch_branch")
+  @@index([user_id, branch_id], map: "idx_user_branch_user_branch")
+  @@map("user_branch_access")
+}
+
+model Franchise {
+  id           String    @id
+  name         String
+  code         String    @unique
+  legal_name   String
+  contact_name String
+  phone        String
+  email        String
+  address      String
+  status       String    @default("ACTIVE")
+  created_at   String
+  updated_at   String
+  deleted_at   String?
+
+  branches     Branch[]
+
+  @@index([code], map: "idx_franchises_code")
+  @@index([status], map: "idx_franchises_status")
+  @@index([deleted_at], map: "idx_franchises_deleted_at")
+  @@map("franchises")
+}
+
+model EmployeeProfile {
+  user_id          String   @id
+  employee_code    String   @unique
+  position_title   String
+  department       String?
+  employment_type  String   @default("FULL_TIME")
+  hire_date        String?
+  termination_date String?
+  notes            String?
+  created_at       String
+  updated_at       String
+
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([position_title], map: "idx_employee_profiles_position")
+  @@index([department], map: "idx_employee_profiles_department")
+  @@index([employment_type], map: "idx_employee_profiles_type")
+  @@map("employee_profiles")
+}
+
+model EmployeeStatusHistory {
+  id                  String  @id
+  user_id             String
+  employment_status   String
+  disciplinary_status String
+  reason              String?
+  notes               String?
+  effective_from      String?
+  effective_until     String?
+  changed_by          String?
+  created_at          String
+
+  user                User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_emp_status_user")
+  @@index([created_at], map: "idx_emp_status_created")
+  @@index([employment_status], map: "idx_emp_status_emp")
+  @@index([disciplinary_status], map: "idx_emp_status_disc")
+  @@map("employee_status_history")
+}
+
+model WaiterAccessCode {
+  user_id       String   @id
+  branch_id     String
+  code_hash     String   @unique
+  status        String   @default("ACTIVE")
+  created_at    String
+  updated_at    String
+  changed_by    String?
+  last_used_at  String?
+
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  branch        Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+
+  @@index([branch_id], map: "idx_waiter_codes_branch")
+  @@index([status], map: "idx_waiter_codes_status")
+  @@map("waiter_access_codes")
+}
+
+model WaiterPosSession {
+  id            String   @id
+  user_id       String
+  branch_id     String
+  device_id     String
+  token_hash    String   @unique
+  status        String   @default("ACTIVE")
+  expires_at    String
+  last_seen_at  String
+  created_at    String
+  revoked_at    String?
+
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  branch        Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+
+  @@index([user_id], map: "idx_waiter_pos_sessions_user")
+  @@index([branch_id], map: "idx_waiter_pos_sessions_branch")
+  @@index([status], map: "idx_waiter_pos_sessions_status")
+  @@index([expires_at], map: "idx_waiter_pos_sessions_expires")
+  @@map("waiter_pos_sessions")
+}
+
+
+model MenuCategory {
+  id          String     @id
+  branch_id   String?
+  name_ru     String
+  name_tk     String
+  sort_order  Int        @default(0)
+  status      String     @default("ACTIVE")
+  deleted_at  String?
+  created_at  String
+  updated_at  String
+
+  branch      Branch?    @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  items       MenuItem[]
+
+  @@index([branch_id], map: "idx_menu_categories_branch")
+  @@index([status], map: "idx_menu_categories_status")
+  @@index([deleted_at], map: "idx_menu_categories_deleted_at")
+  @@map("menu_categories")
+}
+
+model MenuItem {
+  id             String        @id
+  branch_id      String?
+  category_id    String
+  sku            String        @unique
+  name_ru        String
+  name_tk        String
+  description_ru String?
+  description_tk String?
+  smart_tags_ru String @default("")
+  smart_tags_tk String @default("")
+  price          Decimal       @db.Decimal(12,2)
+  status         String        @default("ACTIVE")
+  sort_order     Int           @default(0)
+  deleted_at     String?
+  created_at     String
+  updated_at     String
+
+  branch         Branch?       @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  category       MenuCategory  @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  order_items    OrderItem[]
+  recipes        Recipe[]
+  modifier_groups MenuModifierGroup[]
+
+  @@index([branch_id], map: "idx_menu_items_branch")
+  @@index([category_id], map: "idx_menu_items_category")
+  @@index([status], map: "idx_menu_items_status")
+  @@index([smart_tags_ru], map: "idx_menu_items_smart_tags_ru")
+  @@index([smart_tags_tk], map: "idx_menu_items_smart_tags_tk")
+  @@index([deleted_at], map: "idx_menu_items_deleted_at")
+  @@map("menu_items")
+}
+
+model MenuModifierGroup {
+  id          String     @id
+  branch_id   String
+  menu_item_id String
+  name_ru     String
+  name_tk     String
+  min_select  Int        @default(0)
+  max_select  Int        @default(1)
+  required    Boolean    @default(false)
+  sort_order  Int        @default(0)
+  status      String     @default("ACTIVE")
+  created_at  String
+  updated_at  String
+
+  branch      Branch     @relation(fields: [branch_id], references: [id], onDelete: Cascade, map: "menu_modifier_groups_branch_fkey")
+  menu_item   MenuItem   @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, map: "menu_modifier_groups_item_fkey")
+  modifiers   MenuModifier[]
+
+  @@index([branch_id], map: "idx_menu_modifier_groups_branch")
+  @@index([menu_item_id], map: "idx_menu_modifier_groups_item")
+  @@map("menu_modifier_groups")
+}
+
+model MenuModifier {
+  id          String     @id
+  group_id    String
+  name_ru     String
+  name_tk     String
+  price_delta Decimal    @db.Decimal(12,2) @default(0)
+  sort_order  Int        @default(0)
+  status      String     @default("ACTIVE")
+  created_at  String
+  updated_at  String
+
+  group       MenuModifierGroup @relation(fields: [group_id], references: [id], onDelete: Cascade, map: "menu_modifiers_group_fkey")
+  order_items OrderItemModifier[]
+
+  @@index([group_id], map: "idx_menu_modifiers_group")
+  @@map("menu_modifiers")
+}
+
+model DiningArea {
+  id          String        @id
+  branch_id   String
+  name        String
+  sort_order  Int           @default(0)
+  status      String        @default("ACTIVE")
+  created_at  String
+  updated_at  String
+
+  branch      Branch        @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  tables      DiningTable[]
+
+  @@index([branch_id], map: "idx_dining_areas_branch")
+  @@map("dining_areas")
+}
+
+model DiningTable {
+  id          String      @id
+  branch_id   String
+  area_id     String
+  code        String
+  name        String
+  seats       Int
+  status      String      @default("AVAILABLE")
+  created_at  String
+  updated_at  String
+
+  branch      Branch      @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  area        DiningArea  @relation(fields: [area_id], references: [id], onDelete: Restrict)
+  orders      Order[]
+
+  @@unique([branch_id, code], map: "dining_tables_branch_code_key")
+  @@index([branch_id], map: "idx_dining_tables_branch")
+  @@index([area_id], map: "idx_dining_tables_area")
+  @@index([status], map: "idx_dining_tables_status")
+  @@map("dining_tables")
+}
+
+model BranchOrderSequence {
+  branch_id   String  @id
+  next_value  Int     @default(1)
+  updated_at  String
+  branch      Branch  @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  @@map("branch_order_sequences")
+}
+
+model Order {
+  id                 String      @id
+  order_number       String
+  branch_id          String
+  waiter_user_id     String?
+  table_id           String?
+  order_type         String
+  source             String
+  status             String
+  currency           String
+  subtotal           Decimal     @db.Decimal(12,2)
+  discount           Decimal     @db.Decimal(12,2) @default(0)
+  promotion_amount   Decimal     @db.Decimal(12,2) @default(0)
+  service_charge     Decimal     @db.Decimal(12,2) @default(0)
+  final_amount       Decimal     @db.Decimal(12,2)
+  idempotency_key    String?
+  notes              String?
+  created_at         String
+  updated_at         String
+  confirmed_at       String?
+  confirmed_by       String?
+
+  branch             Branch      @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  waiter             User?       @relation("WaiterOrders", fields: [waiter_user_id], references: [id], onDelete: SetNull)
+  table              DiningTable? @relation(fields: [table_id], references: [id], onDelete: SetNull)
+  items              OrderItem[]
+  payments           Payment[]
+  kds_ticket         KdsTicket?
+  removal_approvals  OrderItemRemovalApproval[]
+  service_charge_ledger ServiceChargeLedger[]
+  print_jobs PrintJob[]
+
+  @@unique([branch_id, order_number], map: "orders_branch_order_number_key")
+  @@unique([branch_id, idempotency_key], map: "orders_branch_idempotency_key_key")
+  @@index([branch_id], map: "idx_orders_branch")
+  @@index([waiter_user_id], map: "idx_orders_waiter")
+  @@index([table_id], map: "idx_orders_table")
+  @@index([status], map: "idx_orders_status")
+  @@index([created_at], map: "idx_orders_created")
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String     @id
+  order_id       String
+  menu_item_id   String?
+  title_snapshot String
+  price_snapshot Decimal    @db.Decimal(12,2)
+  quantity       Int
+  subtotal       Decimal    @db.Decimal(12,2)
+  comment        String?
+  status         String     @default("ACTIVE")
+  removed_quantity Decimal  @db.Decimal(12,4) @default(0)
+  removed_at     String?
+  removed_by     String?
+  removal_reason String?
+  created_at     String
+
+  order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  menu_item      MenuItem?  @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  removal_approvals OrderItemRemovalApproval[]
+  modifiers        OrderItemModifier[]
+
+  @@index([order_id], map: "idx_order_items_order")
+  @@index([menu_item_id], map: "idx_order_items_menu_item")
+  @@index([order_id, status], map: "idx_order_items_order_status")
+  @@map("order_items")
+}
+
+
+model OrderItemModifier {
+  id                    String   @id
+  order_item_id         String
+  modifier_id           String?
+  name_snapshot         String
+  price_delta_snapshot  Decimal  @db.Decimal(12,2)
+  quantity              Int      @default(1)
+  created_at            String
+
+  order_item OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, map: "order_item_modifiers_item_fkey")
+  modifier   MenuModifier? @relation(fields: [modifier_id], references: [id], onDelete: SetNull, map: "order_item_modifiers_modifier_fkey")
+
+  @@index([order_item_id], map: "idx_order_item_modifiers_item")
+  @@map("order_item_modifiers")
+}
+
+model OrderItemRemovalApproval {
+  id                 String   @id
+  order_id           String
+  order_item_id      String
+  branch_id          String
+  requester_user_id  String
+  approver_user_id   String?
+  requested_quantity Decimal  @db.Decimal(12,4)
+  reason             String
+  status             String   @default("PENDING")
+  created_at         String
+  decided_at         String?
+  decision_reason    String?
+
+  order              Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_item         OrderItem  @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+  branch             Branch     @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+
+  @@index([branch_id, status, created_at], map: "idx_order_item_removal_branch_status_created")
+  @@index([order_id, status], map: "idx_order_item_removal_order_status")
+  @@index([order_item_id, status], map: "idx_order_item_removal_item_status")
+  @@map("order_item_removal_approvals")
+}
+
+
+model CashShift {
+  id              String   @id
+  branch_id       String
+  cashier_user_id String
+  status          String   @default("OPEN")
+  opening_cash    Decimal  @db.Decimal(12,2)
+  cash_sales      Decimal  @db.Decimal(12,2) @default(0)
+  card_sales      Decimal  @db.Decimal(12,2) @default(0)
+  online_sales    Decimal  @db.Decimal(12,2) @default(0)
+  bonus_sales    Decimal  @db.Decimal(12,2) @default(0)
+  refunds        Decimal  @db.Decimal(12,2) @default(0)
+  voids          Decimal  @db.Decimal(12,2) @default(0)
+  expected_cash  Decimal  @db.Decimal(12,2) @default(0)
+  actual_cash    Decimal? @db.Decimal(12,2)
+  difference     Decimal? @db.Decimal(12,2)
+  opened_at      String
+  closed_at      String?
+  created_at     String
+  updated_at     String
+
+  branch         Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  cashier        User     @relation(fields: [cashier_user_id], references: [id], onDelete: Restrict)
+  payments       Payment[]
+
+  @@index([branch_id, status], map: "idx_cash_shifts_branch_status")
+  @@index([cashier_user_id, opened_at], map: "idx_cash_shifts_cashier_opened")
+  @@map("cash_shifts")
+}
+
+model Payment {
+  id                 String   @id
+  order_id           String
+  branch_id          String
+  cash_shift_id      String?
+  cashier_user_id    String
+  method             String
+  status             String   @default("PAID")
+  amount             Decimal  @db.Decimal(12,2)
+  external_reference String?
+  idempotency_key    String?
+  created_at         String
+  updated_at         String
+  refunded_at        String?
+
+  order              Order    @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  branch             Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  cash_shift         CashShift? @relation(fields: [cash_shift_id], references: [id], onDelete: Restrict)
+  cashier            User     @relation(fields: [cashier_user_id], references: [id], onDelete: Restrict)
+
+  @@unique([branch_id, idempotency_key], map: "payments_branch_idempotency_key_key")
+  @@index([order_id, status], map: "idx_payments_order_status")
+  @@index([branch_id, created_at], map: "idx_payments_branch_created")
+  @@index([cash_shift_id], map: "idx_payments_shift")
+  @@map("payments")
+}
+
+model KdsTicket {
+  id          String   @id
+  order_id    String   @unique
+  branch_id   String
+  status      String   @default("NEW")
+  created_at  String
+  updated_at  String
+  started_at  String?
+  ready_at    String?
+  completed_at String?
+
+  order       Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  branch      Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+
+  @@index([branch_id, status, created_at], map: "idx_kds_branch_status_created")
+  @@map("kds_tickets")
+}
+
+model AuditLog {
+  id          String   @id
+  user_id     String?
+  branch_id   String?
+  action      String
+  entity_type String
+  entity_id   String?
+  old_values  String?
+  new_values  String?
+  ip_address  String?
+  user_agent  String?
+  created_at  String
+
+  user        User?    @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  branch      Branch?  @relation(fields: [branch_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id], map: "idx_audit_user")
+  @@index([branch_id], map: "idx_audit_branch")
+  @@index([action], map: "idx_audit_action")
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+  @@index([created_at], map: "idx_audit_created")
+  @@index([branch_id, created_at], map: "idx_audit_branch_created")
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id          String   @id
+  key         String   @unique
+  value       String
+  type        String   @default("string")
+  description String?
+  updated_by  String?
+  created_at  String
+  updated_at  String
+
+  updater     User?    @relation(fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@index([key], map: "idx_settings_key")
+  @@map("system_settings")
+}
+
+model SchemaMigration {
+  version     Int      @id
+  name        String
+  description String?
+  applied_at  String
+
+  @@map("schema_migrations")
+}
+
+
+model InventoryItem {
+  id              String   @id
+  branch_id       String
+  sku             String
+  name            String
+  unit            String
+  current_stock   Decimal  @db.Decimal(14,4) @default(0)
+  reorder_point   Decimal  @db.Decimal(14,4) @default(0)
+  active          Boolean  @default(true)
+  created_at      String
+  updated_at      String
+
+  branch          Branch   @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  recipe_ingredients RecipeIngredient[]
+  stock_movements StockMovement[]
+  purchase_items  PurchaseItem[]
+
+  @@unique([branch_id, sku], map: "inventory_items_branch_sku_key")
+  @@index([branch_id, active], map: "idx_inventory_items_branch_active")
+  @@index([branch_id, current_stock, reorder_point], map: "idx_inventory_items_low_stock")
+  @@map("inventory_items")
+}
+
+model Recipe {
+  id          String   @id
+  branch_id   String
+  menu_item_id String
+  name       String
+  yield_qty  Decimal  @db.Decimal(14,4) @default(1)
+  active     Boolean  @default(true)
+  created_at String
+  updated_at String
+
+  branch      Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  menu_item   MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Restrict)
+  ingredients RecipeIngredient[]
+
+  @@unique([branch_id, menu_item_id], map: "recipes_branch_menu_item_key")
+  @@index([branch_id, active], map: "idx_recipes_branch_active")
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id              String  @id
+  recipe_id       String
+  inventory_item_id String
+  quantity        Decimal @db.Decimal(14,4)
+  created_at      String
+
+  recipe          Recipe @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+  inventory_item  InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Restrict)
+
+  @@unique([recipe_id, inventory_item_id], map: "recipe_ingredients_recipe_item_key")
+  @@index([inventory_item_id], map: "idx_recipe_ingredients_inventory")
+  @@map("recipe_ingredients")
+}
+
+model Supplier {
+  id          String  @id
+  branch_id   String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  status      String  @default("ACTIVE")
+  created_at  String
+  updated_at  String
+
+  branch      Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  purchases   Purchase[]
+
+  @@unique([branch_id, name], map: "suppliers_branch_name_key")
+  @@index([branch_id, status], map: "idx_suppliers_branch_status")
+  @@map("suppliers")
+}
+
+model Purchase {
+  id          String  @id
+  branch_id   String
+  supplier_id String
+  status      String  @default("DRAFT")
+  reference   String?
+  notes       String?
+  total_cost  Decimal @db.Decimal(14,2) @default(0)
+  created_at  String
+  updated_at  String
+  received_at String?
+
+  branch      Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  supplier    Supplier @relation(fields: [supplier_id], references: [id], onDelete: Restrict)
+  items       PurchaseItem[]
+
+  @@index([branch_id, status, created_at], map: "idx_purchases_branch_status_created")
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id              String  @id
+  purchase_id     String
+  inventory_item_id String
+  quantity        Decimal @db.Decimal(14,4)
+  unit_cost       Decimal @db.Decimal(14,2)
+  subtotal        Decimal @db.Decimal(14,2)
+
+  purchase        Purchase @relation(fields: [purchase_id], references: [id], onDelete: Cascade)
+  inventory_item  InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Restrict)
+
+  @@index([purchase_id], map: "idx_purchase_items_purchase")
+  @@index([inventory_item_id], map: "idx_purchase_items_inventory")
+  @@map("purchase_items")
+}
+
+model StockMovement {
+  id               String  @id
+  branch_id        String
+  inventory_item_id String
+  type             String
+  quantity         Decimal @db.Decimal(14,4)
+  unit_cost        Decimal? @db.Decimal(14,2)
+  reference_type   String?
+  reference_id     String?
+  reason           String?
+  created_by       String?
+  created_at       String
+
+  branch           Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  inventory_item   InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Restrict)
+
+  @@index([branch_id, created_at], map: "idx_stock_movements_branch_created")
+  @@index([inventory_item_id, created_at], map: "idx_stock_movements_item_created")
+  @@index([branch_id, type], map: "idx_stock_movements_branch_type")
+  @@unique([branch_id, reference_type, reference_id, inventory_item_id, type], map: "uq_stock_movement_reference")
+  @@map("stock_movements")
+}
+
+model WaiterProfile {
+  user_id      String   @id
+  status       String   @default("PROBATION")
+  changed_by   String?
+  changed_at   String
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  @@index([status], map: "idx_waiter_profiles_status")
+  @@map("waiter_profiles")
+}
+
+model WaiterStatusHistory {
+  id           String @id
+  user_id      String
+  status       String
+  changed_by   String?
+  effective_at String
+  created_at   String
+  user         User @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  @@index([user_id, created_at], map: "idx_waiter_status_history_user_created")
+  @@map("waiter_status_history")
+}
+
+model ServiceChargeConfig {
+  id             String  @id
+  branch_id      String  @unique
+  percent        Decimal @db.Decimal(5,2)
+  status         String  @default("ACTIVE")
+  created_at     String
+  updated_at     String
+  branch         Branch @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  allocations    ServiceChargeAllocation[]
+  @@map("service_charge_configs")
+}
+
+model ServiceChargeAllocation {
+  id             String  @id
+  config_id      String
+  target_type    String
+  department     String?
+  user_id        String?
+  percent        Decimal @db.Decimal(5,2)
+  active         Boolean @default(true)
+  created_at     String
+  updated_at     String
+  config         ServiceChargeConfig @relation(fields: [config_id], references: [id], onDelete: Cascade)
+  user           User? @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  @@index([config_id, active], map: "idx_service_charge_alloc_config_active")
+  @@index([user_id, active], map: "idx_service_charge_alloc_user_active")
+  @@map("service_charge_allocations")
+}
+
+model ServiceChargeLedger {
+  id             String  @id
+  branch_id      String
+  order_id       String
+  user_id        String?
+  target_type    String
+  department     String?
+  base_amount    Decimal @db.Decimal(12,2)
+  percent        Decimal @db.Decimal(5,2)
+  amount         Decimal @db.Decimal(12,2)
+  status         String  @default("EARNED")
+  created_at     String
+  branch         Branch @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order          Order  @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  user           User?  @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  @@unique([order_id, user_id, target_type, department], map: "uq_service_charge_ledger_order_user_target_department")
+  @@index([branch_id, created_at], map: "idx_service_charge_ledger_branch_created")
+  @@index([user_id, created_at], map: "idx_service_charge_ledger_user_created")
+  @@map("service_charge_ledger")
+}
+
+model KpiRule {
+  id              String  @id
+  branch_id       String?
+  name            String
+  role_code       String?
+  user_id         String?
+  metric          String
+  threshold       Decimal @db.Decimal(14,2)
+  threshold_mode  String  @default("GREATER_THAN")
+  reward_type     String
+  reward_value    Decimal @db.Decimal(14,2)
+  active          Boolean @default(true)
+  created_at      String
+  updated_at      String
+  branch          Branch? @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  user            User?   @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  ledger          KpiLedger[]
+  @@index([branch_id, active], map: "idx_kpi_rules_branch_active")
+  @@index([user_id, active], map: "idx_kpi_rules_user_active")
+  @@map("kpi_rules")
+}
+
+model KpiLedger {
+  id             String  @id
+  rule_id        String
+  branch_id      String
+  user_id        String
+  period_start   String
+  period_end     String
+  metric_value   Decimal @db.Decimal(14,2)
+  reward_amount  Decimal @db.Decimal(14,2)
+  status         String  @default("EARNED")
+  created_at     String
+  rule           KpiRule @relation(fields: [rule_id], references: [id], onDelete: Restrict)
+  branch         Branch @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  user           User @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  @@unique([rule_id, user_id, period_start, period_end], map: "uq_kpi_ledger_rule_user_period")
+  @@index([branch_id, period_end], map: "idx_kpi_ledger_branch_period")
+  @@index([user_id, period_end], map: "idx_kpi_ledger_user_period")
+  @@map("kpi_ledger")
+}
+
+model OperatorPosSession {
+  id          String  @id
+  user_id     String
+  branch_id   String
+  pin_hash    String
+  status      String  @default("ACTIVE")
+  device_id   String
+  last_seen_at String
+  expires_at  String
+  locked_at   String?
+  created_at  String
+  user        User    @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  branch      Branch  @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  @@index([branch_id, status], map: "idx_operator_sessions_branch_status")
+  @@index([user_id, status], map: "idx_operator_sessions_user_status")
+  @@index([user_id, branch_id, status, expires_at], map: "idx_operator_pos_active_lookup")
+  @@map("operator_pos_sessions")
+}
+
+model PrintProfile {
+  id          String  @id
+  branch_id   String
+  name        String
+  paper_width Int     @default(80)
+  language    String  @default("ru")
+  config_json String
+  active      Boolean @default(true)
+  created_at  String
+  updated_at  String
+  branch      Branch  @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  @@index([branch_id, active], map: "idx_print_profiles_branch_active")
+  @@map("print_profiles")
+}
+
+model PrintJob {
+  id             String  @id
+  branch_id      String
+  order_id       String?
+  requested_by   String
+  print_type     String
+  printer_name   String?
+  status         String  @default("PENDING")
+  copy_number    Int     @default(1)
+  created_at     String
+  printed_at     String?
+  branch         Branch  @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order          Order?  @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  user           User    @relation(fields: [requested_by], references: [id], onDelete: Restrict)
+  @@index([branch_id, created_at], map: "idx_print_jobs_branch_created")
+  @@index([order_id, print_type], map: "idx_print_jobs_order_type")
+  @@map("print_jobs")
+}

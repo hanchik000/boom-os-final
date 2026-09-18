@@ -1,0 +1,3 @@
+-- Stage 17.1: historical-safe menu archive parity
+-- Fields are already introduced by Stage 17 migration in fresh deployments; this migration
+-- intentionally contains no duplicate DDL and exists to document schema parity.

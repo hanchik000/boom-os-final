@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const runtime = fs.readFileSync('tests/stage18_8_full_runtime.sh','utf8');
+const e2e = fs.readFileSync('tests/stage18_8_full_runtime.mjs','utf8');
+assert.match(runtime,/docker compose up -d --build/);
+assert.match(runtime,/api\/health/);
+assert.match(runtime,/docker compose logs api/);
+assert.match(e2e,/BOOTSTRAP_ALREADY_COMPLETED/);
+assert.match(e2e,/roleCodes\.includes\('OWNER'\)/);
+assert.match(e2e,/auth\/logout/);
+assert.match(e2e,/assert\.equal\(meAfterLogout\.res\.status, 401\)/);
+console.log('STAGE 18.8 RUNTIME HARNESS STATIC: 7/7 checks passed');

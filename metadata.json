@@ -1,0 +1,6 @@
+{
+  "name": "BOOM OS",
+  "description": "Enterprise Restaurant Operating System for BOOMBURGER — Core Foundation, Multi-Branch, IAM & Audit",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

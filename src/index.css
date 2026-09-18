@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  body {
+    background-color: #0b0f17;
+    color: #f1f5f9;
+  }
+}
+
+/* Custom sleek scrollbar for enterprise data tables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.input { background: rgb(2 6 23); border: 1px solid rgb(51 65 85); border-radius: .75rem; padding: .65rem .75rem; color: white; outline: none; } .input:focus { border-color: rgb(245 158 11); }
+
+.field{width:100%;background:rgb(2 6 23);border:1px solid rgb(51 65 85);border-radius:.5rem;padding:.55rem .75rem;font-size:.875rem;color:white;outline:none}.btn{padding:.55rem .8rem;border-radius:.5rem;background:rgb(245 158 11);color:rgb(15 23 42);font-weight:600;white-space:nowrap}.btn:disabled{opacity:.5}

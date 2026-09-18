@@ -1,0 +1,70 @@
+import { Router, Request } from 'express';
+import crypto from 'node:crypto';
+import { query, queryOne, transaction, TxClient } from '../db';
+import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
+import { requireOperatorPosSession } from './operator-pos';
+const router=Router();
+const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER']);
+function cents(v:unknown){const s=String(v??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(s))throw new Error('INVALID_MONEY');const [a,b='']=s.split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));}
+function text(c:bigint){return `${c/100n}.${(c%100n).toString().padStart(2,'0')}`;}
+function allowed(req:Request,b:string){return Boolean(req.user?.isSuperUser||req.user?.allowedBranchIds.includes(b));}
+async function recordServiceChargeLedger(tx:TxClient, order:any, actorId:string, now:string){
+  if(order.order_type!=='DINE_IN' || String(order.service_charge||'0')==='0.00') return;
+  const cfg=await tx.queryOne<any>('SELECT id,percent FROM service_charge_configs WHERE branch_id=? AND status=\'ACTIVE\'',[order.branch_id]);
+  if(!cfg) return;
+  const allocations=await tx.query<any>('SELECT * FROM service_charge_allocations WHERE config_id=? AND active=true',[cfg.id]);
+  for(const a of allocations){
+    let userId=a.user_id||null;
+    if(String(a.target_type).toUpperCase()==='INDIVIDUAL' && userId!==order.waiter_user_id) continue;
+    if(String(a.department||'').toUpperCase() === 'WAITERS'){
+      if(!order.waiter_user_id) continue;
+      userId=order.waiter_user_id;
+      const waiter=await tx.queryOne<any>('SELECT wp.status FROM waiter_profiles wp WHERE wp.user_id=?',[userId]);
+      if(waiter && waiter.status!=='PROFESSIONAL') continue;
+    }
+    const base=String(order.subtotal||'0');
+    const baseCents=cents(base); const pctHundredths=cents(String(a.percent)); const amountCents=(baseCents*pctHundredths)/10000n; const amount=text(amountCents);
+    await tx.execute('INSERT INTO service_charge_ledger (id,branch_id,order_id,user_id,target_type,department,base_amount,percent,amount,status,created_at) VALUES (?,?,?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),\'EARNED\',?) ON CONFLICT (order_id,user_id,target_type,department) DO NOTHING',[`scl_${crypto.randomUUID()}`,order.branch_id,order.id,userId,a.target_type,a.department,base,a.percent,amount,now]);
+  }
+}
+
+async function releaseTableIfNoActiveOrders(tx:TxClient, tableId:string, branchId:string, now:string) {
+  const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED') LIMIT 1`,[tableId,branchId]);
+  if(!active) await tx.execute(`UPDATE dining_tables SET status='AVAILABLE',updated_at=? WHERE id=? AND branch_id=? AND status='OCCUPIED'`,[now,tableId,branchId]);
+}
+async function restoreInventoryForOrder(tx:TxClient, orderId:string, branchId:string, userId:string, now:string) {
+  const movements=await tx.query<any>(`SELECT inventory_item_id,quantity FROM stock_movements WHERE branch_id=? AND reference_type='ORDER' AND reference_id=? AND type='SALE'`,[branchId,orderId]);
+  for(const m of movements){
+    await tx.execute(`UPDATE inventory_items SET current_stock=current_stock+CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?`,[m.quantity,now,m.inventory_item_id,branchId]);
+    await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,m.inventory_item_id,'RETURN',m.quantity,'PAYMENT_REFUND',orderId,'Restored after payment refund',userId,now]);
+  }
+}
+
+async function consumeInventoryForOrder(tx:TxClient, orderId:string, branchId:string, userId:string, now:string) {
+  const items=await tx.query<any>('SELECT menu_item_id,quantity FROM order_items WHERE order_id=?',[orderId]);
+  for(const orderItem of items){
+    if(!orderItem.menu_item_id) continue;
+    const recipe=await tx.queryOne<any>('SELECT id,yield_qty FROM recipes WHERE branch_id=? AND menu_item_id=? AND active=true',[branchId,orderItem.menu_item_id]);
+    if(!recipe) continue;
+    const ingredients=await tx.query<any>('SELECT inventory_item_id,quantity FROM recipe_ingredients WHERE recipe_id=?',[recipe.id]);
+    for(const ingredient of ingredients){
+      const requiredRow=await tx.queryOne<any>(`SELECT (CAST(? AS DECIMAL(14,4))*CAST(? AS DECIMAL(14,4))/NULLIF(CAST(? AS DECIMAL(14,4)),0)) AS required_qty`,[ingredient.quantity,orderItem.quantity,recipe.yield_qty]);
+      const required=String(requiredRow.required_qty);
+      const stock=await tx.queryOne<any>('SELECT id,current_stock FROM inventory_items WHERE id=? AND branch_id=? AND active=true FOR UPDATE',[ingredient.inventory_item_id,branchId]);
+      if(!stock) throw Object.assign(new Error('INVENTORY_ITEM_NOT_FOUND'),{httpStatus:409});
+      const check=await tx.queryOne<any>('SELECT (CAST(current_stock AS DECIMAL(14,4))-CAST(? AS DECIMAL(14,4))) AS remaining FROM inventory_items WHERE id=? FOR UPDATE',[required,stock.id]);
+      if(Number(check.remaining)<0) throw Object.assign(new Error('INSUFFICIENT_STOCK'),{httpStatus:409,details:{inventory_item_id:stock.id,required_quantity:required,current_stock:String(stock.current_stock)}});
+      await tx.execute(`UPDATE inventory_items SET current_stock=current_stock-CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?`,[required,now,stock.id,branchId]);
+      await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,stock.id,'SALE',required,'ORDER',orderId,'Consumed by paid order',userId,now]);
+    }
+  }
+}
+router.use(authenticateToken);
+router.get('/',requirePermission('payments.view'),async(req,res)=>{const b=typeof req.query.branch_id==='string'?req.query.branch_id:(req.user!.branch_id||'');if(!b||!allowed(req,b))return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Branch is outside your access scope.',details:{}});res.json({payments:await query<any>('SELECT * FROM payments WHERE branch_id=? ORDER BY created_at DESC LIMIT 200',[b])});});
+router.post('/',requirePermission('payments.create'),requireOperatorPosSession,async(req,res)=>{const orderId=String(req.body?.order_id||''),method=String(req.body?.method||'').toUpperCase(),idem=String(req.headers['idempotency-key']||'').trim().slice(0,128);if(!orderId||!METHODS.has(method)||!idem)return res.status(400).json({error:'VALIDATION_ERROR',code:'PAYMENT_FIELDS_REQUIRED',message:'order_id, supported method and Idempotency-Key are required.',details:{}});let requested;try{requested=cents(req.body?.amount)}catch{return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_PAYMENT_AMOUNT',message:'amount must be a non-negative amount with up to two decimals.',details:{}});}if(requested<=0n)return res.status(400).json({error:'VALIDATION_ERROR',code:'PAYMENT_AMOUNT_MUST_BE_POSITIVE',message:'Payment amount must be positive.',details:{}});const now=new Date().toISOString(),paymentId=`pay_${crypto.randomUUID()}`;try{const result=await transaction(async(tx)=>{const order=await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE',[orderId]);if(!order)throw Object.assign(new Error('ORDER_NOT_FOUND'),{httpStatus:404});if(!allowed(req,order.branch_id))throw Object.assign(new Error('BRANCH_ACCESS_DENIED'),{httpStatus:403});const existing=await tx.queryOne<any>('SELECT * FROM payments WHERE branch_id=? AND idempotency_key=?',[order.branch_id,idem]);if(existing)return {payment:existing,replayed:true};if(!['READY'].includes(order.status))throw Object.assign(new Error('ORDER_NOT_READY_FOR_PAYMENT'),{httpStatus:409});const kds=await tx.queryOne<any>("SELECT status FROM kds_tickets WHERE order_id=? AND branch_id=?",[order.id,order.branch_id]);if(!kds||!['READY','COMPLETED'].includes(kds.status))throw Object.assign(new Error('KDS_NOT_READY_FOR_PAYMENT'),{httpStatus:409});const paidRow=await tx.queryOne<any>(`SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE order_id=? AND status='PAID'`,[orderId]);const paid=cents(paidRow?.paid||'0');const remaining=cents(order.final_amount)-paid;if(requested!==remaining)throw Object.assign(new Error('PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'),{httpStatus:409});let shiftId:null|string=null;if(method==='CASH'||method==='CARD'){const shift=await tx.queryOne<any>('SELECT id,status FROM cash_shifts WHERE branch_id=? AND status=\'OPEN\' FOR UPDATE',[order.branch_id]);if(!shift)throw Object.assign(new Error('OPEN_SHIFT_REQUIRED'),{httpStatus:409});shiftId=shift.id;}await tx.execute(`INSERT INTO payments (id,order_id,branch_id,cash_shift_id,cashier_user_id,method,status,amount,idempotency_key,created_at,updated_at) VALUES (?,?,?,?,?,?,'PAID',CAST(? AS numeric),?,?,?)`,[paymentId,orderId,order.branch_id,shiftId,req.user!.id,method,text(requested),idem,now,now]);if(shiftId){const col=method==='CASH'?'cash_sales':'card_sales';const expectedExpr=col==='cash_sales'?'opening_cash+cash_sales+CAST(? AS numeric)-refunds-voids':'opening_cash+cash_sales-refunds-voids';const shiftParams=col==='cash_sales'?[text(requested),text(requested),now,shiftId]:[text(requested),now,shiftId];await tx.execute(`UPDATE cash_shifts SET ${col}=${col}+CAST(? AS numeric),expected_cash=${expectedExpr},updated_at=? WHERE id=?`,shiftParams);}
+      await consumeInventoryForOrder(tx,orderId,order.branch_id,req.user!.id,now);
+      await recordServiceChargeLedger(tx, order, req.user!.id, now);
+      await tx.execute(`UPDATE orders SET status='COMPLETED',updated_at=? WHERE id=?`,[now,orderId]); if(order.table_id) await releaseTableIfNoActiveOrders(tx,order.table_id,order.branch_id,now); await tx.execute(`UPDATE kds_tickets SET status='COMPLETED',completed_at=COALESCE(completed_at,?),updated_at=? WHERE order_id=? AND status<>'CANCELLED'`,[now,now,orderId]);await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:order.branch_id,action:'PAYMENT_CREATED',entityType:'PAYMENT',entityId:paymentId,newValues:{order_id:orderId,method,amount:text(requested)},req});return {payment:await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[paymentId]),replayed:false};});res.status(result.replayed?200:201).json(result);}catch(e:any){const map:any={ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],ORDER_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','ORDER_NOT_READY_FOR_PAYMENT'],KDS_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','KDS_NOT_READY_FOR_PAYMENT'],PAYMENT_AMOUNT_MUST_EQUAL_REMAINING:[409,'INVALID_STATE','PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'],OPEN_SHIFT_REQUIRED:[409,'INVALID_STATE','OPEN_SHIFT_REQUIRED'],INSUFFICIENT_STOCK:[409,'INVALID_STATE','INSUFFICIENT_STOCK'],INVENTORY_ITEM_NOT_FOUND:[409,'INVALID_STATE','INVENTORY_ITEM_NOT_FOUND']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});throw e;}});
+router.post('/:id/refund',requirePermission('payments.refund'),requireOperatorPosSession,async(req,res)=>{const now=new Date().toISOString();try{const result=await transaction(async(tx)=>{const p=await tx.queryOne<any>('SELECT * FROM payments WHERE id=? FOR UPDATE',[req.params.id]);if(!p)throw Object.assign(new Error('PAYMENT_NOT_FOUND'),{httpStatus:404});if(!allowed(req,p.branch_id))throw Object.assign(new Error('BRANCH_ACCESS_DENIED'),{httpStatus:403});if(p.status!=='PAID')throw Object.assign(new Error('PAYMENT_NOT_REFUNDABLE'),{httpStatus:409});await tx.execute(`UPDATE payments SET status='REFUNDED',refunded_at=?,updated_at=? WHERE id=? AND status='PAID'`,[now,now,p.id]);if(p.cash_shift_id && p.method==='CASH')await tx.execute(`UPDATE cash_shifts SET refunds=refunds+CAST(? AS numeric),expected_cash=opening_cash+cash_sales-(refunds+CAST(? AS numeric))-voids,updated_at=? WHERE id=?`,[p.amount,p.amount,now,p.cash_shift_id]);await restoreInventoryForOrder(tx,p.order_id,p.branch_id,req.user!.id,now);
+    await tx.execute(`UPDATE service_charge_ledger SET status='REVERSED' WHERE order_id=? AND status='EARNED'`,[p.order_id]);await tx.execute(`UPDATE orders SET status='REFUNDED',updated_at=? WHERE id=?`,[now,p.order_id]);const refundedOrder=await tx.queryOne<any>('SELECT table_id FROM orders WHERE id=?',[p.order_id]);if(refundedOrder?.table_id)await releaseTableIfNoActiveOrders(tx,refundedOrder.table_id,p.branch_id,now);await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:p.branch_id,action:'PAYMENT_REFUNDED',entityType:'PAYMENT',entityId:p.id,oldValues:{status:'PAID'},newValues:{status:'REFUNDED',amount:p.amount},req});return await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[p.id]);});res.json({payment:result});}catch(e:any){const map:any={PAYMENT_NOT_FOUND:[404,'NOT_FOUND','PAYMENT_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],PAYMENT_NOT_REFUNDABLE:[409,'INVALID_STATE','PAYMENT_NOT_REFUNDABLE']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});throw e;}});
+export default router;
