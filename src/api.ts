@@ -238,6 +238,21 @@ export const api = {
   getManagerDashboard: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/dashboard/manager?${q.toString()}`); },
   // Live Operations (Stage 33): one "right now" operational aggregation endpoint, branch-scoped.
   getLiveOperations: (branch_id:string) => request<any>(`/api/operations/live?branch_id=${encodeURIComponent(branch_id)}`),
+  // Recipe Engine (Stage 34) -- extends the existing inventory.ts recipe endpoints (getRecipes
+  // above) with versioning.
+  getRecipeVersions: (menuItemId:string, branch_id:string) => request<{branch_id:string;menu_item_id:string;versions:any[]}>(`/api/inventory/recipes/${menuItemId}/versions?branch_id=${encodeURIComponent(branch_id)}`),
+  createRecipe: (data:{branch_id:string;menu_item_id:string;name:string;yield_qty?:string;ingredients:Array<{inventory_item_id:string;quantity:string}>}) => request<{recipe:any}>('/api/inventory/recipes',{method:'POST',body:JSON.stringify(data)}),
+  createRecipeVersion: (recipeId:string, data:{name?:string;yield_qty?:string;ingredients:Array<{inventory_item_id:string;quantity:string}>}) => request<{recipe:any}>(`/api/inventory/recipes/${recipeId}/versions`,{method:'POST',body:JSON.stringify(data)}),
+  setRecipeStatus: (recipeId:string, active:boolean) => request<{recipe:any}>(`/api/inventory/recipes/${recipeId}/status`,{method:'PUT',body:JSON.stringify({active})}),
+  // Inventory counts / variance (Stage 34)
+  getInventoryCounts: (branch_id:string) => request<{counts:any[]}>(`/api/inventory/counts?branch_id=${encodeURIComponent(branch_id)}`),
+  createInventoryCount: (data:{branch_id:string;inventory_item_id:string;counted_quantity:string;reason?:string}) => request<{count:any;item:any}>('/api/inventory/counts',{method:'POST',body:JSON.stringify(data)}),
+  // Food Cost / Profitability (Stage 34)
+  getFoodCostMenuItems: (params:{branch_id:string;category_id?:string;active?:boolean}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.category_id) q.set('category_id',params.category_id); if(params.active===false) q.set('active','false'); return request<{branch_id:string;items:any[]}>(`/api/food-cost/menu-items?${q.toString()}`); },
+  getFoodCostMenuItemDetail: (menuItemId:string, branch_id:string) => request<{item:any;recipe:any}>(`/api/food-cost/menu-items/${menuItemId}?branch_id=${encodeURIComponent(branch_id)}`),
+  getFoodCostIngredients: (branch_id:string) => request<{branch_id:string;ingredients:any[]}>(`/api/food-cost/ingredients?branch_id=${encodeURIComponent(branch_id)}`),
+  getFoodCostProfitability: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/food-cost/profitability?${q.toString()}`); },
+  getFoodCostValuation: (branch_id:string) => request<{branch_id:string;total_value:string;items:any[]}>(`/api/food-cost/valuation?${new URLSearchParams({branch_id}).toString()}`),
   // Operator POS (short-lived cashier session token, gates payments.create/refund for CASHIER)
   unlockOperatorPos: (data:{ password:string; branch_id:string; device_id?:string }) => request<{ unlocked:boolean; session_id:string; session_token:string }>('/api/operator-pos/unlock',{method:'POST',body:JSON.stringify(data)}),
   lockOperatorPos: (branch_id:string) => request<{ locked:boolean }>('/api/operator-pos/lock',{method:'POST',body:JSON.stringify({branch_id})}),

@@ -17,7 +17,10 @@ function check(label, cond) { assert.ok(cond, `FAILED: ${label}`); passed++; }
 
 // --- permission exists, seeded, RBAC-gated (not UI-only)
 check('operations.view permission is seeded', /code: 'operations\.view'/.test(seedTs));
-check('operations.view granted to Owner/SuperAdmin/GeneralManager/BranchManager (the same role set as dashboard.view)', /'credit\.reports','dashboard\.view','operations\.view'\]/.test(seedTs));
+check('operations.view granted to Owner/SuperAdmin/GeneralManager/BranchManager (the same role set as dashboard.view)', (() => {
+  const m = seedTs.match(/const stage17RolePerms = \[([^\]]*)\];/);
+  return !!m && m[1].includes("'operations.view'") && m[1].includes("'dashboard.view'");
+})());
 check('the live route itself requires operations.view server-side', /router\.get\('\/live', requirePermission\('operations\.view'\)/.test(opsTs));
 check('branch access is enforced server-side via the standard allowed(req,branch) helper, never trusted from the frontend', /function allowed\(req: Request, b: string\) \{ return Boolean\(req\.user\?\.isSuperUser \|\| req\.user\?\.allowedBranchIds\.includes\(b\)\); \}/.test(opsTs) && /if \(!branchId \|\| !allowed\(req, branchId\)\)/.test(opsTs));
 

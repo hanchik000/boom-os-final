@@ -37,6 +37,7 @@ import publicMenuRouter from './server/routes/public-menu';
 import creditRouter from './server/routes/credit';
 import dashboardRouter from './server/routes/dashboard';
 import operationsRouter from './server/routes/operations';
+import foodCostRouter from './server/routes/food-cost';
 import { enableAsyncErrorForwarding } from './server/async-errors';
 
 async function startServer() {
@@ -135,7 +136,7 @@ async function startServer() {
     menuRouter, tablesRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
     inventoryRouter, serviceChargeRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
-    organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter,
+    organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter,
   ].forEach(enableAsyncErrorForwarding);
 
   // OpenAPI 3.0 & Swagger UI Documentation Endpoint
@@ -163,6 +164,7 @@ async function startServer() {
   app.use('/api/credit', creditRouter);
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/operations', operationsRouter);
+  app.use('/api/food-cost', foodCostRouter);
   app.use('/api/franchises', franchisesRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/roles', rolesRouter);

@@ -51,6 +51,7 @@ model User {
   credit_accounts_as_employee   CreditAccount[]     @relation("EmployeeCreditAccounts")
   credit_transactions_as_cashier CreditTransaction[] @relation("CreditTransactionsAsCashier")
   credit_transactions_as_approver CreditTransaction[] @relation("CreditTransactionsAsApprover")
+  inventory_counts    InventoryCount[]
 
   @@index([email], map: "idx_users_email")
   @@index([phone], map: "idx_users_phone")
@@ -189,6 +190,7 @@ model Branch {
   customers              Customer[]
   credit_accounts        CreditAccount[]
   credit_transactions    CreditTransaction[]
+  inventory_counts       InventoryCount[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -514,6 +516,12 @@ model OrderItem {
   removed_at     String?
   removed_by     String?
   removal_reason String?
+  // Stage 34: the recipe version and its total ingredient cost AS OF the moment consumption
+  // happened (payment time), so a later recipe/cost change never changes this line's historical
+  // economics. Null when the item had no active recipe at consumption time (e.g. no menu_item,
+  // or never consumed because the order was never paid).
+  recipe_version_snapshot Int?
+  recipe_cost_snapshot    Decimal? @db.Decimal(14,4)
   created_at     String
 
   order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
@@ -792,6 +800,10 @@ model InventoryItem {
   unit            String
   current_stock   Decimal  @db.Decimal(14,4) @default(0)
   reorder_point   Decimal  @db.Decimal(14,4) @default(0)
+  // Stage 34: authoritative moving weighted-average unit cost, maintained incrementally on every
+  // PURCHASE receipt (see inventory.ts /purchases/:id/receive). This is the single cost basis
+  // recipe costing reads -- no second costing method, no per-report recomputation from history.
+  average_cost    Decimal  @db.Decimal(14,4) @default(0)
   active          Boolean  @default(true)
   created_at      String
   updated_at      String
@@ -800,6 +812,7 @@ model InventoryItem {
   recipe_ingredients RecipeIngredient[]
   stock_movements StockMovement[]
   purchase_items  PurchaseItem[]
+  inventory_counts InventoryCount[]
 
   @@unique([branch_id, sku], map: "inventory_items_branch_sku_key")
   @@index([branch_id, active], map: "idx_inventory_items_branch_active")
@@ -812,6 +825,10 @@ model Recipe {
   branch_id   String
   menu_item_id String
   name       String
+  // Stage 34: recipe versioning. A recipe edit never mutates an existing row -- it inserts a new
+  // version and flips active off on the previous one (same transaction), so an order_item's
+  // recipe_version_snapshot always resolves to an immutable historical row.
+  version    Int      @default(1)
   yield_qty  Decimal  @db.Decimal(14,4) @default(1)
   active     Boolean  @default(true)
   created_at String
@@ -821,9 +838,34 @@ model Recipe {
   menu_item   MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Restrict)
   ingredients RecipeIngredient[]
 
-  @@unique([branch_id, menu_item_id], map: "recipes_branch_menu_item_key")
+  @@unique([branch_id, menu_item_id, version], map: "recipes_branch_menu_item_version_key")
   @@index([branch_id, active], map: "idx_recipes_branch_active")
+  @@index([branch_id, menu_item_id, active], map: "idx_recipes_branch_menu_item_active")
   @@map("recipes")
+}
+
+// Stage 34: an explicit, controlled physical-count event -- theoretical (system) quantity vs.
+// counted (actual) quantity at the moment of counting, with the resulting delta applied through
+// the existing ADJUSTMENT stock-movement path (never a silent direct stock mutation).
+model InventoryCount {
+  id                   String   @id
+  branch_id            String
+  inventory_item_id    String
+  theoretical_quantity Decimal  @db.Decimal(14,4)
+  counted_quantity     Decimal  @db.Decimal(14,4)
+  delta                Decimal  @db.Decimal(14,4)
+  reason               String?
+  counted_by           String
+  stock_movement_id    String?
+  created_at           String
+
+  branch         Branch        @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  inventory_item InventoryItem @relation(fields: [inventory_item_id], references: [id], onDelete: Restrict)
+  counter        User          @relation(fields: [counted_by], references: [id], onDelete: Restrict)
+
+  @@index([branch_id, created_at], map: "idx_inventory_counts_branch_created")
+  @@index([inventory_item_id, created_at], map: "idx_inventory_counts_item_created")
+  @@map("inventory_counts")
 }
 
 model RecipeIngredient {

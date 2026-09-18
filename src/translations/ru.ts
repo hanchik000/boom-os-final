@@ -17,6 +17,7 @@ export const ru = {
   "nav.creditReports": "Кредит / Долги",
   "nav.commandCenter": "Центр управления",
   "nav.liveOperations": "Живые операции",
+  "nav.foodCost": "Себестоимость",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

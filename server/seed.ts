@@ -218,10 +218,15 @@ export async function seedInitialData() {
     // dashboard.view -- every section it shows is still gated by that section's own existing
     // permission (orders.view, kds.view, payments.view, credit.reports, inventory.view); this
     // permission only unlocks the aggregate live-operations screen itself.
-    { id: 'perm_operations_view', code: 'operations.view', name: 'View Live Operations', module: 'operations', description: 'View the Live Operations control center (active orders, KDS, waiter/cashier workload, POS sessions, alerts)' }
+    { id: 'perm_operations_view', code: 'operations.view', name: 'View Live Operations', module: 'operations', description: 'View the Live Operations control center (active orders, KDS, waiter/cashier workload, POS sessions, alerts)' },
+    // Stage 34: recipe cost / food cost % / gross margin / profitability / inventory valuation
+    // reporting. Distinct from inventory.view (raw stock counts) because these figures reveal
+    // cost structure and margin, which should stay manager-level even for staff who can already
+    // see stock levels.
+    { id: 'perm_food_cost_view', code: 'food_cost.view', name: 'View Food Cost Reports', module: 'food_cost', description: 'View recipe cost, food cost %, gross margin, ingredient economics and menu profitability' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }

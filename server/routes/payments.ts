@@ -41,23 +41,42 @@ async function restoreInventoryForOrder(tx:TxClient, orderId:string, branchId:st
   }
 }
 
+// Stage 34: quantities and unit costs are both stored with up to 4 decimal places
+// (inventory_items.average_cost, recipe_ingredients.quantity are both DECIMAL(14,4)); these
+// helpers keep that arithmetic in BigInt ten-thousandths throughout -- no Float anywhere in the
+// recipe-cost snapshot computed alongside consumption.
+function scaled4(v: unknown): bigint {
+  const s = String(v ?? '0').trim();
+  if (!/^-?\d+(?:\.\d{1,4})?$/.test(s)) return 0n;
+  const neg = s.startsWith('-'); const clean = neg ? s.slice(1) : s;
+  const [a, b = ''] = clean.split('.');
+  const c = BigInt(a) * 10000n + BigInt((b + '0000').slice(0, 4));
+  return neg ? -c : c;
+}
+function fromScaled4(c: bigint): string { const neg = c < 0n; const abs = neg ? -c : c; return `${neg ? '-' : ''}${abs / 10000n}.${(abs % 10000n).toString().padStart(4, '0')}`; }
+
 async function consumeInventoryForOrder(tx:TxClient, orderId:string, branchId:string, userId:string, now:string) {
-  const items=await tx.query<any>('SELECT menu_item_id,quantity FROM order_items WHERE order_id=?',[orderId]);
+  const items=await tx.query<any>('SELECT id,menu_item_id,quantity FROM order_items WHERE order_id=?',[orderId]);
   for(const orderItem of items){
     if(!orderItem.menu_item_id) continue;
-    const recipe=await tx.queryOne<any>('SELECT id,yield_qty FROM recipes WHERE branch_id=? AND menu_item_id=? AND active=true',[branchId,orderItem.menu_item_id]);
+    const recipe=await tx.queryOne<any>('SELECT id,version,yield_qty FROM recipes WHERE branch_id=? AND menu_item_id=? AND active=true',[branchId,orderItem.menu_item_id]);
     if(!recipe) continue;
     const ingredients=await tx.query<any>('SELECT inventory_item_id,quantity FROM recipe_ingredients WHERE recipe_id=?',[recipe.id]);
+    let lineCostScaled4 = 0n;
     for(const ingredient of ingredients){
       const requiredRow=await tx.queryOne<any>(`SELECT (CAST(? AS DECIMAL(14,4))*CAST(? AS DECIMAL(14,4))/NULLIF(CAST(? AS DECIMAL(14,4)),0)) AS required_qty`,[ingredient.quantity,orderItem.quantity,recipe.yield_qty]);
       const required=String(requiredRow.required_qty);
-      const stock=await tx.queryOne<any>('SELECT id,current_stock FROM inventory_items WHERE id=? AND branch_id=? AND active=true FOR UPDATE',[ingredient.inventory_item_id,branchId]);
+      const stock=await tx.queryOne<any>('SELECT id,current_stock,average_cost FROM inventory_items WHERE id=? AND branch_id=? AND active=true FOR UPDATE',[ingredient.inventory_item_id,branchId]);
       if(!stock) throw Object.assign(new Error('INVENTORY_ITEM_NOT_FOUND'),{httpStatus:409});
       const check=await tx.queryOne<any>('SELECT (CAST(current_stock AS DECIMAL(14,4))-CAST(? AS DECIMAL(14,4))) AS remaining FROM inventory_items WHERE id=? FOR UPDATE',[required,stock.id]);
       if(Number(check.remaining)<0) throw Object.assign(new Error('INSUFFICIENT_STOCK'),{httpStatus:409,details:{inventory_item_id:stock.id,required_quantity:required,current_stock:String(stock.current_stock)}});
       await tx.execute(`UPDATE inventory_items SET current_stock=current_stock-CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?`,[required,now,stock.id,branchId]);
-      await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,stock.id,'SALE',required,'ORDER',orderId,'Consumed by paid order',userId,now]);
+      await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,stock.id,'SALE',required,String(stock.average_cost||'0'),'ORDER',orderId,'Consumed by paid order',userId,now]);
+      lineCostScaled4 += (scaled4(required) * scaled4(stock.average_cost)) / 10000n;
     }
+    // The historical snapshot: this order_item's exact recipe version and its total ingredient
+    // cost at the moment of consumption. A later recipe or cost change never touches this row.
+    await tx.execute('UPDATE order_items SET recipe_version_snapshot=?,recipe_cost_snapshot=CAST(? AS numeric) WHERE id=?',[recipe.version, fromScaled4(lineCostScaled4), orderItem.id]);
   }
 }
 router.use(authenticateToken);

@@ -26,6 +26,7 @@ import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
 import { LiveOperationsView } from './components/LiveOperationsView';
+import { FoodCostView } from './components/FoodCostView';
 
 function MainLayout() {
   const publicScreen = new URLSearchParams(window.location.search).get('screen');
@@ -120,6 +121,8 @@ function MainLayout() {
         return { title: t('nav.commandCenter'), subtitle: language === 'ru' ? 'Продажи, касса, кухня, официанты, кассиры, склад и персонал в реальном времени' : 'Hakyky wagtda satuw, kassa, aşhana, ofisiantlar, kassirler, ammar we işgärler' };
       case 'liveOperations':
         return { title: t('nav.liveOperations'), subtitle: language === 'ru' ? 'Активные заказы, кухня, нагрузка официантов и кассиров прямо сейчас' : 'Häzirki wagtda işjeň sargytlar, aşhana, ofisiant we kassir ýüki' };
+      case 'foodCost':
+        return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
       case 'inventory':
         return { title: language === 'ru' ? 'Склад и Inventory' : 'Ammar we Inventory', subtitle: language === 'ru' ? 'Остатки, рецептуры, поставщики и складские движения' : 'Galyndylar, reseptler, üpjün edijiler we ammar hereketleri' };
       case 'settings':
@@ -184,6 +187,7 @@ function MainLayout() {
           {currentTab === 'creditReports' && <CreditReportsView />}
           {currentTab === 'commandCenter' && <ManagerCommandCenterView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
+          {currentTab === 'foodCost' && <FoodCostView />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}
