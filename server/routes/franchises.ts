@@ -337,6 +337,10 @@ router.post('/', requirePermission('franchises.create'), async (req: Request, re
 // PUT /api/franchises/:id
 router.put('/:id', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  if (!(await canUserAccessFranchise(req.user!, id))) {
+    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+    return;
+  }
   const { name, code, legal_name, contact_name, phone, email, address, status } = req.body;
 
   const existing = await queryOne<any>('SELECT * FROM franchises WHERE id = ? AND deleted_at IS NULL', [id]);
@@ -415,6 +419,10 @@ router.put('/:id', requirePermission('franchises.update'), async (req: Request, 
 // PATCH /api/franchises/:id/status
 router.patch('/:id/status', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  if (!(await canUserAccessFranchise(req.user!, id))) {
+    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+    return;
+  }
   const { status } = req.body;
 
   const validStatuses = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
@@ -453,6 +461,10 @@ router.patch('/:id/status', requirePermission('franchises.update'), async (req: 
 // DELETE /api/franchises/:id (Safe delete)
 router.delete('/:id', requirePermission('franchises.delete'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  if (!(await canUserAccessFranchise(req.user!, id))) {
+    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+    return;
+  }
   const currentUser = req.user!;
 
   const existing = await queryOne<any>('SELECT * FROM franchises WHERE id = ? AND deleted_at IS NULL', [id]);
@@ -549,6 +561,16 @@ router.get('/:id/branches', requirePermission('franchises.view'), async (req: Re
 // POST /api/franchises/:id/branches/:branchId (Assign existing branch to franchise)
 router.post('/:id/branches/:branchId', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id, branchId } = req.params;
+  // Moving a branch between franchises changes who can see its data, so the caller must
+  // hold both the target franchise and the branch itself. Superusers are exempt, as everywhere.
+  if (!(await canUserAccessFranchise(req.user!, id))) {
+    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+    return;
+  }
+  if (!req.user!.isSuperUser && !req.user!.allowedBranchIds.includes(branchId)) {
+    res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: { branch_id: branchId } });
+    return;
+  }
 
   const franchise = await queryOne<{ id: string; name: string }>(
     'SELECT id, name FROM franchises WHERE id = ? AND deleted_at IS NULL',
@@ -593,6 +615,16 @@ router.post('/:id/branches/:branchId', requirePermission('franchises.update'), a
 // DELETE /api/franchises/:id/branches/:branchId (Remove branch from franchise without deleting the branch itself)
 router.delete('/:id/branches/:branchId', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id, branchId } = req.params;
+  // Moving a branch between franchises changes who can see its data, so the caller must
+  // hold both the target franchise and the branch itself. Superusers are exempt, as everywhere.
+  if (!(await canUserAccessFranchise(req.user!, id))) {
+    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+    return;
+  }
+  if (!req.user!.isSuperUser && !req.user!.allowedBranchIds.includes(branchId)) {
+    res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: { branch_id: branchId } });
+    return;
+  }
 
   const branch = await queryOne<{ id: string; name: string; franchise_id: string | null }>(
     'SELECT id, name, franchise_id FROM branches WHERE id = ? AND franchise_id = ?',
@@ -634,6 +666,18 @@ router.get('/:id/employees', requirePermission('franchises.view'), async (req: R
     return;
   }
 
+  // Passing the franchise gate only means the caller holds *some* branch of it. The rows
+  // themselves must still be limited to the branches they actually hold, exactly as
+  // GET /:id/branches does.
+  let scopeClause = '';
+  const scopeParams: string[] = [];
+  if (!currentUser.isSuperUser) {
+    if (!currentUser.allowedBranchIds.length) { res.json({ employees: [] }); return; }
+    const ph = currentUser.allowedBranchIds.map(() => '?').join(',');
+    scopeClause = `AND (pb.id IN (${ph}) OR ab.id IN (${ph}))`;
+    scopeParams.push(...currentUser.allowedBranchIds, ...currentUser.allowedBranchIds);
+  }
+
   // Find all employees whose primary branch or allowed branch belongs to this franchise
   const rawEmployees = await query<any>(
     `SELECT DISTINCT
@@ -646,8 +690,9 @@ router.get('/:id/employees', requirePermission('franchises.view'), async (req: R
     LEFT JOIN user_branch_access uba ON uba.user_id = u.id
     LEFT JOIN branches ab ON ab.id = uba.branch_id
     WHERE (pb.franchise_id = ? OR ab.franchise_id = ?) AND u.deleted_at IS NULL
+    ${scopeClause}
     ORDER BY u.full_name ASC`,
-    [id, id]
+    [id, id, ...scopeParams]
   );
 
   const totalBranchesInFranchise = (await queryOne<{ count: number }>(

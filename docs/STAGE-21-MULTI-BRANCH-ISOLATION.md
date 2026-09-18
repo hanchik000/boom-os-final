@@ -190,11 +190,14 @@ data, so it was left unchanged.
 
 ## KNOWN GAPS
 
-- **Franchise aggregation.** `/api/franchises/:id/orders`, `/:id/employees` and
-  `/:id/overview` are not branch-filtered. Not exploitable with the seeded roles, since only
-  superusers hold `franchises.*`. If that permission is ever granted to a branch-scoped role,
-  these endpoints would expose cross-branch operational data. Narrowing them to the
-  franchise's own branches is a product decision and was not taken here.
+- **Franchise aggregation.** ADDRESSED IN STAGE 22, and the description below was imprecise:
+  these endpoints *are* gated by `canUserAccessFranchise`, which the Stage 21 source scan
+  missed. Stage 22 found the real defect — the gate admits a caller holding any one branch of
+  the franchise, after which `/:id/employees` returned every employee of every branch — and
+  fixed it along with missing gates on the franchise mutations. See
+  `docs/STAGE-22-TENANT-FRANCHISE-ISOLATION.md`. Original note: `/api/franchises/:id/orders`,
+  `/:id/employees` and `/:id/overview` are not branch-filtered. Not exploitable with the
+  seeded roles, since only superusers hold `franchises.*`.
 - **GENERAL_MANAGER** is documented as network-wide but behaves as branch-scoped. Unchanged
   deliberately; changing it would widen access.
 - **Some branch refusals are 400, not 403** (`create table`, `evaluate KPI`, `create menu
@@ -203,6 +206,7 @@ data, so it was left unchanged.
   codes, so it is left for an explicit decision.
 - **Not covered by this stage:** franchise-to-franchise isolation, branch isolation of
   promotions/CRM/BOOMCARD (not implemented), the frontend, and multi-branch users holding
-  access to two branches at once (only single-branch managers were exercised).
+  access to two branches at once (only single-branch managers were exercised). Franchise
+  isolation and multi-branch users were both covered in Stage 22.
 - The audit list was checked for absence of foreign ids, not for a complete per-branch audit
   contract.
