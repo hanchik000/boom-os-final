@@ -76,7 +76,7 @@ export const api = {
   // Public customer menu / Smart Search
   getPublicBranches: () => request<{ branches: any[] }>('/api/public/branches'),
   getPublicMenu: (branch_id: string, lang = 'ru') => request<{ branch: any; language: string; items: any[] }>(`/api/public/menu?branch_id=${encodeURIComponent(branch_id)}&lang=${encodeURIComponent(lang)}`),
-  smartSearch: (branch_id: string, q: string, lang = 'ru') => request<{ branch: any; query: string; parsed: any; items: any[]; disclaimer: string }>(`/api/public/smart-search?branch_id=${encodeURIComponent(branch_id)}&q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`),
+  smartSearch: (branch_id: string, q: string, lang = 'ru') => request<{ branch: any; query: string; parsed: any; items: any[]; recommendations: Array<{ label: string; people: number; items: Array<{ id: string; name: string; quantity: number; unit_price: string; line_total: string }>; total: string; remaining_budget: string | null }>; disclaimer: string }>(`/api/public/smart-search?branch_id=${encodeURIComponent(branch_id)}&q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}`),
   // Auth
   getBootstrapStatus: () =>
     request<{ needsBootstrap: boolean }>('/api/auth/bootstrap-status'),
