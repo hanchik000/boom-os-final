@@ -61,9 +61,19 @@ router.get('/options', requirePermission('rbac.test'), async (req: Request, res:
     `SELECT id, code, name, is_system FROM roles WHERE status = 'ACTIVE' ORDER BY code ASC`
   );
 
-  const franchises = await query<{ id: string; name: string; code: string; status: string }>(
-    `SELECT id, name, code, status FROM franchises ORDER BY name ASC`
-  );
+  // Unlike users/branches above, this list was never scoped, silently contradicting the
+  // established GET /api/franchises contract (Stage 22: a non-superuser only sees franchises
+  // where they hold a branch). Reuses that exact filter.
+  const franchises = req.user!.isSuperUser
+    ? await query<{ id: string; name: string; code: string; status: string }>(
+        `SELECT id, name, code, status FROM franchises ORDER BY name ASC`
+      )
+    : req.user!.allowedBranchIds.length
+      ? await query<{ id: string; name: string; code: string; status: string }>(
+          `SELECT id, name, code, status FROM franchises WHERE id IN (SELECT DISTINCT franchise_id FROM branches WHERE id IN (${req.user!.allowedBranchIds.map(() => '?').join(',')}) AND franchise_id IS NOT NULL) ORDER BY name ASC`,
+          req.user!.allowedBranchIds
+        )
+      : [];
 
   const branches = await query<{ id: string; name: string; code: string; franchise_id: string | null; status: string }>(
     req.user!.isSuperUser
@@ -124,6 +134,37 @@ router.post('/test', requirePermission('rbac.test'), async (req: Request, res: R
       message: 'Target user belongs to an unauthorized branch.', details: {}
     });
     return;
+  }
+
+  // A caller-supplied branch_id/franchise_id is a hypothetical PARAMETER of the simulation,
+  // not something the tool should resolve and disclose for free: the caller must actually
+  // hold the branch, or hold a branch of the franchise, exactly as GET /api/branches/:id and
+  // GET /api/franchises/:id already require of anyone who wants to see that entity's name or
+  // code. A superuser is exempt, as everywhere. This deliberately treats a real-but-foreign
+  // id and a nonexistent id identically (both simply fail the caller's own scope check), so
+  // neither can be distinguished from the response -- closing the enumeration channel, not
+  // just the disclosure.
+  if (!req.user!.isSuperUser) {
+    if (branch_id && !req.user!.allowedBranchIds.includes(String(branch_id))) {
+      res.status(403).json({
+        error: 'FORBIDDEN', code: 'BRANCH_ACCESS_DENIED',
+        message: 'branch_id is outside your access scope.', details: {}
+      });
+      return;
+    }
+    if (franchise_id) {
+      const ph = req.user!.allowedBranchIds.length ? req.user!.allowedBranchIds.map(() => '?').join(',') : 'NULL';
+      const owned = req.user!.allowedBranchIds.length
+        ? await queryOne<{ id: string }>(`SELECT id FROM branches WHERE franchise_id = ? AND id IN (${ph}) LIMIT 1`, [franchise_id, ...req.user!.allowedBranchIds])
+        : null;
+      if (!owned) {
+        res.status(403).json({
+          error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED',
+          message: 'franchise_id is outside your access scope.', details: {}
+        });
+        return;
+      }
+    }
   }
 
   // 2. Resolve Roles
@@ -310,7 +351,12 @@ router.post('/test', requirePermission('rbac.test'), async (req: Request, res: R
   // Record audit log for the simulation test event (strictly read-only)
   await recordAuditLog({
     userId: req.user!.id,
-    branchId: branch_id || req.user!.branch_id,
+    // branch_id here is used only as this audit entry's OWN branch attribution and must
+    // be a real branch -- audit_logs.branch_id carries a foreign key to branches(id). The
+    // raw request field was inserted unvalidated, so a nonexistent branch_id (or, before
+    // the scope gate above, any id at all for a superuser) crashed the whole request with
+    // a foreign-key violation. targetBranch is the already-validated lookup.
+    branchId: targetBranch?.id || req.user!.branch_id,
     action: 'RBAC_ACCESS_TESTED',
     entityType: 'RBAC_SIMULATION',
     entityId: user.id,
