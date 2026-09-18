@@ -127,4 +127,4 @@ and one new table (`inventory_counts`). Validated with `prisma validate` before 
 
 ## Commit
 
-`<filled in after commit — see git log>`
+`72b69d1`
