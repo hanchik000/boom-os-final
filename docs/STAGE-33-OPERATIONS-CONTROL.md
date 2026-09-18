@@ -121,4 +121,4 @@ helpers used since Stage 31 — no `Float`.
 
 ## Commit
 
-`<filled in after commit — see git log>`
+`ac0d69b`
