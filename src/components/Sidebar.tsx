@@ -21,13 +21,14 @@ import {
   MonitorCog,
   CreditCard,
   Printer,
-  Wallet
+  Wallet,
+  Gauge
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'commandCenter' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -42,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
 
   const primaryNavItems: Array<{ id: NavTab; key: TranslationKey; icon: any; permission?: string }> = [
     { id: 'dashboard', key: 'nav.dashboard', icon: LayoutDashboard },
+    { id: 'commandCenter', key: 'nav.commandCenter', icon: Gauge, permission: 'dashboard.view' },
     { id: 'organization', key: 'nav.organization', icon: Network, permission: 'franchises.view' },
     { id: 'franchises', key: 'nav.franchises', icon: Building, permission: 'franchises.view' },
     { id: 'branches', key: 'nav.branches', icon: Building2, permission: 'branches.view' },

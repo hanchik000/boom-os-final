@@ -234,6 +234,8 @@ export const api = {
   getCreditReportStaff: (branch_id:string) => request<{branch_id:string;staff:any[]}>(`/api/credit/reports/staff?branch_id=${encodeURIComponent(branch_id)}`),
   getCreditReportBranch: () => request<{branches:any[]}>('/api/credit/reports/branch'),
   getCreditReportCashier: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{branch_id:string;transactions:any[]}>(`/api/credit/reports/cashier?${q.toString()}`); },
+  // Manager Command Center (Stage 32): one aggregation endpoint, branch + date-range scoped.
+  getManagerDashboard: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/dashboard/manager?${q.toString()}`); },
   // Operator POS (short-lived cashier session token, gates payments.create/refund for CASHIER)
   unlockOperatorPos: (data:{ password:string; branch_id:string; device_id?:string }) => request<{ unlocked:boolean; session_id:string; session_token:string }>('/api/operator-pos/unlock',{method:'POST',body:JSON.stringify(data)}),
   lockOperatorPos: (branch_id:string) => request<{ locked:boolean }>('/api/operator-pos/lock',{method:'POST',body:JSON.stringify({branch_id})}),

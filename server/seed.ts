@@ -209,10 +209,14 @@ export async function seedInitialData() {
     { id: 'perm_credit_issue', code: 'credit.issue', name: 'Issue Credit', module: 'credit', description: 'Settle an order as a customer or staff credit sale' },
     { id: 'perm_credit_repay', code: 'credit.repay', name: 'Record Credit Repayment', module: 'credit', description: 'Record a full or partial repayment against a credit account' },
     { id: 'perm_credit_manage_limit', code: 'credit.manage_limit', name: 'Manage Credit Limits', module: 'credit', description: 'Set credit limits, approve over-limit sales and payroll deductions, and post adjustments' },
-    { id: 'perm_credit_reports', code: 'credit.reports', name: 'View Credit Reports', module: 'credit', description: 'View receivables and credit reports across the branch' }
+    { id: 'perm_credit_reports', code: 'credit.reports', name: 'View Credit Reports', module: 'credit', description: 'View receivables and credit reports across the branch' },
+    // Manager Command Center: a read-only aggregation of sales/cash/credit/orders/KDS/waiter/
+    // cashier/inventory/staff data the caller already has section-level permission for. It never
+    // grants access to a domain the caller could not already reach through its own endpoint.
+    { id: 'perm_dashboard_view', code: 'dashboard.view', name: 'View Manager Dashboard', module: 'dashboard', description: 'View the Manager Command Center aggregate dashboard' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
