@@ -105,25 +105,36 @@ order and payment, KDS transitions, order closure, table release and cash reconc
 
 It requires an empty database because it bootstraps the first OWNER itself.
 
+## Status after Stage 20
+
+Superseded items are marked below. See `docs/STAGE-20-RUNTIME-HARDENING.md` for the
+follow-up stage, which fixed async error handling, executed the production bundle, and
+runtime-verified refunds, cash shifts, inventory, recipes, the service-charge ledger and KPI.
+
 ## Known issues / NOT VERIFIED
 
-- **Async error handling.** The `unhandledRejection` guard keeps the process alive, but a
-  request whose handler rejects still receives no response and hangs until the client times
-  out. The proper fix is an async wrapper around route handlers (or Express 5) so failures
-  reach the existing global error handler as a structured 500. Not done here because it
-  changes error semantics across all 25 routers.
+- **Async error handling.** RESOLVED in Stage 20 via `server/async-errors.ts`; the note
+  below describes the Stage 19 state. The `unhandledRejection` guard keeps the process
+  alive, but a request whose handler rejects still receives no response and hangs until the
+  client times out. The proper fix is an async wrapper around route handlers (or Express 5)
+  so failures reach the existing global error handler as a structured 500. Not done here
+  because it changes error semantics across all 25 routers.
 - **Decimal string formatting.** Money now serializes as its exact value (`45.5`, not
   `45.50`). This is correct and lossless, and deliberately not forced to two decimals
   because the same code path serves 4-decimal quantity columns. Display formatting belongs
   in the clients.
 - **Docker path not executed.** The compose fix was verified by reading the seed contract
   and reproducing the exact failure locally; `docker compose up` itself was not run in this
-  environment. NOT VERIFIED by execution.
+  environment. NOT VERIFIED by execution. Stage 20 confirmed the container images cannot be
+  pulled here at all (egress policy), executed the container's `CMD` directly instead, and
+  validated the rendered compose environment.
 - **Redis** reports `DISCONNECTED` in local runs; it is not required by the flows exercised.
 - **Not exercised at runtime:** refunds, Z-report closure, inventory consumption and
   purchases, recipes/food cost, service-charge ledger distribution, KPI evaluation,
   promotions, CRM/BOOMCARD/BOOMCOIN, offline/sync, and the frontend UI. Their numeric
   binds were corrected by the same sweep, but only the paths listed in the table above
-  were proven by execution.
+  were proven by execution. Stage 20 has since runtime-verified refunds, the cash shift
+  lifecycle and Z-report, inventory, recipes, the service-charge ledger and KPI; the rest
+  remain unverified.
 - BOOMCARD, BOOMCOIN, CRM, promotions and delivery remain unimplemented in this baseline
   (Constitution stages 11–13); no parallel systems were introduced.

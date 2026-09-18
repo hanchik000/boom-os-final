@@ -34,6 +34,7 @@ import kpiRouter from './server/routes/kpi';
 import operatorPosRouter from './server/routes/operator-pos';
 import printRouter from './server/routes/print';
 import publicMenuRouter from './server/routes/public-menu';
+import { enableAsyncErrorForwarding } from './server/async-errors';
 
 async function startServer() {
   console.log('Booting BOOM OS Kernel with PostgreSQL (Prisma ORM)...');
@@ -122,6 +123,18 @@ async function startServer() {
     });
   });
 
+  // Express 4 does not forward a rejected promise from an async handler to the error
+  // middleware below, which would leave the request hanging. Patch every API router once,
+  // in place, so async failures become next(err) and get the same structured 500 as a
+  // synchronous throw.
+  [
+    docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
+    menuRouter, tablesRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
+    inventoryRouter, serviceChargeRouter, kpiRouter, operatorPosRouter, printRouter,
+    franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
+    organizationRouter, settingsRouter, auditRouter, systemRouter,
+  ].forEach(enableAsyncErrorForwarding);
+
   // OpenAPI 3.0 & Swagger UI Documentation Endpoint
   app.use('/api/docs', docsRouter);
 
@@ -167,14 +180,28 @@ async function startServer() {
     });
   }
 
-  // 3. Global API error handler
+  // Unmatched API routes must answer as the API, not fall through to the SPA fallback
+  // below, which would return the HTML shell with HTTP 200 and hide client mistakes.
+  app.use('/api', (req: Request, res: Response) => {
+    res.status(404).json({
+      error: 'NOT_FOUND',
+      code: 'ENDPOINT_NOT_FOUND',
+      message: 'No BOOM OS API endpoint matches this path.',
+      details: { method: req.method, path: req.originalUrl }
+    });
+  });
+
+  // 3. Global API error handler.
+  // Only unexpected failures reach here: routes map their own business errors. The full
+  // error is logged for operators, but the response must not carry driver text, the
+  // database location or any other internal detail to the caller.
   app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error('Unhandled API Error:', err);
+    console.error(`Unhandled API Error [${req.method} ${req.originalUrl}]:`, err);
     res.status(500).json({
       error: 'INTERNAL_SERVER_ERROR',
-      code: err.code || 'INTERNAL_SERVER_ERROR',
-      message: err.message || 'An unexpected error occurred in BOOM OS backend.',
-      details: err.details || undefined
+      code: err?.code || 'INTERNAL_SERVER_ERROR',
+      message: 'An unexpected error occurred in BOOM OS backend.',
+      details: err?.details || undefined
     });
   });
 

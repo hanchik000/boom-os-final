@@ -21,7 +21,9 @@ router.put('/:branchId', requirePermission('service_charge.manage'), async(req,r
   let sum=0; for(const a of allocations){const p=moneyPercent(a?.percent); if(p===null||Number(p)<0)return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_ALLOCATION',message:'Each allocation needs a non-negative percentage.',details:{}}); sum+=Number(p);}
   if(sum>Number(percent)) return res.status(400).json({error:'VALIDATION_ERROR',code:'ALLOCATIONS_EXCEED_SERVICE_CHARGE',message:'Allocation total cannot exceed the configured service charge.',details:{sum,service_charge:percent}});
   const now=new Date().toISOString();
-  const result=await transaction(async(tx)=>{
+  let result:any;
+  try{
+  result=await transaction(async(tx)=>{
     const existing=await tx.queryOne<any>('SELECT * FROM service_charge_configs WHERE branch_id=? FOR UPDATE',[b]);
     const id=existing?.id||`scc_${crypto.randomUUID()}`;
     if(existing) await tx.execute('UPDATE service_charge_configs SET percent=CAST(? AS numeric),status=\'ACTIVE\',updated_at=? WHERE id=?',[percent,now,id]);
@@ -39,6 +41,7 @@ router.put('/:branchId', requirePermission('service_charge.manage'), async(req,r
     await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:b,action:'SERVICE_CHARGE_SETTINGS_UPDATED',entityType:'SERVICE_CHARGE_CONFIG',entityId:id,newValues:{percent,allocations},req});
     return await tx.queryOne<any>('SELECT * FROM service_charge_configs WHERE id=?',[id]);
   });
+  }catch(e:any){const map:any={INVALID_TARGET_TYPE:[400,'VALIDATION_ERROR','INVALID_TARGET_TYPE'],USER_REQUIRED:[400,'VALIDATION_ERROR','USER_REQUIRED'],DEPARTMENT_REQUIRED:[400,'VALIDATION_ERROR','DEPARTMENT_REQUIRED'],USER_BRANCH_MISMATCH:[403,'BRANCH_ACCESS_DENIED','USER_BRANCH_MISMATCH']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:{}});throw e;}
   res.json({config:result,allocations:await query<any>('SELECT * FROM service_charge_allocations WHERE config_id=? AND active=true ORDER BY created_at',[result.id])});
 });
 
