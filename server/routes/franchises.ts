@@ -337,8 +337,16 @@ router.post('/', requirePermission('franchises.create'), async (req: Request, re
 // PUT /api/franchises/:id
 router.put('/:id', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  if (!(await canUserAccessFranchise(req.user!, id))) {
-    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+  // Franchise-level governance (renaming the tenant, changing its status, archiving it)
+  // affects every branch and employee under it, not just the branches the caller holds.
+  // Membership in one branch is not authority over the whole franchise -- the same reasoning
+  // Stage 23 applied to branch re-parenting. Restricted to superuser semantics.
+  if (!req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_GOVERNANCE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may modify franchise-level metadata or status.',
+      details: { franchise_id: id }
+    });
     return;
   }
   const { name, code, legal_name, contact_name, phone, email, address, status } = req.body;
@@ -419,8 +427,16 @@ router.put('/:id', requirePermission('franchises.update'), async (req: Request, 
 // PATCH /api/franchises/:id/status
 router.patch('/:id/status', requirePermission('franchises.update'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  if (!(await canUserAccessFranchise(req.user!, id))) {
-    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+  // Franchise-level governance (renaming the tenant, changing its status, archiving it)
+  // affects every branch and employee under it, not just the branches the caller holds.
+  // Membership in one branch is not authority over the whole franchise -- the same reasoning
+  // Stage 23 applied to branch re-parenting. Restricted to superuser semantics.
+  if (!req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_GOVERNANCE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may modify franchise-level metadata or status.',
+      details: { franchise_id: id }
+    });
     return;
   }
   const { status } = req.body;
@@ -461,8 +477,16 @@ router.patch('/:id/status', requirePermission('franchises.update'), async (req: 
 // DELETE /api/franchises/:id (Safe delete)
 router.delete('/:id', requirePermission('franchises.delete'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  if (!(await canUserAccessFranchise(req.user!, id))) {
-    res.status(403).json({ error: 'FORBIDDEN', code: 'FRANCHISE_ACCESS_DENIED', message: 'Access denied to this franchise.' });
+  // Franchise-level governance (renaming the tenant, changing its status, archiving it)
+  // affects every branch and employee under it, not just the branches the caller holds.
+  // Membership in one branch is not authority over the whole franchise -- the same reasoning
+  // Stage 23 applied to branch re-parenting. Restricted to superuser semantics.
+  if (!req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_GOVERNANCE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may modify franchise-level metadata or status.',
+      details: { franchise_id: id }
+    });
     return;
   }
   const currentUser = req.user!;

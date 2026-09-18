@@ -409,12 +409,15 @@ await mustDeny('U attaches unheld A2 to franchise B', U, 'POST', `/api/franchise
 await mustDeny('U attaches unheld B2 to franchise A', U, 'POST', `/api/franchises/${FA}/branches/${B2.id}`, {}, 'I4');
 await mustDeny('U moves its own A1 into franchise B', U, 'POST', `/api/franchises/${FB}/branches/${A1.id}`, {}, 'I4');
 await mustDeny('U detaches unheld A2', U, 'DELETE', `/api/franchises/${FA}/branches/${A2.id}`, undefined, 'I4');
-// Franchise METADATA, unlike franchise STRUCTURE, follows the gate contract established in
-// Stage 22: a member of the franchise holding franchises.update may edit it. U holds A1 in
-// franchise A, so this is allowed by design and is asserted as such rather than being
-// re-labelled a vulnerability. The semantics question it raises is recorded in the report.
-await mustAllow('U renames franchise A (member with franchises.update — by contract)', U, 'PUT', `/api/franchises/${FA}`,
-  { name: `Franchise A ${stamp % 1000}`, legal_name: 'Franchise A LLC', contact_name: 'Contact A', phone: '+99312000001', email: `ha-${stamp}@boom.local`, address: 'Ashgabat A' }, 'I6');
+// SUPERSEDED BY STAGE 24. The Stage 23 audit left open whether a member holding one branch
+// of a multi-branch franchise may edit that franchise's shared metadata (name, status,
+// deletion). Stage 24 determined this to be a scope-mismatch authorization defect -- the
+// action's blast radius (every branch and employee of the franchise) exceeds the actor's
+// proven authority (one branch) -- and restricted franchise governance mutations to
+// superuser semantics, the same boundary already applied here to branch re-parenting. U
+// holding A1 in franchise A must therefore now be REFUSED, not allowed.
+await mustDeny('U renames franchise A (governance mutation, superuser-only since Stage 24)', U, 'PUT', `/api/franchises/${FA}`,
+  { name: `Franchise A ${stamp % 1000}`, legal_name: 'Franchise A LLC', contact_name: 'Contact A', phone: '+99312000001', email: `ha-${stamp}@boom.local`, address: 'Ashgabat A' });
 // The genuine franchise-isolation denials use an actor with no branch in the target
 // franchise, so the refusal cannot come from a business rule such as "franchise not empty".
 await mustDeny('non-member renames franchise B', outsider, 'PUT', `/api/franchises/${FB}`,

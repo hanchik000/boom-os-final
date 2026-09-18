@@ -118,6 +118,19 @@ router.post('/', requirePermission('branches.create'), async (req: Request, res:
     return;
   }
 
+  // Assigning a new branch to a franchise is branch<->franchise re-parenting under a
+  // different name, with a worse side effect: creation auto-grants the creator access to
+  // the branch it just made (see below), so a non-superuser could otherwise use franchise_id
+  // here to silently gain a foothold inside a franchise they hold no branch of. Restricted to
+  // superuser semantics, matching /franchises/:id/branches/:branchId.
+  if (franchise_id && !req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_STRUCTURE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may assign a new branch to a franchise.',
+      details: {}
+    });
+    return;
+  }
   // If franchise_id provided, verify franchise exists
   if (franchise_id) {
     const fExists = await queryOne('SELECT id FROM franchises WHERE id = ?', [franchise_id]);
@@ -179,6 +192,20 @@ router.put('/:id', requirePermission('branches.update'), requireBranchAccess(req
 
   if (!existing) {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Branch not found.' });
+    return;
+  }
+
+  // Re-parenting an EXISTING branch into a different franchise is the exact operation
+  // Stage 23 restricted to superuser semantics on /franchises/:id/branches/:branchId.
+  // requireBranchAccess above only proves the caller holds THIS branch -- it says nothing
+  // about the destination franchise, so this field must not move through a second endpoint
+  // under a weaker check. A no-op (same value, or omitted) is not a re-parent and is allowed.
+  if (franchise_id !== undefined && franchise_id !== existing.franchise_id && !req.user!.isSuperUser) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'FRANCHISE_STRUCTURE_SUPERUSER_ONLY',
+      message: 'Only OWNER or SUPER_ADMIN may move a branch between franchises.',
+      details: { branch_id: id }
+    });
     return;
   }
 

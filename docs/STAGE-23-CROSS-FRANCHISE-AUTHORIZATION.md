@@ -228,10 +228,18 @@ environment's egress policy, which no code change can affect.
   one who holds a single branch of a multi-branch franchise. This follows the Stage 22 gate
   and is asserted as the current contract. Decision needed: restrict to superusers, or to
   members holding every branch of the franchise, or leave as is.
+  **RESOLVED IN STAGE 24**: determined to be a scope-mismatch privilege-escalation defect
+  (the action's blast radius — every branch and employee of the franchise — exceeds the
+  actor's proven authority of one branch) and restricted to superuser semantics, the same
+  boundary this stage already applied to branch re-parenting. Two further unguarded paths to
+  branch re-parenting were found in `server/routes/branches.ts` (`PUT /:id` and `POST /`) and
+  fixed the same way. See `docs/STAGE-24-FRANCHISE-GOVERNANCE-AUTHORIZATION.md`.
 - **Branch re-parenting is now superuser-only**, a deliberate narrowing. A franchise partner
   with `franchises.update` can no longer attach or detach branches at all.
 - **`/franchises/:id/orders` is unimplemented.** Authorization is verified; scoping is
   unproven and must be established when the module is connected.
 - **GENERAL_MANAGER** left unchanged; the decision is stated above.
 - **Not covered:** a user whose branches span three or more franchises, franchise-level
-  isolation for promotions/CRM/BOOMCARD (not implemented), and the frontend.
+  isolation for promotions/CRM/BOOMCARD (not implemented), and the frontend. Three-franchise
+  isolation was proven in Stage 24, which also found and fixed the two additional
+  re-parenting paths noted above.
