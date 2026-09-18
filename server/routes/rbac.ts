@@ -1,9 +1,32 @@
 import { Router, Request, Response } from 'express';
 import { query, queryOne } from '../db';
-import { authenticateToken, requirePermission, recordAuditLog } from '../auth';
+import { authenticateToken, requirePermission, recordAuditLog, AuthenticatedUser } from '../auth';
 
 const router = Router();
 router.use(authenticateToken);
+
+// The simulator resolves and returns a TARGET user's real, live data: full name, email,
+// resolved roles/permissions, and -- most sensitively -- their complete allowed_branch_ids
+// list, the exact same branch-access footprint Stage 21 restricted behind branch scope on
+// every direct user/employee endpoint (denyIfForeignBranch in users.ts, canAccessEmployee in
+// employees.ts). Without this check, POST /rbac/test is a second, unscoped door to that same
+// data: a caller who cannot read a foreign-branch user directly could still learn everything
+// about them, including their full cross-franchise branch list, by "simulating" them instead.
+// Same authorization model as those two helpers (isSuperUser / allowedBranchIds / self), not
+// a new one -- reimplemented locally because this route file has no shared import path to
+// either of them, matching how every other route file in this codebase keeps its own local
+// scoping helper (allowed(), canAccessEmployee(), canUserAccessFranchise()).
+async function canSimulateUser(caller: AuthenticatedUser, targetUserId: string, targetBranchId: string | null): Promise<boolean> {
+  if (caller.isSuperUser || targetUserId === caller.id) return true;
+  if (targetBranchId && caller.allowedBranchIds.includes(targetBranchId)) return true;
+  if (!caller.allowedBranchIds.length) return false;
+  const placeholders = caller.allowedBranchIds.map(() => '?').join(',');
+  const access = await queryOne<{ user_id: string }>(
+    `SELECT user_id FROM user_branch_access WHERE user_id = ? AND branch_id IN (${placeholders}) LIMIT 1`,
+    [targetUserId, ...caller.allowedBranchIds]
+  );
+  return Boolean(access);
+}
 
 // Core permission catalogue to evaluate for the RBAC matrix
 const CORE_PERMISSIONS_MATRIX = [
@@ -93,6 +116,13 @@ router.post('/test', requirePermission('rbac.test'), async (req: Request, res: R
 
   if (!user) {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Target user not found.' });
+    return;
+  }
+  if (!(await canSimulateUser(req.user!, user.id, user.branch_id))) {
+    res.status(403).json({
+      error: 'FORBIDDEN', code: 'BRANCH_ACCESS_DENIED',
+      message: 'Target user belongs to an unauthorized branch.', details: {}
+    });
     return;
   }
 
