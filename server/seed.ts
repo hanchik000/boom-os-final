@@ -213,10 +213,15 @@ export async function seedInitialData() {
     // Manager Command Center: a read-only aggregation of sales/cash/credit/orders/KDS/waiter/
     // cashier/inventory/staff data the caller already has section-level permission for. It never
     // grants access to a domain the caller could not already reach through its own endpoint.
-    { id: 'perm_dashboard_view', code: 'dashboard.view', name: 'View Manager Dashboard', module: 'dashboard', description: 'View the Manager Command Center aggregate dashboard' }
+    { id: 'perm_dashboard_view', code: 'dashboard.view', name: 'View Manager Dashboard', module: 'dashboard', description: 'View the Manager Command Center aggregate dashboard' },
+    // Live Operations (Stage 33): a read-only "right now" operational view. Same rule as
+    // dashboard.view -- every section it shows is still gated by that section's own existing
+    // permission (orders.view, kds.view, payments.view, credit.reports, inventory.view); this
+    // permission only unlocks the aggregate live-operations screen itself.
+    { id: 'perm_operations_view', code: 'operations.view', name: 'View Live Operations', module: 'operations', description: 'View the Live Operations control center (active orders, KDS, waiter/cashier workload, POS sessions, alerts)' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -252,6 +257,11 @@ export async function seedInitialData() {
   }
 
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_dine_service_charge','DINE_IN_SERVICE_CHARGE_PERCENT','10','number','Server-calculated service charge percentage for DINE_IN orders only.',now,now]);
+  // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
+  // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
+  // existing Settings screen; read server-side by /api/operations/live.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_kds_warning_minutes','KDS_PREP_WARNING_MINUTES','15','number','Minutes an order may stay in PREPARING before Live Operations flags it WARNING.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_kds_delayed_minutes','KDS_PREP_DELAYED_MINUTES','25','number','Minutes an order may stay in PREPARING before Live Operations flags it DELAYED.',now,now]);
 
   // 3. No demo franchises, branches, employees or operational users are created here.
   // BOOM OS starts empty by design. Real entities are created by the owner/authorized managers.

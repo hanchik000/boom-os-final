@@ -16,6 +16,7 @@ export const ru = {
   "nav.receiptSettings": "Дизайн чека",
   "nav.creditReports": "Кредит / Долги",
   "nav.commandCenter": "Центр управления",
+  "nav.liveOperations": "Живые операции",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

@@ -25,6 +25,7 @@ import { CashierPOSView } from './components/CashierPOSView';
 import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
+import { LiveOperationsView } from './components/LiveOperationsView';
 
 function MainLayout() {
   const publicScreen = new URLSearchParams(window.location.search).get('screen');
@@ -117,6 +118,8 @@ function MainLayout() {
         return { title: t('nav.creditReports'), subtitle: language === 'ru' ? 'Кредитные счета клиентов и сотрудников, задолженность и погашения' : 'Müşderi we işgär kredit hasaplary, bergi we üzülmeler' };
       case 'commandCenter':
         return { title: t('nav.commandCenter'), subtitle: language === 'ru' ? 'Продажи, касса, кухня, официанты, кассиры, склад и персонал в реальном времени' : 'Hakyky wagtda satuw, kassa, aşhana, ofisiantlar, kassirler, ammar we işgärler' };
+      case 'liveOperations':
+        return { title: t('nav.liveOperations'), subtitle: language === 'ru' ? 'Активные заказы, кухня, нагрузка официантов и кассиров прямо сейчас' : 'Häzirki wagtda işjeň sargytlar, aşhana, ofisiant we kassir ýüki' };
       case 'inventory':
         return { title: language === 'ru' ? 'Склад и Inventory' : 'Ammar we Inventory', subtitle: language === 'ru' ? 'Остатки, рецептуры, поставщики и складские движения' : 'Galyndylar, reseptler, üpjün edijiler we ammar hereketleri' };
       case 'settings':
@@ -180,6 +183,7 @@ function MainLayout() {
           {currentTab === 'receiptSettings' && <ReceiptSettingsView />}
           {currentTab === 'creditReports' && <CreditReportsView />}
           {currentTab === 'commandCenter' && <ManagerCommandCenterView onNavigate={(tab) => setCurrentTab(tab)} />}
+          {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}

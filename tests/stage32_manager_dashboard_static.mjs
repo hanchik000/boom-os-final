@@ -58,7 +58,10 @@ check('delay alert requires at least 3 real samples before it fires (never guess
 
 // --- seed: new permission, granted to the same manager roles as the rest of Stage 31/32 infra
 check('dashboard.view permission is seeded', /code: 'dashboard\.view'/.test(seedTs));
-check('dashboard.view granted to Owner/SuperAdmin/GeneralManager/BranchManager (the same role set as credit.reports)', /'credit\.manage_limit','credit\.reports','dashboard\.view'\]/.test(seedTs));
+check('dashboard.view granted to Owner/SuperAdmin/GeneralManager/BranchManager (the same role set as credit.reports)', (() => {
+  const m = seedTs.match(/const stage17RolePerms = \[([^\]]*)\];/);
+  return !!m && m[1].includes("'dashboard.view'") && m[1].includes("'credit.reports'");
+})());
 
 // --- frontend: one client method, one new view, wired through the existing Sidebar/nav pattern
 check('api.ts has exactly one getManagerDashboard client method', (apiTs.match(/getManagerDashboard:/g) || []).length === 1);
