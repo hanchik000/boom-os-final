@@ -222,10 +222,15 @@ export async function seedInitialData() {
   if (roleWaiter) {
     for (const code of ['pos.access','menu.view','tables.view','orders.create','orders.item_remove.request']) { const p=allPerms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_waiter_${code.replace(/[^a-z0-9]/gi,'_')}`,roleWaiter.id,p.id,now]); }
   }
-  // Cashier permissions: branches.view + order confirmation/view.
+  // Cashier permissions: branches.view + order confirmation/view. 'pos.operator' is required
+  // because requireOperatorPosSession (operator-pos.ts) demands the short-lived POS session
+  // token specifically from CASHIER-role callers, and /operator-pos/unlock -- the only way to
+  // obtain that token -- itself requires 'pos.operator'. Without this grant a CASHIER account
+  // can never unlock a session and payments.create becomes permanently unreachable for it,
+  // even though CASHIER already holds payments.create itself (Stage 28 runtime-confirmed).
   if (roleCashier) {
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close']) {
-      const p = allPerms.find(x => x.code === code); if (!p) continue;
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator']) {
+      const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }
   }

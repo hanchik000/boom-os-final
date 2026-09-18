@@ -53,7 +53,8 @@
     "test:stage26": "node tests/stage26_rbac_confidentiality_static.mjs",
     "test:e2e:rbacconfid": "node tests/stage26_rbac_confidentiality_e2e.mjs",
     "test:stage27.5": "node tests/stage27_phase25_p1_fixes_static.mjs",
-    "test:e2e:stage27.5": "node tests/stage27_phase25_p1_fixes_e2e.mjs"
+    "test:e2e:stage27.5": "node tests/stage27_phase25_p1_fixes_e2e.mjs",
+    "test:e2e:stage28.5": "node tests/stage28_5_cashier_pos_operator_e2e.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
