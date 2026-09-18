@@ -34,6 +34,7 @@ import kpiRouter from './server/routes/kpi';
 import operatorPosRouter from './server/routes/operator-pos';
 import printRouter from './server/routes/print';
 import publicMenuRouter from './server/routes/public-menu';
+import creditRouter from './server/routes/credit';
 import { enableAsyncErrorForwarding } from './server/async-errors';
 
 async function startServer() {
@@ -157,6 +158,7 @@ async function startServer() {
   app.use('/api/kpi', kpiRouter);
   app.use('/api/operator-pos', operatorPosRouter);
   app.use('/api/print', printRouter);
+  app.use('/api/credit', creditRouter);
   app.use('/api/franchises', franchisesRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/roles', rolesRouter);

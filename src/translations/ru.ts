@@ -14,6 +14,7 @@ export const ru = {
   "nav.orders": "Согласования заказов",
   "nav.cashierPos": "Касса",
   "nav.receiptSettings": "Дизайн чека",
+  "nav.creditReports": "Кредит / Долги",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

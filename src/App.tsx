@@ -23,6 +23,7 @@ import { OperationsView } from './components/OperationsView';
 import { CustomerMenuView } from './components/CustomerMenuView';
 import { CashierPOSView } from './components/CashierPOSView';
 import { ReceiptSettingsView } from './components/ReceiptSettingsView';
+import { CreditReportsView } from './components/CreditReportsView';
 
 function MainLayout() {
   const publicScreen = new URLSearchParams(window.location.search).get('screen');
@@ -111,6 +112,8 @@ function MainLayout() {
         return { title: t('nav.cashierPos'), subtitle: language === 'ru' ? 'Рабочее место кассира: заказы, оплата, чеки' : 'Kassir iş orny: sargytlar, töleg, çekler' };
       case 'receiptSettings':
         return { title: t('nav.receiptSettings'), subtitle: language === 'ru' ? 'Логотип, поля и формат печати чека по филиалу' : 'Şahamça boýunça logo, meýdanlar we çap formaty' };
+      case 'creditReports':
+        return { title: t('nav.creditReports'), subtitle: language === 'ru' ? 'Кредитные счета клиентов и сотрудников, задолженность и погашения' : 'Müşderi we işgär kredit hasaplary, bergi we üzülmeler' };
       case 'inventory':
         return { title: language === 'ru' ? 'Склад и Inventory' : 'Ammar we Inventory', subtitle: language === 'ru' ? 'Остатки, рецептуры, поставщики и складские движения' : 'Galyndylar, reseptler, üpjün edijiler we ammar hereketleri' };
       case 'settings':
@@ -172,6 +175,7 @@ function MainLayout() {
           {currentTab === 'operations' && <OperationsView />}
           {currentTab === 'cashierPos' && <CashierPOSView />}
           {currentTab === 'receiptSettings' && <ReceiptSettingsView />}
+          {currentTab === 'creditReports' && <CreditReportsView />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}

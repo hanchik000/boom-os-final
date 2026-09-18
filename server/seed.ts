@@ -203,10 +203,16 @@ export async function seedInitialData() {
     // runs (see requireWaiterCodeManager's own stated intent: GM/BM/Owner/SuperAdmin). It was
     // never registered as a grantable permission at all, silently locking the whole router to
     // superusers only -- add it alongside the waiter-status permissions it gates together with.
-    { id: 'perm_waiter_codes_manage', code: 'waiter_codes.manage', name: 'Manage Waiter POS Codes', module: 'waiters', description: 'List waiters and issue, revoke or view waiter POS access codes and status' }
+    { id: 'perm_waiter_codes_manage', code: 'waiter_codes.manage', name: 'Manage Waiter POS Codes', module: 'waiters', description: 'List waiters and issue, revoke or view waiter POS access codes and status' },
+    // Credit Mode (receivables): customer/staff credit accounts and their transaction ledger.
+    { id: 'perm_credit_view', code: 'credit.view', name: 'View Credit Accounts', module: 'credit', description: 'View credit accounts, balances and transaction history' },
+    { id: 'perm_credit_issue', code: 'credit.issue', name: 'Issue Credit', module: 'credit', description: 'Settle an order as a customer or staff credit sale' },
+    { id: 'perm_credit_repay', code: 'credit.repay', name: 'Record Credit Repayment', module: 'credit', description: 'Record a full or partial repayment against a credit account' },
+    { id: 'perm_credit_manage_limit', code: 'credit.manage_limit', name: 'Manage Credit Limits', module: 'credit', description: 'Set credit limits, approve over-limit sales and payroll deductions, and post adjustments' },
+    { id: 'perm_credit_reports', code: 'credit.reports', name: 'View Credit Reports', module: 'credit', description: 'View receivables and credit reports across the branch' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -232,7 +238,10 @@ export async function seedInitialData() {
     // print.view/execute/reprint let the cashier preview and print/reprint receipts for their
     // own branch (Stage 29 Cashier POS); print.manage (receipt design settings) intentionally
     // stays manager-only, matching the existing grant to GENERAL_MANAGER/BRANCH_MANAGER above.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint']) {
+    // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
+    // within their own approved limit; credit.manage_limit (set limits, approve over-limit
+    // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }

@@ -9,6 +9,7 @@ const schema = fs.readFileSync(new URL('../prisma/schema.prisma', import.meta.ur
 const cashierView = fs.readFileSync(new URL('../src/components/CashierPOSView.tsx', import.meta.url), 'utf8');
 const receiptSettings = fs.readFileSync(new URL('../src/components/ReceiptSettingsView.tsx', import.meta.url), 'utf8');
 const apiTs = fs.readFileSync(new URL('../src/api.ts', import.meta.url), 'utf8');
+const payments = fs.readFileSync(new URL('../server/routes/payments.ts', import.meta.url), 'utf8');
 
 let passed = 0;
 function check(label, cond) { assert.ok(cond, `FAILED: ${label}`); passed++; }
@@ -44,7 +45,14 @@ check("CASHIER still NOT granted payments.refund anywhere in its block", !/'paym
 // --- frontend: no refund action for CASHIER, real backend methods only, server-authoritative totals
 check("CashierPOSView never calls refundPayment", !/refundPayment/.test(cashierView));
 check("CashierPOSView sends the real POS session token on payment", /createPayment\(\{[\s\S]{0,300}posToken/.test(cashierView));
-check("CashierPOSView payment methods come from the real backend set", /PAYMENT_METHODS = \['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER'\]/.test(cashierView));
+check("CashierPOSView payment methods come from the real backend set", (() => {
+  const frontendMatch = cashierView.match(/PAYMENT_METHODS = \[([^\]]*)\]/);
+  const backendMatch = payments.match(/METHODS=new Set\(\[([^\]]*)\]\)/);
+  if (!frontendMatch || !backendMatch) return false;
+  const frontendMethods = frontendMatch[1].split(',').map(s => s.trim().replace(/'/g, ''));
+  const backendMethods = backendMatch[1].split(',').map(s => s.trim().replace(/'/g, ''));
+  return frontendMethods.length > 0 && frontendMethods.every(m => backendMethods.includes(m));
+})());
 check("CashierPOSView does not locally compute totals (uses detail.final_amount / subtotal / service_charge from the server)", /detail\.final_amount/.test(cashierView) && !/subtotal\s*\*|final_amount\s*=\s*subtotal/.test(cashierView));
 check("Print action creates a real print job (audit-tracked), not a fake client-only print", /createPrintJob/.test(cashierView));
 check("Reprint action uses the real reprint endpoint", /reprintJob/.test(cashierView));
@@ -64,6 +72,6 @@ check("api.ts exposes unlockOperatorPos", /unlockOperatorPos:/.test(apiTs));
 check("api.ts exposes lockOperatorPos", /lockOperatorPos:/.test(apiTs));
 check("api.ts exposes updateOrderNotes", /updateOrderNotes:/.test(apiTs));
 check("api.ts exposes updateOrderItemNote", /updateOrderItemNote:/.test(apiTs));
-check("api.ts createPayment supports an optional POS session token header", /createPayment:[\s\S]{0,260}X-Pos-Session-Token/.test(apiTs));
+check("api.ts createPayment supports an optional POS session token header", /createPayment:[\s\S]{0,320}X-Pos-Session-Token/.test(apiTs));
 
 console.log(`STAGE 29 CASHIER POS + RECEIPT STATIC: PASS (${passed}/${passed} checks)`);

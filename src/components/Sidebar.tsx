@@ -20,13 +20,14 @@ import {
   ClipboardCheck,
   MonitorCog,
   CreditCard,
-  Printer
+  Printer,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
     { id: 'cashierPos', key: 'nav.cashierPos', icon: CreditCard, permission: 'payments.create' },
     { id: 'receiptSettings', key: 'nav.receiptSettings', icon: Printer, permission: 'print.manage' },
     { id: 'orderApprovals', key: 'nav.orders', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
+    { id: 'creditReports', key: 'nav.creditReports', icon: Wallet, permission: 'credit.reports' },
     { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },
     { id: 'audit', key: 'nav.audit', icon: History, permission: 'audit.view' },
   ];

@@ -13,7 +13,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 const POS_TOKEN_KEY = 'boom_cashier_pos_token';
 const POS_BRANCH_KEY = 'boom_cashier_pos_branch';
-const PAYMENT_METHODS = ['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER'];
+const PAYMENT_METHODS = ['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER', 'CREDIT'];
 const QUICK_NOTES_RU = ['Без лука', 'Без соли', 'Соус отдельно', 'Острый соус', 'Без кетчупа', 'Без майонеза'];
 const QUICK_NOTES_TK = ['Sogansyz', 'Duzsuz', 'Sous aýratyn', 'Ýiti sous', 'Ketçupsyz', 'Maýonezsiz'];
 
@@ -44,6 +44,12 @@ function friendlyError(e: any, ru: boolean): string {
     SHIFT_NOT_OPEN: ['Смена уже закрыта.', 'Çalyşyk eýýäm ýapyk.'],
     INVALID_CREDENTIALS: ['Неверный пароль.', 'Nädogry parol.'],
     INVALID_OPERATOR_PASSWORD: ['Неверный пароль.', 'Nädogry parol.'],
+    CREDIT_ACCOUNT_REQUIRED: ['Выберите клиента или сотрудника для кредита.', 'Kredit üçin müşderini ýa-da işgäri saýlaň.'],
+    CREDIT_ACCOUNT_NOT_FOUND: ['Кредитный счёт не найден.', 'Kredit hasaby tapylmady.'],
+    CREDIT_LIMIT_EXCEEDED: ['Превышен кредитный лимит. Требуется менеджер.', 'Kredit çägi aşyldy. Menejer gerek.'],
+    CREDIT_ISSUE_PERMISSION_REQUIRED: ['Нет прав на выдачу кредита.', 'Kredit bermäge rugsat ýok.'],
+    REPAYMENT_EXCEEDS_BALANCE: ['Сумма погашения больше долга.', 'Üzülýän mukdar bergiden köp.'],
+    PAYROLL_DEDUCTION_REQUIRES_APPROVAL: ['Удержание из зарплаты требует менеджера.', 'Aýlykdan tutma menejeri talap edýär.'],
   };
   const found = map[code];
   if (found) return ru ? found[0] : found[1];
@@ -215,6 +221,50 @@ export const CashierPOSView: React.FC = () => {
   const [successPayment, setSuccessPayment] = useState<any | null>(null);
   const [successOrder, setSuccessOrder] = useState<any | null>(null);
 
+  // ---- Credit sale sub-flow (CUSTOMER or STAFF receivable, settles through the same payment)
+  const [creditKind, setCreditKind] = useState<'CUSTOMER' | 'EMPLOYEE'>('CUSTOMER');
+  const [creditPhone, setCreditPhone] = useState('');
+  const [creditName, setCreditName] = useState('');
+  const [creditEmployeeSearch, setCreditEmployeeSearch] = useState('');
+  const [creditEmployeeResults, setCreditEmployeeResults] = useState<any[]>([]);
+  const [creditAccount, setCreditAccount] = useState<any | null>(null); // {account, owner, available_credit}
+  const [creditBusy, setCreditBusy] = useState(false);
+  const [creditError, setCreditError] = useState('');
+
+  const resetCreditFlow = () => {
+    setCreditKind('CUSTOMER'); setCreditPhone(''); setCreditName(''); setCreditEmployeeSearch('');
+    setCreditEmployeeResults([]); setCreditAccount(null); setCreditError('');
+  };
+
+  const searchCreditEmployees = async (q: string) => {
+    setCreditEmployeeSearch(q);
+    if (q.trim().length < 2) { setCreditEmployeeResults([]); return; }
+    try { const r = await api.getEmployees({ branch_id: branchId, search: q }); setCreditEmployeeResults(r.employees || []); } catch { /* ignore */ }
+  };
+
+  const resolveCreditCustomer = async () => {
+    if (creditBusy || !creditPhone.trim() || !creditName.trim()) return;
+    setCreditBusy(true); setCreditError('');
+    try {
+      const c = await api.createCustomer({ branch_id: branchId, name: creditName.trim(), phone: creditPhone.trim() });
+      const a = await api.createCreditAccount({ branch_id: branchId, type: 'CUSTOMER', customer_id: c.customer.id });
+      const full = await api.getCreditAccount(a.account.id);
+      setCreditAccount(full);
+    } catch (e: any) { setCreditError(friendlyError(e, ru)); }
+    finally { setCreditBusy(false); }
+  };
+
+  const resolveCreditEmployee = async (employeeId: string) => {
+    if (creditBusy) return;
+    setCreditBusy(true); setCreditError('');
+    try {
+      const a = await api.createCreditAccount({ branch_id: branchId, type: 'EMPLOYEE', employee_id: employeeId });
+      const full = await api.getCreditAccount(a.account.id);
+      setCreditAccount(full);
+    } catch (e: any) { setCreditError(friendlyError(e, ru)); }
+    finally { setCreditBusy(false); }
+  };
+
   function payBlockedReason(o: any): string | null {
     if (!o) return null;
     if (isCashierRole && !posToken) return ru ? 'Требуется POS-сессия. Разблокируйте POS.' : 'POS sessiýasy gerek. POS-y açyň.';
@@ -226,13 +276,15 @@ export const CashierPOSView: React.FC = () => {
 
   const pay = async () => {
     if (!detail || paying) return;
+    if (payMethod === 'CREDIT' && !creditAccount) { setPayError(friendlyError({ code: 'CREDIT_ACCOUNT_REQUIRED' }, ru)); return; }
     setPaying(true); setPayError('');
     const idemKey = `cashier-pay-${detail.id}`;
     try {
-      const r = await api.createPayment({ order_id: detail.id, method: payMethod, amount: String(detail.final_amount) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
+      const r = await api.createPayment({ order_id: detail.id, method: payMethod, amount: String(detail.final_amount), ...(payMethod === 'CREDIT' && creditAccount ? { credit_account_id: creditAccount.account.id } : {}) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
       setSuccessPayment(r.payment);
       setSuccessOrder(detail);
       setPayDialogOpen(false);
+      if (payMethod === 'CREDIT' && creditAccount) { try { setCreditAccount(await api.getCreditAccount(creditAccount.account.id)); } catch { /* best-effort refresh */ } }
       await Promise.all([loadOrders(true), loadShift()]);
       if (detail) await loadDetail(detail.id);
     } catch (e: any) {
@@ -462,7 +514,7 @@ export const CashierPOSView: React.FC = () => {
                     <button className="btn flex-1 flex items-center justify-center gap-1.5" onClick={() => void openReceipt(detail, selectedPaid)}><ReceiptIcon className="w-4 h-4" /> {ru ? 'Чек' : 'Çek'}</button>
                   </div>
                 ) : (
-                  <button className="btn w-full bg-emerald-500 text-slate-950 font-bold py-2.5" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayMethod('CASH'); setPayError(''); setPayDialogOpen(true); }}>
+                  <button className="btn w-full bg-emerald-500 text-slate-950 font-bold py-2.5" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>
                     {ru ? `ОПЛАТИТЬ ${money(detail.final_amount)}` : `TÖLEG ${money(detail.final_amount)}`}
                   </button>
                 )}
@@ -543,11 +595,52 @@ export const CashierPOSView: React.FC = () => {
                 ))}
               </div>
             </div>
+            {payMethod === 'CREDIT' && (
+              <div className="space-y-2 border-t border-slate-800 pt-3">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button className={`py-1.5 rounded text-xs font-semibold ${creditKind === 'CUSTOMER' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`} onClick={() => { setCreditKind('CUSTOMER'); setCreditAccount(null); }}>{ru ? 'КЛИЕНТ' : 'MÜŞDERI'}</button>
+                  <button className={`py-1.5 rounded text-xs font-semibold ${creditKind === 'EMPLOYEE' ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`} onClick={() => { setCreditKind('EMPLOYEE'); setCreditAccount(null); }}>{ru ? 'СОТРУДНИК' : 'IŞGÄR'}</button>
+                </div>
+                {!creditAccount && creditKind === 'CUSTOMER' && (
+                  <div className="space-y-1.5">
+                    <input className="field text-xs" placeholder={ru ? 'Телефон' : 'Telefon'} value={creditPhone} onChange={e => setCreditPhone(e.target.value)} />
+                    <input className="field text-xs" placeholder={ru ? 'Имя' : 'Ady'} value={creditName} onChange={e => setCreditName(e.target.value)} />
+                    <button className="btn w-full text-xs" disabled={creditBusy || !creditPhone.trim() || !creditName.trim()} onClick={() => void resolveCreditCustomer()}>{creditBusy ? '…' : (ru ? 'Найти / создать клиента' : 'Müşderini tap / döret')}</button>
+                  </div>
+                )}
+                {!creditAccount && creditKind === 'EMPLOYEE' && (
+                  <div className="space-y-1.5">
+                    <input className="field text-xs" placeholder={ru ? 'Поиск сотрудника' : 'Işgäri gözle'} value={creditEmployeeSearch} onChange={e => void searchCreditEmployees(e.target.value)} />
+                    {creditEmployeeResults.length > 0 && (
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {creditEmployeeResults.map((emp: any) => (
+                          <button key={emp.id} disabled={creditBusy} className="w-full text-left text-xs bg-slate-800 hover:bg-slate-700 rounded px-2 py-1.5 text-slate-200" onClick={() => void resolveCreditEmployee(emp.id)}>{emp.full_name}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {creditAccount && (
+                  <div className="rounded-lg bg-slate-800/60 p-2.5 text-xs space-y-1">
+                    <div className="font-semibold text-white">{creditAccount.owner?.name || creditAccount.owner?.full_name} {creditAccount.owner?.phone ? `· ${creditAccount.owner.phone}` : ''}</div>
+                    <div className="flex justify-between text-slate-400"><span>{ru ? 'Лимит' : 'Çäk'}</span><span>{money(creditAccount.account.credit_limit)}</span></div>
+                    <div className="flex justify-between text-slate-400"><span>{ru ? 'Текущий долг' : 'Häzirki bergi'}</span><span>{money(creditAccount.account.current_balance)}</span></div>
+                    <div className="flex justify-between text-slate-400"><span>{ru ? 'Доступно' : 'Elýeterli'}</span><span>{money(creditAccount.available_credit)}</span></div>
+                    <div className="flex justify-between text-white font-bold pt-1 border-t border-slate-700"><span>{ru ? 'Новый долг' : 'Täze bergi'}</span><span>{money(Number(creditAccount.account.current_balance) + Number(detail.final_amount))}</span></div>
+                    {Number(detail.final_amount) > Number(creditAccount.available_credit) && (
+                      <div className="text-amber-400">{hasPermission('credit.manage_limit') ? (ru ? 'Превышение лимита — разрешено менеджеру.' : 'Çäk aşyldy — menejer üçin rugsat edilýär.') : (ru ? 'Превышение лимита. Требуется менеджер.' : 'Çäk aşyldy. Menejer gerek.')}</div>
+                    )}
+                    <button className="btn w-full text-xs mt-1" onClick={() => setCreditAccount(null)}>{ru ? 'Изменить' : 'Üýtget'}</button>
+                  </div>
+                )}
+                {creditError && <div className="text-red-400 text-xs">{creditError}</div>}
+              </div>
+            )}
             {payError && <div className="text-red-400 text-xs">{payError}</div>}
             <div className="flex gap-2 justify-end">
               <button className="btn bg-slate-800 text-slate-200" disabled={paying} onClick={() => setPayDialogOpen(false)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-              <button className="btn bg-emerald-500 text-slate-950 flex items-center gap-1.5" disabled={paying} onClick={() => void pay()}>
-                {paying ? <><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'ОПЛАТА…' : 'TÖLENÝÄR…'}</> : <><CheckCircle2 className="w-4 h-4" /> {ru ? 'ПОДТВЕРДИТЬ' : 'TASSYKLA'}</>}
+              <button className="btn bg-emerald-500 text-slate-950 flex items-center gap-1.5" disabled={paying || (payMethod === 'CREDIT' && !creditAccount)} onClick={() => void pay()}>
+                {paying ? <><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'ОПЛАТА…' : 'TÖLENÝÄR…'}</> : <><CheckCircle2 className="w-4 h-4" /> {payMethod === 'CREDIT' ? (ru ? 'ПОДТВЕРДИТЬ КРЕДИТ' : 'KREDITI TASSYKLA') : (ru ? 'ПОДТВЕРДИТЬ' : 'TASSYKLA')}</>}
               </button>
             </div>
           </div>
@@ -563,9 +656,16 @@ export const CashierPOSView: React.FC = () => {
             <p className="text-slate-400 text-sm">{ru ? 'Заказ' : 'Sargyt'} #{successOrder.order_number}</p>
             <div className="text-3xl font-black text-white">{money(successPayment.amount)} {successOrder.currency}</div>
             <div className="text-xs text-slate-500">{successPayment.method} · {fmtTime(successPayment.created_at)}</div>
+            {successPayment.method === 'CREDIT' && creditAccount && (
+              <div className="rounded-lg bg-slate-800/60 p-2.5 text-xs space-y-1 text-left">
+                <div className="font-semibold text-white">{creditAccount.owner?.name || creditAccount.owner?.full_name}</div>
+                <div className="flex justify-between text-slate-400"><span>{ru ? 'Новый долг' : 'Täze bergi'}</span><span>{money(creditAccount.account.current_balance)}</span></div>
+                <div className="flex justify-between text-slate-400"><span>{ru ? 'Доступно' : 'Elýeterli'}</span><span>{money(creditAccount.available_credit)}</span></div>
+              </div>
+            )}
             <div className="flex gap-2 pt-2">
               <button className="btn flex-1 flex items-center justify-center gap-1.5" onClick={() => { void openReceipt(successOrder, successPayment); }}><Printer className="w-4 h-4" /> {ru ? 'ЧЕК' : 'ÇEK'}</button>
-              <button className="btn flex-1 bg-amber-500 text-slate-950" onClick={() => { setSuccessPayment(null); setSuccessOrder(null); setSelectedId(null); }}>{ru ? 'НОВЫЙ ЗАКАЗ' : 'TÄZE SARGYT'}</button>
+              <button className="btn flex-1 bg-amber-500 text-slate-950" onClick={() => { setSuccessPayment(null); setSuccessOrder(null); setSelectedId(null); resetCreditFlow(); }}>{ru ? 'НОВЫЙ ЗАКАЗ' : 'TÄZE SARGYT'}</button>
             </div>
           </div>
         </div>
@@ -601,6 +701,13 @@ export const CashierPOSView: React.FC = () => {
             {show('show_service_charge') && Number(receiptOrder.service_charge) > 0 && <div className="flex justify-between"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money(receiptOrder.service_charge)}</span></div>}
             <div className="flex justify-between font-bold text-sm border-t border-slate-400 pt-1 mt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(receiptOrder.final_amount)}</span></div>
             {show('show_payment_method') && receiptPayment && <div className="flex justify-between mt-1"><span>{ru ? 'Оплата' : 'Töleg'}</span><span>{receiptPayment.method}</span></div>}
+            {receiptPayment?.method === 'CREDIT' && creditAccount && (
+              <div className="mt-1 pl-2 text-[10px] space-y-0.5">
+                <div>{creditAccount.account.type === 'CUSTOMER' ? (ru ? 'Клиент' : 'Müşderi') : (ru ? 'Сотрудник' : 'Işgär')}: {creditAccount.owner?.name || creditAccount.owner?.full_name} {creditAccount.owner?.phone ? `(${creditAccount.owner.phone})` : ''}</div>
+                <div className="flex justify-between"><span>{ru ? 'Сумма в кредит' : 'Kredit mukdary'}</span><span>{money(receiptPayment.amount)}</span></div>
+                <div className="flex justify-between"><span>{ru ? 'Текущий долг' : 'Häzirki bergi'}</span><span>{money(creditAccount.account.current_balance)}</span></div>
+              </div>
+            )}
             {show('show_customer_note') && receiptOrder.notes && <div className="mt-2 italic">{receiptOrder.notes}</div>}
             <div className="border-t border-dashed border-slate-400 my-2" />
             {config.footer_text && <div className="text-center">{config.footer_text}</div>}

@@ -16,6 +16,7 @@ export const tk: Record<keyof typeof ru, string> = {
   "nav.orders": "Sargyt tassyklamalary",
   "nav.cashierPos": "Kassa",
   "nav.receiptSettings": "Çek dizaýny",
+  "nav.creditReports": "Kredit / Bergiler",
   "nav.tests": "Kabul ediş synaglary",
 
   // Header & User
