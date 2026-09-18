@@ -227,7 +227,7 @@ router.put('/:id', requirePermission('branches.update'), requireBranchAccess(req
 });
 
 // DELETE /api/branches/:id (Deactivate branch)
-router.delete('/:id', requirePermission('branches.delete'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/:id', requirePermission('branches.delete'), requireBranchAccess(req => req.params.id), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const branch = await queryOne<{ id: string; name: string; code: string }>('SELECT id, name, code FROM branches WHERE id = ?', [id]);
 

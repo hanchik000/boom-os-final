@@ -13,6 +13,19 @@ const router = Router();
 router.use(authenticateToken);
 
 // GET /api/users
+// Branch scope for a target employee. Mirrors the check GET /:id and PUT /:id already
+// apply, so every employee-scoped route denies identically instead of each route
+// re-deriving the rule (or omitting it).
+function denyIfForeignBranch(req: Request, res: Response, target: { id: string; branch_id: string | null }): boolean {
+  const u = req.user!;
+  if (u.isSuperUser || target.id === u.id) return false;
+  if (target.branch_id && !u.allowedBranchIds.includes(target.branch_id)) {
+    res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'User belongs to an unauthorized branch.' });
+    return true;
+  }
+  return false;
+}
+
 router.get('/', requirePermission('users.view'), async (req: Request, res: Response): Promise<void> => {
   const { branch_id, search, status, role } = req.query;
   const currentUser = req.user!;
@@ -551,6 +564,7 @@ router.get('/:id/status', requirePermission('users.view'), async (req: Request, 
     res.status(404).json({ error: 'NOT_FOUND', message: 'Employee not found.' });
     return;
   }
+  if (denyIfForeignBranch(req, res, user)) return;
 
   res.json({
     user_id: user.id,
@@ -599,6 +613,7 @@ router.put('/:id/status', requirePermission('users.update'), async (req: Request
     res.status(404).json({ error: 'NOT_FOUND', message: 'Employee not found.' });
     return;
   }
+  if (denyIfForeignBranch(req, res, existing)) return;
 
   const newEmployment = employment_status || existing.employment_status || 'ACTIVE';
   const newDisciplinary = disciplinary_status || existing.disciplinary_status || 'NONE';
@@ -688,11 +703,12 @@ router.put('/:id/status', requirePermission('users.update'), async (req: Request
 // GET /api/users/:id/status-history
 router.get('/:id/status-history', requirePermission('users.view'), async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
-  const user = await queryOne('SELECT id, full_name, email FROM users WHERE id = ?', [id]);
+  const user = await queryOne<any>('SELECT id, full_name, email, branch_id FROM users WHERE id = ?', [id]);
   if (!user) {
     res.status(404).json({ error: 'NOT_FOUND', message: 'Employee not found.' });
     return;
   }
+  if (denyIfForeignBranch(req, res, user)) return;
 
   const history = await query(
     'SELECT * FROM employee_status_history WHERE user_id = ? ORDER BY created_at DESC',
@@ -720,6 +736,7 @@ router.delete('/:id', requirePermission('users.delete'), async (req: Request, re
     res.status(404).json({ error: 'NOT_FOUND', message: 'User not found.' });
     return;
   }
+  if (denyIfForeignBranch(req, res, user)) return;
 
   // Check if user is the sole OWNER
   const ownerRole = await queryOne<{ id: string }>('SELECT id FROM roles WHERE code = ?', ['OWNER']);
@@ -796,6 +813,7 @@ router.get('/:id/branch-access', requirePermission('users.view'), async (req: Re
     res.status(404).json({ error: 'NOT_FOUND', message: 'User not found.' });
     return;
   }
+  if (denyIfForeignBranch(req, res, user)) return;
 
   // Get user roles
   const roles = await query<{ code: string }>(
@@ -877,6 +895,25 @@ router.put('/:id/branch-access', requirePermission('users.update'), async (req: 
   if (!existingUser) {
     res.status(404).json({ error: 'NOT_FOUND', message: 'User not found.' });
     return;
+  }
+  if (denyIfForeignBranch(req, res, existingUser)) return;
+
+  // Branch access defines the isolation boundary, so a non-superuser may never widen it
+  // beyond their own scope — for themselves or anyone else. Same idiom as POST / and PUT /:id.
+  if (!req.user!.isSuperUser) {
+    if (has_all_access) {
+      res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Only a superuser may grant access to all branches.', details: {} });
+      return;
+    }
+    const requested = Array.from(new Set<string>([
+      ...((primary_branch_id !== undefined && primary_branch_id) ? [String(primary_branch_id)] : []),
+      ...(Array.isArray(allowed_branch_ids) ? allowed_branch_ids.map(String) : [])
+    ]));
+    const unauthorized = requested.filter(b => !req.user!.allowedBranchIds.includes(b));
+    if (unauthorized.length) {
+      res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Cannot assign a user to a branch outside your access scope.', details: { branch_ids: unauthorized } });
+      return;
+    }
   }
 
   const now = new Date().toISOString();
