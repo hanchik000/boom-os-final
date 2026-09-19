@@ -218,7 +218,7 @@ export const api = {
   updateOrderNotes: (id:string, data:{ customer_note?:string|null; internal_note?:string|null }) => request<{ order:any }>(`/api/orders/${id}/notes`,{method:'PATCH',body:JSON.stringify(data)}),
   updateOrderItemNote: (orderId:string, itemId:string, comment:string|null) => request<{ item:any }>(`/api/orders/${orderId}/items/${itemId}/note`,{method:'PATCH',body:JSON.stringify({comment})}),
   getPayments: (params?: { branch_id?: string }) => { const q=new URLSearchParams(); if(params?.branch_id) q.set('branch_id',params.branch_id); return request<{payments:any[]}>(`/api/payments?${q.toString()}`); },
-  createPayment: (data:{order_id:string;method:string;amount:string;credit_account_id?:string},idempotencyKey:string,posSessionToken?:string) => request<{payment:any;replayed?:boolean}>('/api/payments',{method:'POST',headers:{'Idempotency-Key':idempotencyKey,...(posSessionToken?{'X-Pos-Session-Token':posSessionToken}:{})},body:JSON.stringify(data)}),
+  createPayment: (data:{order_id:string;bill_id?:string;method:string;amount:string;credit_account_id?:string},idempotencyKey:string,posSessionToken?:string) => request<{payment:any;replayed?:boolean}>('/api/payments',{method:'POST',headers:{'Idempotency-Key':idempotencyKey,...(posSessionToken?{'X-Pos-Session-Token':posSessionToken}:{})},body:JSON.stringify(data)}),
   refundPayment: (id:string) => request<{payment:any}>(`/api/payments/${id}/refund`,{method:'POST'}),
   // Credit mode (receivables)
   // Stage 34.3: one customer core. Listing and creating a guest go through /api/customers for every
@@ -300,9 +300,22 @@ export const api = {
   setOrderCustomer: (orderId:string, customerId:string|null) => request<{ order:any }>(`/api/orders/${orderId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
   setWaiterOrderCustomer: (orderId:string, customerId:string|null) => waiterRequest<{ order:any }>(`/api/orders/${orderId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
   getDiscountOptions: () => request<{ presets:string[]; max_percent:string }>('/api/orders/discount-options'),
-  applyOrderDiscount: (orderId:string, body:{ percent?:string; amount?:string; reason?:string|null }) => request<{ discount:any; order:any }>(`/api/orders/${orderId}/discount`, { method:'POST', body: JSON.stringify(body) }),
+  applyOrderDiscount: (orderId:string, body:{ percent?:string; amount?:string; reason?:string|null; bill_id?:string }) => request<{ discount:any; order:any }>(`/api/orders/${orderId}/discount`, { method:'POST', body: JSON.stringify(body) }),
   removeOrderDiscount: (orderId:string) => request<{ discount:any; order:any }>(`/api/orders/${orderId}/discount`, { method:'DELETE' }),
   getOrderDiscounts: (orderId:string) => request<{ order_id:string; discounts:any[] }>(`/api/orders/${orderId}/discounts`),
+
+  // Stage 34.4 -- split bill / separate checks. The order stays the single sale; the bills are a
+  // partition of it, and every amount below is the one the server computed.
+  getOrderBills: (orderId:string) => request<{ order_id:string; split_mode:string; order_final_amount:string; bills:any[]; unassigned_items:any[] }>(`/api/orders/${orderId}/bills`),
+  splitOrderBills: (orderId:string, mode:'ITEMS'|'EQUAL', count:number) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/split`, { method:'POST', body: JSON.stringify({ mode, count }) }),
+  moveBillItem: (orderId:string, orderItemId:string, billId:string|null, quantity?:number) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/move-item`, { method:'POST', body: JSON.stringify({ order_item_id: orderItemId, bill_id: billId, quantity }) }),
+  setBillCustomer: (orderId:string, billId:string, customerId:string|null) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/${billId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
+  voidBill: (orderId:string, billId:string) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/${billId}`, { method:'DELETE' }),
+  mergeOrderBills: (orderId:string) => request<{ split_mode:string; bills:any[] }>(`/api/orders/${orderId}/bills/merge`, { method:'POST', body: '{}' }),
+  getWaiterOrderBills: (orderId:string) => waiterRequest<{ order_id:string; split_mode:string; order_final_amount:string; bills:any[]; unassigned_items:any[] }>(`/api/orders/${orderId}/bills`),
+  splitWaiterOrderBills: (orderId:string, mode:'ITEMS'|'EQUAL', count:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/split`, { method:'POST', body: JSON.stringify({ mode, count }) }),
+  moveWaiterBillItem: (orderId:string, orderItemId:string, billId:string|null, quantity?:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/move-item`, { method:'POST', body: JSON.stringify({ order_item_id: orderItemId, bill_id: billId, quantity }) }),
+  mergeWaiterOrderBills: (orderId:string) => waiterRequest<{ split_mode:string; bills:any[] }>(`/api/orders/${orderId}/bills/merge`, { method:'POST', body: '{}' }),
 
   // Branches
   getBranches: (params?: { status?: string; search?: string }) => {

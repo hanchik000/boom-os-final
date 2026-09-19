@@ -196,6 +196,7 @@ model Branch {
   inventory_counts       InventoryCount[]
   order_closures         OrderClosure[]
   order_discounts        OrderDiscount[]
+  order_bills            OrderBill[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -491,6 +492,11 @@ model Order {
   // Stage 34.3: the guest this order belongs to. Attaching a customer NEVER applies a discount --
   // there is no discount field on a customer anywhere in this schema, by design.
   customer_id        String?
+  // Stage 34.4: how this order is settled. NONE = one bill for the whole order (the original
+  // behaviour). ITEMS = its items are divided between separate bills. EQUAL = its total is divided
+  // into equal shares. An order is in exactly ONE of these at a time, which is what makes
+  // double-counted revenue structurally impossible.
+  split_mode         String      @default("NONE")
 
   branch             Branch      @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   waiter             User?       @relation("WaiterOrders", fields: [waiter_user_id], references: [id], onDelete: SetNull)
@@ -504,6 +510,7 @@ model Order {
   credit_transactions CreditTransaction[]
   closures           OrderClosure[]
   discounts          OrderDiscount[]
+  bills              OrderBill[]
   service_charge_config ServiceChargeConfig? @relation(fields: [service_charge_config_id], references: [id], onDelete: SetNull)
   customer           Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
 
@@ -559,10 +566,41 @@ model OrderClosure {
 // row exists, and this row only exists because an authorised employee asked for it on that order.
 // The row is the audit-grade snapshot (customer, percentage, amount, employee, role, reason,
 // timestamp) and is never deleted -- removing a discount marks it REMOVED.
+// Stage 34.4: a separate check on one order. A table can carry several of these; the ORDER stays
+// the single sale (one order, N bills), so revenue is counted once while each guest settles their
+// own part with their own guest, discount, payment method and receipt.
+model OrderBill {
+  id             String   @id
+  branch_id      String
+  order_id       String
+  bill_number    Int
+  customer_id    String?
+  status         String   @default("OPEN") // OPEN | PAID | VOID
+  subtotal       Decimal  @db.Decimal(12, 2) @default(0)
+  discount       Decimal  @db.Decimal(12, 2) @default(0)
+  service_charge Decimal  @db.Decimal(12, 2) @default(0)
+  final_amount   Decimal  @db.Decimal(12, 2) @default(0)
+  created_at     String
+  updated_at     String
+  closed_at      String?
+
+  branch    Branch    @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order     Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  customer  Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  items     OrderItem[]
+  payments  Payment[]
+  discounts OrderDiscount[]
+
+  @@unique([order_id, bill_number], map: "uq_order_bills_order_number")
+  @@index([branch_id, status], map: "idx_order_bills_branch_status")
+  @@map("order_bills")
+}
+
 model OrderDiscount {
   id                 String   @id
   branch_id          String
   order_id           String
+  bill_id            String?
   customer_id        String?
   percent            Decimal? @db.Decimal(5, 2)
   amount             Decimal  @db.Decimal(12, 2)
@@ -577,9 +615,10 @@ model OrderDiscount {
   removed_by         String?
 
   branch     Branch    @relation(fields: [branch_id], references: [id], onDelete: Restrict)
-  order      Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
-  customer   Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
-  applied_by User?     @relation("OrderDiscountAppliedBy", fields: [applied_by_user_id], references: [id], onDelete: SetNull)
+  order      Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  bill       OrderBill? @relation(fields: [bill_id], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  applied_by User?      @relation("OrderDiscountAppliedBy", fields: [applied_by_user_id], references: [id], onDelete: SetNull)
 
   @@index([order_id, status], map: "idx_order_discounts_order_status")
   @@index([branch_id, created_at], map: "idx_order_discounts_branch_created")
@@ -589,6 +628,8 @@ model OrderDiscount {
 model OrderItem {
   id             String     @id
   order_id       String
+  // Stage 34.4: which separate check this line is settled on. Null while the order is not split.
+  bill_id        String?
   menu_item_id   String?
   title_snapshot String
   price_snapshot Decimal    @db.Decimal(12,2)
@@ -609,6 +650,7 @@ model OrderItem {
   created_at     String
 
   order          Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  bill           OrderBill? @relation(fields: [bill_id], references: [id], onDelete: SetNull)
   menu_item      MenuItem?  @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
   removal_approvals OrderItemRemovalApproval[]
   modifiers        OrderItemModifier[]
@@ -616,6 +658,7 @@ model OrderItem {
   @@index([order_id], map: "idx_order_items_order")
   @@index([menu_item_id], map: "idx_order_items_menu_item")
   @@index([order_id, status], map: "idx_order_items_order_status")
+  @@index([bill_id], map: "idx_order_items_bill")
   @@map("order_items")
 }
 
@@ -697,6 +740,8 @@ model CashShift {
 model Payment {
   id                 String   @id
   order_id           String
+  // Stage 34.4: which separate check this payment settles. Null when the order is not split.
+  bill_id            String?
   branch_id          String
   cash_shift_id      String?
   cashier_user_id    String
@@ -709,14 +754,16 @@ model Payment {
   updated_at         String
   refunded_at        String?
 
-  order              Order    @relation(fields: [order_id], references: [id], onDelete: Restrict)
-  branch             Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order              Order      @relation(fields: [order_id], references: [id], onDelete: Restrict)
+  bill               OrderBill? @relation(fields: [bill_id], references: [id], onDelete: SetNull)
+  branch             Branch     @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   cash_shift         CashShift? @relation(fields: [cash_shift_id], references: [id], onDelete: Restrict)
   cashier            User     @relation(fields: [cashier_user_id], references: [id], onDelete: Restrict)
   credit_transactions CreditTransaction[]
 
   @@unique([branch_id, idempotency_key], map: "payments_branch_idempotency_key_key")
   @@index([order_id, status], map: "idx_payments_order_status")
+  @@index([bill_id, status], map: "idx_payments_bill_status")
   @@index([branch_id, created_at], map: "idx_payments_branch_created")
   @@index([cash_shift_id], map: "idx_payments_shift")
   @@map("payments")
@@ -742,6 +789,7 @@ model Customer {
   credit_accounts CreditAccount[]
   orders          Order[]
   discounts       OrderDiscount[]
+  bills           OrderBill[]
 
   @@unique([branch_id, phone], map: "customers_branch_phone_key")
   @@index([branch_id], map: "idx_customers_branch")

@@ -177,6 +177,8 @@ export async function applyApprovedClosure(tx: TxClient, closure: any, actorUser
   const finalStatus = closure.type === 'CLOSED_BY_ESTABLISHMENT' ? 'CLOSED_BY_ESTABLISHMENT' : (refundedAny ? 'REFUNDED' : 'CANCELLED');
   await tx.execute(`UPDATE orders SET status=?,updated_at=? WHERE id=?`, [finalStatus, now, order.id]);
   await tx.execute(`UPDATE kds_tickets SET status='CANCELLED',updated_at=? WHERE order_id=? AND status<>'COMPLETED'`, [now, order.id]);
+  // Stage 34.4: a closed order has no open separate checks left to settle.
+  await tx.execute(`UPDATE order_bills SET status='VOID',updated_at=? WHERE order_id=? AND status='OPEN'`, [now, order.id]);
   if (order.table_id) await releaseTableIfNoActiveOrders(tx, order.table_id, order.branch_id, now);
 
   await tx.execute(`UPDATE order_closures SET status='APPROVED',approver_user_id=?,decided_at=?,inventory_applied=true,write_off_cost=CAST(? AS numeric),refund_payment_id=? WHERE id=? AND status='PENDING'`, [actorUserId, now, writeOffCost, refundPaymentId, closure.id]);

@@ -400,7 +400,32 @@ async function loadDiscountableOrder(tx: TxClient, req: Request, orderId: string
   return order;
 }
 
+/**
+ * Where a discount belongs. On a split order it is always one separate check (and the bill's own
+ * subtotal is the base); on an unsplit order it is always the order itself.
+ */
+async function resolveDiscountScope(tx: TxClient, order: any, requestedBillId: string | null): Promise<{ billId: string | null; subtotal: bigint; customerId: string | null }> {
+  const split = String(order.split_mode || 'NONE') !== 'NONE';
+  if (!split) {
+    if (requestedBillId) throw Object.assign(new Error('ORDER_NOT_SPLIT'), { httpStatus: 409 });
+    return { billId: null, subtotal: orderCents(order.subtotal), customerId: order.customer_id || null };
+  }
+  if (!requestedBillId) throw Object.assign(new Error('BILL_REQUIRED_FOR_SPLIT_ORDER'), { httpStatus: 409 });
+  const bill = await tx.queryOne<any>(`SELECT * FROM order_bills WHERE id=? AND order_id=? AND status<>'VOID' FOR UPDATE`, [requestedBillId, order.id]);
+  if (!bill) throw Object.assign(new Error('BILL_NOT_FOUND'), { httpStatus: 404 });
+  if (bill.status === 'PAID') throw Object.assign(new Error('BILL_ALREADY_PAID'), { httpStatus: 409 });
+  // An EQUAL split has no per-bill item subtotal to discount against; discount the order before
+  // splitting it that way, or split by items instead.
+  if (String(order.split_mode) === 'EQUAL') throw Object.assign(new Error('DISCOUNT_NOT_SUPPORTED_IN_EQUAL_SPLIT'), { httpStatus: 409 });
+  return { billId: bill.id, subtotal: orderCents(bill.subtotal), customerId: bill.customer_id || null };
+}
+
 const DISCOUNT_ERRORS: any = {
+  ORDER_NOT_SPLIT: [409, 'INVALID_STATE', 'ORDER_NOT_SPLIT'],
+  BILL_REQUIRED_FOR_SPLIT_ORDER: [409, 'INVALID_STATE', 'BILL_REQUIRED_FOR_SPLIT_ORDER'],
+  BILL_NOT_FOUND: [404, 'NOT_FOUND', 'BILL_NOT_FOUND'],
+  BILL_ALREADY_PAID: [409, 'INVALID_STATE', 'BILL_ALREADY_PAID'],
+  DISCOUNT_NOT_SUPPORTED_IN_EQUAL_SPLIT: [409, 'INVALID_STATE', 'DISCOUNT_NOT_SUPPORTED_IN_EQUAL_SPLIT'],
   ORDER_NOT_FOUND: [404, 'NOT_FOUND', 'ORDER_NOT_FOUND'],
   ORDER_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'ORDER_ACCESS_DENIED'],
   BRANCH_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'BRANCH_ACCESS_DENIED'],
@@ -462,12 +487,17 @@ router.post('/:id/discount', posOrAuth('orders.discount.apply', async (req, res,
   try {
     const result = await transaction(async (tx) => {
       const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
-      const active = await tx.queryOne<any>(`SELECT id FROM order_discounts WHERE order_id=? AND status='ACTIVE' FOR UPDATE`, [order.id]);
+      // Stage 34.4: a split order is discounted per separate check, never at order level -- two
+      // answers to the same question would double-count the money.
+      const scope = await resolveDiscountScope(tx, order, req.body?.bill_id ? String(req.body.bill_id) : null);
+      const active = await tx.queryOne<any>(scope.billId
+        ? `SELECT id FROM order_discounts WHERE bill_id=? AND status='ACTIVE' FOR UPDATE`
+        : `SELECT id FROM order_discounts WHERE order_id=? AND bill_id IS NULL AND status='ACTIVE' FOR UPDATE`, [scope.billId || order.id]);
       if (active) throw Object.assign(new Error('DISCOUNT_ALREADY_APPLIED'), { httpStatus: 409 });
 
       const maxRow = await tx.queryOne<any>(`SELECT value FROM system_settings WHERE key=?`, [DISCOUNT_SETTING_MAX]);
       const maxH = percentHundredths(maxRow?.value ?? '30');
-      const subtotal = orderCents(order.subtotal);
+      const subtotal = scope.subtotal;
 
       // The server -- never the caller -- decides what the discount is worth.
       let amount: bigint;
@@ -482,10 +512,10 @@ router.post('/:id/discount', posOrAuth('orders.discount.apply', async (req, res,
       }
       if (amount > subtotal) throw Object.assign(new Error('DISCOUNT_EXCEEDS_SUBTOTAL'), { httpStatus: 409, details: { subtotal: String(order.subtotal) } });
 
-      await tx.execute(`INSERT INTO order_discounts (id,branch_id,order_id,customer_id,percent,amount,base_amount,reason,applied_by_user_id,applied_by_role,source,status,created_at) VALUES (?,?,?,?,${percentRaw !== null ? 'CAST(? AS numeric)' : '?'},CAST(? AS numeric),CAST(? AS numeric),?,?,?,?, 'ACTIVE',?)`,
-        [discountId, order.branch_id, order.id, order.customer_id, percentRaw !== null ? percentRaw : null, totalsText(amount), String(order.subtotal), reason, actor.userId, actor.role, actor.source, now]);
+      await tx.execute(`INSERT INTO order_discounts (id,branch_id,order_id,bill_id,customer_id,percent,amount,base_amount,reason,applied_by_user_id,applied_by_role,source,status,created_at) VALUES (?,?,?,?,?,${percentRaw !== null ? 'CAST(? AS numeric)' : '?'},CAST(? AS numeric),CAST(? AS numeric),?,?,?,?, 'ACTIVE',?)`,
+        [discountId, order.branch_id, order.id, scope.billId, scope.customerId, percentRaw !== null ? percentRaw : null, totalsText(amount), totalsText(subtotal), reason, actor.userId, actor.role, actor.source, now]);
       const totals = await recomputeOrderTotals(tx, order, now);
-      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: 'ORDER_DISCOUNT_APPLIED', entityType: 'ORDER_DISCOUNT', entityId: discountId, newValues: { order_id: order.id, customer_id: order.customer_id, percent: percentRaw, amount: totalsText(amount), base_amount: String(order.subtotal), reason, applied_by_user_id: actor.userId, applied_by_role: actor.role, source: actor.source, totals }, req });
+      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: 'ORDER_DISCOUNT_APPLIED', entityType: 'ORDER_DISCOUNT', entityId: discountId, newValues: { order_id: order.id, bill_id: scope.billId, customer_id: scope.customerId, percent: percentRaw, amount: totalsText(amount), base_amount: totalsText(subtotal), reason, applied_by_user_id: actor.userId, applied_by_role: actor.role, source: actor.source, totals }, req });
       return { discount: await tx.queryOne<any>('SELECT * FROM order_discounts WHERE id=?', [discountId]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
     });
     res.status(201).json(result);
@@ -497,7 +527,10 @@ router.delete('/:id/discount', posOrAuth('orders.discount.apply', async (req, re
   try {
     const result = await transaction(async (tx) => {
       const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
-      const active = await tx.queryOne<any>(`SELECT * FROM order_discounts WHERE order_id=? AND status='ACTIVE' FOR UPDATE`, [order.id]);
+      const scope = await resolveDiscountScope(tx, order, req.body?.bill_id ? String(req.body.bill_id) : null);
+      const active = await tx.queryOne<any>(scope.billId
+        ? `SELECT * FROM order_discounts WHERE bill_id=? AND status='ACTIVE' FOR UPDATE`
+        : `SELECT * FROM order_discounts WHERE order_id=? AND bill_id IS NULL AND status='ACTIVE' FOR UPDATE`, [scope.billId || order.id]);
       if (!active) throw Object.assign(new Error('NO_ACTIVE_DISCOUNT'), { httpStatus: 409 });
       // Soft removal: the granted discount stays on the record for audit, it is never deleted.
       await tx.execute(`UPDATE order_discounts SET status='REMOVED',removed_at=?,removed_by=? WHERE id=? AND status='ACTIVE'`, [now, actor.userId, active.id]);

@@ -124,6 +124,12 @@ export const CashierPOSView: React.FC = () => {
   };
 
   // ---- Active orders
+  // Stage 34.4 -- separate checks. A split order is settled one bill at a time; the amounts shown
+  // are the ones the server computed for each bill.
+  const [bills, setBills] = useState<any[]>([]);
+  const [splitMode, setSplitMode] = useState('NONE');
+  const [payingBill, setPayingBill] = useState<any | null>(null);
+
   // Stage 34.3 -- guest identification and MANUAL discounts. Attaching a guest never changes the
   // price, and every amount shown here is the one the server computed and returned.
   const [customerOpen, setCustomerOpen] = useState(false);
@@ -306,9 +312,9 @@ export const CashierPOSView: React.FC = () => {
     if (!detail || paying) return;
     if (payMethod === 'CREDIT' && !creditAccount) { setPayError(friendlyError({ code: 'CREDIT_ACCOUNT_REQUIRED' }, ru)); return; }
     setPaying(true); setPayError('');
-    const idemKey = `cashier-pay-${detail.id}`;
+    const idemKey = payingBill ? `cashier-pay-bill-${payingBill.id}` : `cashier-pay-${detail.id}`;
     try {
-      const r = await api.createPayment({ order_id: detail.id, method: payMethod, amount: String(detail.final_amount), ...(payMethod === 'CREDIT' && creditAccount ? { credit_account_id: creditAccount.account.id } : {}) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
+      const r = await api.createPayment({ order_id: detail.id, ...(payingBill ? { bill_id: payingBill.id } : {}), method: payMethod, amount: String(payingBill ? payingBill.final_amount : detail.final_amount), ...(payMethod === 'CREDIT' && creditAccount ? { credit_account_id: creditAccount.account.id } : {}) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
       setSuccessPayment(r.payment);
       setSuccessOrder(detail);
       setPayDialogOpen(false);
@@ -343,6 +349,13 @@ export const CashierPOSView: React.FC = () => {
   const openClosure = () => { setClosureReason(''); setClosureComment(''); setClosureTreatment(''); setClosureRefund(Boolean(selectedPaid)); setClosureError(''); setClosureSent(false); setClosureOpen(true); };
 
   useEffect(() => { void api.getDiscountOptions().then(r => { setDiscountPresets(r.presets); setDiscountMax(r.max_percent); }).catch(() => undefined); }, []);
+
+  useEffect(() => {
+    if (!detail) { setBills([]); setSplitMode('NONE'); return; }
+    let cancelled = false;
+    void api.getOrderBills(detail.id).then(r => { if (!cancelled) { setBills(r.bills || []); setSplitMode(r.split_mode); } }).catch(() => { if (!cancelled) { setBills([]); setSplitMode('NONE'); } });
+    return () => { cancelled = true; };
+  }, [detail?.id, detail?.updated_at]);
 
   const searchCustomers = async (q: string) => {
     setCustomerQuery(q);
@@ -609,12 +622,27 @@ export const CashierPOSView: React.FC = () => {
                 {(() => { const reason = payBlockedReason(detail); return reason ? (
                   <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-2">{reason}</div>
                 ) : null; })()}
-                {selectedPaid ? (
+                {splitMode !== 'NONE' ? (
+                  <div className="space-y-2">
+                    <div className="text-xs text-slate-400">{ru ? 'Отдельные счета' : 'Aýratyn hasaplar'} · {splitMode === 'EQUAL' ? (ru ? 'поровну' : 'deň') : (ru ? 'по позициям' : 'pozisiýalar boýunça')}</div>
+                    {bills.map(b => (
+                      <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2">
+                        <div className="min-w-0">
+                          <div className="text-sm text-white">{ru ? 'Счёт' : 'Hasap'} #{b.bill_number} · {money(b.final_amount)}</div>
+                          <div className="text-[11px] text-slate-500">{b.customer_name || (ru ? 'без клиента' : 'müşderisiz')}{Math.round(parseFloat(b.discount || '0') * 100) > 0 ? ` · ${ru ? 'скидка' : 'arzanladyş'} ${money(b.discount)}` : ''}</div>
+                        </div>
+                        {b.status === 'PAID'
+                          ? <span className="text-xs text-emerald-400 shrink-0">{ru ? 'оплачен' : 'tölendi'}</span>
+                          : <button className="btn bg-emerald-500 text-slate-950 text-xs font-bold shrink-0" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(b); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>{ru ? 'Оплатить' : 'Tölemek'}</button>}
+                      </div>
+                    ))}
+                  </div>
+                ) : selectedPaid ? (
                   <div className="flex gap-2">
                     <button className="btn flex-1 flex items-center justify-center gap-1.5" onClick={() => void openReceipt(detail, selectedPaid)}><ReceiptIcon className="w-4 h-4" /> {ru ? 'Чек' : 'Çek'}</button>
                   </div>
                 ) : (
-                  <button className="btn w-full bg-emerald-500 text-slate-950 font-bold py-2.5" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>
+                  <button className="btn w-full bg-emerald-500 text-slate-950 font-bold py-2.5" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(null); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>
                     {ru ? `ОПЛАТИТЬ ${money(detail.final_amount)}` : `TÖLEG ${money(detail.final_amount)}`}
                   </button>
                 )}
@@ -789,12 +817,13 @@ export const CashierPOSView: React.FC = () => {
       {payDialogOpen && detail && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4">
-            <h2 className="text-white text-lg font-bold">{ru ? 'Оплата' : 'Töleg'} #{detail.order_number}</h2>
+            {/* A split order is settled one separate check at a time; the figures are the bill's own. */}
+            <h2 className="text-white text-lg font-bold">{ru ? 'Оплата' : 'Töleg'} #{detail.order_number}{payingBill ? ` · ${ru ? 'счёт' : 'hasap'} #${payingBill.bill_number}` : ''}</h2>
             <div className="space-y-1 text-sm border-y border-slate-800 py-3">
-              <div className="flex justify-between text-slate-400"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money(detail.subtotal)}</span></div>
-              {Number(detail.discount) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money(detail.discount)}</span></div>}
-              {Number(detail.service_charge) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money(detail.service_charge)}</span></div>}
-              <div className="flex justify-between text-white font-bold text-lg pt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(detail.final_amount)} {detail.currency}</span></div>
+              <div className="flex justify-between text-slate-400"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money((payingBill || detail).subtotal)}</span></div>
+              {Number((payingBill || detail).discount) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money((payingBill || detail).discount)}</span></div>}
+              {Number((payingBill || detail).service_charge) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money((payingBill || detail).service_charge)}</span></div>}
+              <div className="flex justify-between text-white font-bold text-lg pt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money((payingBill || detail).final_amount)} {detail.currency}</span></div>
             </div>
             <div>
               <div className="text-xs text-slate-400 mb-1.5">{ru ? 'Способ оплаты' : 'Töleg usuly'}</div>

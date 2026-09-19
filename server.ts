@@ -25,6 +25,7 @@ import waitersRouter from './server/routes/waiters';
 import menuRouter from './server/routes/menu';
 import tablesRouter from './server/routes/tables';
 import ordersRouter from './server/routes/orders';
+import orderBillsRouter from './server/routes/order-bills';
 import paymentsRouter from './server/routes/payments';
 import cashShiftsRouter from './server/routes/cash-shifts';
 import kdsRouter from './server/routes/kds';
@@ -134,7 +135,7 @@ async function startServer() {
   // synchronous throw.
   [
     docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
-    menuRouter, tablesRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
+    menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
     inventoryRouter, serviceChargeRouter, customersRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
     organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter,
@@ -153,6 +154,7 @@ async function startServer() {
   app.use('/api/waiters', waitersRouter);
   app.use('/api/menu', menuRouter);
   app.use('/api/tables', tablesRouter);
+  app.use('/api/orders', orderBillsRouter);
   app.use('/api/orders', ordersRouter);
   app.use('/api/payments', paymentsRouter);
   app.use('/api/cash-shifts', cashShiftsRouter);
