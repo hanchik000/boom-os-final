@@ -1,0 +1,121 @@
+/* Stage 35.8 — Manager Dashboard (Command Center) visual layer.
+ * Presentation only: no business rule, aggregation or financial arithmetic lives here.
+ * Every value/handler/state stays in ManagerCommandCenterView.tsx; this file only restyles the
+ * DOM it already renders from /api/dashboard/manager's server-computed response. Black /
+ * graphite / white / metallic gold, information-dense, operational -- not a marketing dashboard.
+ */
+.cmd-center{max-width:1600px;margin:0 auto;padding:24px;display:flex;flex-direction:column;gap:20px;color:var(--boom-text);font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+
+/* ---- TOP: title / branch / date range / refresh ---- */
+.cmd-topbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.cmd-title{margin:0;font-size:20px;font-weight:900;letter-spacing:.02em;color:var(--boom-text)}
+.cmd-subtitle{margin:2px 0 0;font-size:11px;color:var(--boom-text-muted)}
+.cmd-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.cmd-branch-select{padding:8px 10px;border:1px solid var(--boom-border);border-radius:10px;background:#05070b;color:var(--boom-text);font-size:12px;outline:none}
+.cmd-branch-select:focus-visible{box-shadow:var(--boom-focus-ring);border-color:rgba(245,158,11,.45)}
+.cmd-preset-group{display:flex;gap:2px;background:var(--boom-surface);border:1px solid var(--boom-border);border-radius:10px;padding:3px}
+.cmd-preset-btn{padding:7px 11px;border-radius:7px;font-size:11px;font-weight:700;color:var(--boom-text-muted);cursor:pointer;transition:background var(--boom-motion-fast) var(--boom-ease),color var(--boom-motion-fast) var(--boom-ease)}
+.cmd-preset-btn:hover{color:var(--boom-text)}
+.cmd-preset-btn.active{background:var(--boom-gold);color:#111827}
+.cmd-date-range{display:flex;align-items:center;gap:6px}
+.cmd-date-range input{padding:7px 9px;border:1px solid var(--boom-border);border-radius:9px;background:#05070b;color:var(--boom-text);font-size:11px}
+.cmd-refresh-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid var(--boom-border);border-radius:10px;background:rgba(255,255,255,.03);color:var(--boom-text-secondary);font-size:12px;font-weight:650;cursor:pointer;transition:background var(--boom-motion-fast) var(--boom-ease),border-color var(--boom-motion-fast) var(--boom-ease)}
+.cmd-refresh-btn:hover:not(:disabled){background:var(--boom-surface-soft);border-color:var(--boom-border-strong);color:var(--boom-text)}
+.cmd-refresh-btn:disabled{opacity:.6;cursor:default}
+.cmd-refresh-btn svg{width:14px;height:14px}
+.cmd-branch-select:focus-visible,.cmd-preset-btn:focus-visible,.cmd-refresh-btn:focus-visible,.cmd-alert:focus-visible,.cmd-kpi.clickable:focus-visible,.cmd-panel-link:focus-visible,.cmd-status-tile.clickable:focus-visible,.cmd-waiter-row:focus-visible{outline:none;box-shadow:var(--boom-focus-ring)}
+
+.cmd-error{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:#fca5a5;border-radius:12px;padding:12px 14px;font-size:13px}
+.cmd-loading{display:flex;align-items:center;gap:8px;color:var(--boom-text-muted);font-size:13px}
+
+/* ---- ALERT CENTER: real alerts only, never decorative ---- */
+.cmd-alerts{display:flex;flex-direction:column;gap:6px}
+.cmd-alert{width:100%;text-align:left;display:flex;align-items:center;gap:9px;border-radius:11px;padding:10px 13px;font-size:12px;cursor:pointer;border:1px solid transparent;transition:border-color var(--boom-motion-fast) var(--boom-ease),background var(--boom-motion-fast) var(--boom-ease)}
+.cmd-alert svg:first-child{width:14px;height:14px;flex-shrink:0}
+.cmd-alert svg:last-child{width:14px;height:14px;flex-shrink:0;opacity:.6}
+.cmd-alert.critical{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.08);color:#fca5a5}
+.cmd-alert.warning{border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);color:#fbbf24}
+.cmd-alert.info{border-color:var(--boom-border-strong);background:var(--boom-surface-soft);color:var(--boom-text-secondary)}
+.cmd-alert:hover{filter:brightness(1.12)}
+
+/* ---- KPI strip ---- */
+.cmd-kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.cmd-kpi{text-align:left;border-radius:14px;background:var(--boom-surface);border:1px solid var(--boom-border);padding:14px}
+.cmd-kpi.clickable{cursor:pointer;transition:border-color var(--boom-motion-fast) var(--boom-ease),transform var(--boom-motion-fast) var(--boom-ease)}
+.cmd-kpi.clickable:hover{border-color:rgba(245,158,11,.4);transform:translateY(-1px)}
+.cmd-kpi-label{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--boom-text-muted);margin-bottom:6px}
+.cmd-kpi-label svg{width:12px;height:12px}
+.cmd-kpi-value{font-size:19px;font-weight:900;color:var(--boom-text)}
+.cmd-kpi-value .cmd-currency{font-size:10px;font-weight:600;color:var(--boom-text-muted);margin-left:3px}
+@media (min-width:768px){.cmd-kpi-grid{grid-template-columns:repeat(4,1fr)}}
+@media (min-width:1280px){.cmd-kpi-grid{grid-template-columns:repeat(7,1fr)}}
+
+/* ---- generic panel shell, reused for financial / cash / orders / kds / inventory / credit / staff ---- */
+.cmd-grid-2{display:grid;gap:14px}
+@media (min-width:1024px){.cmd-grid-2{grid-template-columns:repeat(2,1fr)}}
+.cmd-grid-3{display:grid;gap:12px}
+@media (min-width:768px){.cmd-grid-3{grid-template-columns:repeat(3,1fr)}}
+.cmd-panel{border-radius:14px;background:var(--boom-surface);border:1px solid var(--boom-border);padding:15px}
+.cmd-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.cmd-panel-title{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--boom-text-muted)}
+.cmd-panel-title svg{width:13px;height:13px}
+.cmd-panel-link{display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:700;color:var(--boom-gold);cursor:pointer;border-radius:6px}
+.cmd-panel-link svg{width:12px;height:12px}
+.cmd-panel-link:hover{filter:brightness(1.15)}
+.cmd-panel.linkable{cursor:pointer;transition:border-color var(--boom-motion-fast) var(--boom-ease)}
+.cmd-panel.linkable:hover{border-color:rgba(245,158,11,.35)}
+
+/* ---- financial reconciliation: SALES != CASH RECEIVED, kept visually separate ---- */
+.cmd-stat-row{display:flex;justify-content:space-between;font-size:12px;color:var(--boom-text-secondary);padding:2px 0}
+.cmd-stat-row.total{font-weight:800;color:var(--boom-text);padding-top:7px;margin-top:5px;border-top:1px solid var(--boom-border)}
+.cmd-stat-row.total.received{color:var(--boom-success)}
+.cmd-stat-row.total.receivables{color:var(--boom-gold)}
+.cmd-refunds-strip{font-size:13px;color:var(--boom-text)}
+.cmd-refunds-strip .count{color:var(--boom-text-muted);font-size:11px}
+
+/* ---- cash position: the difference figure stays prominent ---- */
+.cmd-cash-diff{padding-top:8px;margin-top:6px;border-top:1px solid var(--boom-border);display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--boom-text-muted)}
+.cmd-cash-diff .value{font-weight:800;font-size:13px}
+.cmd-cash-diff .value.balanced{color:var(--boom-success)}
+.cmd-cash-diff .value.off{color:var(--boom-gold)}
+
+/* ---- status tiles: orders-by-status / kds-by-status ---- */
+.cmd-status-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.cmd-status-grid.kds{grid-template-columns:repeat(5,1fr)}
+.cmd-status-tile{border-radius:10px;background:var(--boom-surface-soft);padding:9px;text-align:left}
+.cmd-status-tile.clickable{cursor:pointer;transition:background var(--boom-motion-fast) var(--boom-ease)}
+.cmd-status-tile.clickable:hover{background:var(--boom-border-strong)}
+.cmd-status-count{font-size:17px;font-weight:900;color:var(--boom-text)}
+.cmd-status-label{font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--boom-text-muted);margin-top:1px}
+
+/* ---- tables: waiters / cashiers ---- */
+.cmd-table-wrap{border-radius:14px;background:var(--boom-surface);border:1px solid var(--boom-border);overflow:hidden}
+.cmd-table-head{padding:11px 16px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--boom-text-muted);display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--boom-border)}
+.cmd-table-head svg{width:13px;height:13px}
+.cmd-table{width:100%;font-size:12px;border-collapse:collapse}
+.cmd-table thead{background:rgba(255,255,255,.02);color:var(--boom-text-muted)}
+.cmd-table th{text-align:right;padding:8px 12px;font-weight:700;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase}
+.cmd-table th:first-child{text-align:left}
+.cmd-table td{padding:8px 12px;border-top:1px solid var(--boom-border);text-align:right;color:var(--boom-text-secondary)}
+.cmd-table td:first-child{text-align:left;font-weight:650;color:var(--boom-text)}
+.cmd-waiter-row{cursor:pointer;transition:background var(--boom-motion-fast) var(--boom-ease)}
+.cmd-waiter-row:hover{background:rgba(255,255,255,.025)}
+.cmd-status-badge{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:6px;background:var(--boom-surface-soft);color:var(--boom-text-muted)}
+.cmd-status-badge.pro{background:rgba(34,197,94,.14);color:#4ade80}
+.cmd-flag{color:var(--boom-gold);font-weight:800}
+.cmd-empty-row{padding:22px;text-align:center;color:var(--boom-text-muted);font-size:12px}
+
+/* ---- credit / staff ---- */
+.cmd-mini-stat{display:flex;flex-direction:column;gap:2px}
+.cmd-mini-stat .label{font-size:10px;color:var(--boom-text-muted)}
+.cmd-mini-stat .value{font-size:15px;font-weight:800;color:var(--boom-text)}
+.cmd-mini-stat .value.positive{color:var(--boom-success)}
+.cmd-debtor-row{width:100%;display:flex;justify-content:space-between;font-size:12px;color:var(--boom-text-secondary);cursor:pointer;border-radius:6px}
+.cmd-debtor-row:hover{color:var(--boom-text)}
+.cmd-debtor-row .amount{color:var(--boom-gold);font-weight:700}
+.cmd-debtor-row .type{color:var(--boom-text-muted);font-size:10.5px}
+
+@media (max-width:900px){.cmd-status-grid{grid-template-columns:repeat(2,1fr)}.cmd-status-grid.kds{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:640px){.cmd-center{padding:14px;gap:14px}.cmd-topbar{flex-direction:column;align-items:stretch}.cmd-toolbar{justify-content:flex-start}.cmd-kpi-grid{grid-template-columns:repeat(2,1fr)}.cmd-table{font-size:11px}}
+
+@media (prefers-reduced-motion:reduce){.cmd-kpi.clickable,.cmd-preset-btn,.cmd-refresh-btn,.cmd-alert,.cmd-panel.linkable,.cmd-status-tile.clickable,.cmd-waiter-row{transition:none}}

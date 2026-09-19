@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import './design-system/waiter-pos.css';
 import './design-system/cashier-pos.css';
+import './design-system/command-center.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

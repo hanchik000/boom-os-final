@@ -93,7 +93,6 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
     COMPLETED: ru ? 'Завершено' : 'Tamamlandy',
     CANCELLED: ru ? 'Отменено' : 'Ýatyryldy',
   };
-  const ALERT_SEVERITY_COLOR: Record<string, string> = { critical: 'border-red-500/40 bg-red-500/10 text-red-300', warning: 'border-amber-500/40 bg-amber-500/10 text-amber-300', info: 'border-slate-600 bg-slate-800/60 text-slate-300' };
 
   function alertText(a: any): string {
     switch (a.type) {
@@ -125,131 +124,132 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
   ] : [];
 
   return (
-    <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-      {/* ---- Header: title / branch / date / refresh ---- */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="cmd-center">
+      {/* ---- TOP: title / branch / date / refresh ---- */}
+      <div className="cmd-topbar">
         <div>
-          <h1 className="text-xl font-black text-white tracking-tight">{ru ? 'ЦЕНТР УПРАВЛЕНИЯ' : 'DOLANDYRYŞ MERKEZI'}</h1>
-          <p className="text-xs text-slate-500">{data?.branch?.name || ''}</p>
+          <h1 className="cmd-title">{ru ? 'ЦЕНТР УПРАВЛЕНИЯ' : 'DOLANDYRYŞ MERKEZI'}</h1>
+          <p className="cmd-subtitle">{data?.branch?.name || ''}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="cmd-toolbar">
           {branches.length > 1 && (
-            <select className="field text-xs !w-auto" value={branchId} onChange={e => setBranchId(e.target.value)}>
+            <select className="cmd-branch-select boom-focusable" value={branchId} onChange={e => setBranchId(e.target.value)}>
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           )}
-          <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1">
+          <div className="cmd-preset-group">
             {presets.map(pr => (
-              <button key={pr.id} onClick={() => setPreset(pr.id)} className={`px-2.5 py-1 rounded text-xs font-semibold ${preset === pr.id ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}>{pr.label}</button>
+              <button key={pr.id} onClick={() => setPreset(pr.id)} className={`cmd-preset-btn boom-focusable ${preset === pr.id ? 'active' : ''}`}>{pr.label}</button>
             ))}
           </div>
           {preset === 'custom' && (
-            <div className="flex items-center gap-1">
-              <input type="date" className="field text-xs !w-auto" value={customStart} onChange={e => setCustomStart(e.target.value)} />
+            <div className="cmd-date-range">
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
               <span className="text-slate-500 text-xs">–</span>
-              <input type="date" className="field text-xs !w-auto" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
             </div>
           )}
-          <button className="btn text-xs flex items-center gap-1.5" disabled={loading} onClick={() => { setLoading(true); void load(); }}>
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} {ru ? 'Обновить' : 'Täzele'}
+          <button className="cmd-refresh-btn boom-focusable" disabled={loading} onClick={() => { setLoading(true); void load(); }}>
+            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />} {ru ? 'Обновить' : 'Täzele'}
           </button>
         </div>
       </div>
 
-      {error && <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
-      {loading && !data && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {error && <div className="cmd-error">{error}</div>}
+      {loading && !data && <div className="cmd-loading"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
 
       {data && (
         <>
-          {/* ---- ALERT CENTER ---- */}
+          {/* ---- ALERT CENTER: real alerts only, drill-down where an endpoint supports it ---- */}
           {data.alerts?.length > 0 && (
-            <div className="space-y-1.5">
+            <div className="cmd-alerts">
               {data.alerts.map((a: any, idx: number) => (
-                <button key={idx} onClick={() => onNavigate(a.link)} className={`w-full text-left flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${ALERT_SEVERITY_COLOR[a.severity]}`}>
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                <button key={idx} onClick={() => onNavigate(a.link)} className={`cmd-alert boom-focusable ${a.severity}`}>
+                  <AlertTriangle />
                   <span className="flex-1">{alertText(a)}</span>
-                  <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
+                  <ChevronRight />
                 </button>
               ))}
             </div>
           )}
 
-          {/* ---- KPI HEADER ---- */}
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+          {/* ---- KPI STRIP ---- */}
+          <div className="cmd-kpi-grid">
             {kpiCards.map((c, idx) => {
               const Icon = c.icon;
               const Wrapper: any = c.tab ? 'button' : 'div';
               return (
-                <Wrapper key={idx} onClick={c.tab ? () => onNavigate(c.tab!) : undefined} className={`text-left rounded-xl bg-slate-900 border border-slate-800 p-4 ${c.tab ? 'hover:border-amber-500/40 cursor-pointer' : ''}`}>
-                  <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1"><Icon className="w-3 h-3" /> {c.label}</div>
-                  <div className="text-lg font-black text-white">{c.isCount ? c.value : `${money(c.value)}`} {!c.isCount && <span className="text-[10px] text-slate-500 font-normal">{currency}</span>}</div>
+                <Wrapper key={idx} onClick={c.tab ? () => onNavigate(c.tab!) : undefined} className={`cmd-kpi ${c.tab ? 'clickable boom-focusable' : ''}`}>
+                  <div className="cmd-kpi-label"><Icon /> {c.label}</div>
+                  <div className="cmd-kpi-value">{c.isCount ? c.value : `${money(c.value)}`} {!c.isCount && <span className="cmd-currency">{currency}</span>}</div>
                 </Wrapper>
               );
             })}
           </div>
 
-          {/* ---- FINANCIAL RECONCILIATION ---- */}
+          {/* ---- FINANCIAL RECONCILIATION -- SALES != CASH RECEIVED, kept visually separate ---- */}
           {data.financial && (
-            <div className="grid md:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">{ru ? 'Продажи' : 'Satuw'}</div>
-                <div className="space-y-1 text-xs text-slate-300">
-                  <div className="flex justify-between"><span>{ru ? 'Наличные' : 'Nakt'}</span><span>{money(data.financial.sales.cash)}</span></div>
-                  <div className="flex justify-between"><span>{ru ? 'Карта' : 'Kart'}</span><span>{money(data.financial.sales.card)}</span></div>
-                  <div className="flex justify-between"><span>{ru ? 'Кредит' : 'Kredit'}</span><span>{money(data.financial.sales.credit)}</span></div>
-                  {Number(data.financial.sales.other) > 0 && <div className="flex justify-between"><span>{ru ? 'Другое' : 'Başga'}</span><span>{money(data.financial.sales.other)}</span></div>}
-                  <div className="flex justify-between font-bold text-white pt-1 border-t border-slate-800"><span>{ru ? 'ИТОГО ПРОДАЖИ' : 'JEMI SATUW'}</span><span>{money(data.financial.sales.total)}</span></div>
+            <div className="cmd-grid-3">
+              <div className="cmd-panel">
+                <div className="cmd-panel-title">{ru ? 'Продажи' : 'Satuw'}</div>
+                <div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Наличные' : 'Nakt'}</span><span>{money(data.financial.sales.cash)}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Карта' : 'Kart'}</span><span>{money(data.financial.sales.card)}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Кредит' : 'Kredit'}</span><span>{money(data.financial.sales.credit)}</span></div>
+                  {Number(data.financial.sales.other) > 0 && <div className="cmd-stat-row"><span>{ru ? 'Другое' : 'Başga'}</span><span>{money(data.financial.sales.other)}</span></div>}
+                  <div className="cmd-stat-row total"><span>{ru ? 'ИТОГО ПРОДАЖИ' : 'JEMI SATUW'}</span><span>{money(data.financial.sales.total)}</span></div>
                 </div>
               </div>
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">{ru ? 'Получено денег' : 'Alnan pul'}</div>
-                <div className="space-y-1 text-xs text-slate-300">
-                  <div className="flex justify-between"><span>{ru ? 'Наличные' : 'Nakt'}</span><span>{money(data.financial.received.cash)}</span></div>
-                  <div className="flex justify-between"><span>{ru ? 'Карта' : 'Kart'}</span><span>{money(data.financial.received.card)}</span></div>
-                  <div className="flex justify-between"><span>{ru ? 'Погашение кредита' : 'Kredit üzülmesi'}</span><span>{money(data.financial.received.credit_repayments)}</span></div>
-                  <div className="flex justify-between font-bold text-emerald-400 pt-1 border-t border-slate-800"><span>{ru ? 'ИТОГО ПОЛУЧЕНО' : 'JEMI ALYNDY'}</span><span>{money(data.financial.received.total)}</span></div>
+              <div className="cmd-panel">
+                <div className="cmd-panel-title">{ru ? 'Получено денег' : 'Alnan pul'}</div>
+                <div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Наличные' : 'Nakt'}</span><span>{money(data.financial.received.cash)}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Карта' : 'Kart'}</span><span>{money(data.financial.received.card)}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Погашение кредита' : 'Kredit üzülmesi'}</span><span>{money(data.financial.received.credit_repayments)}</span></div>
+                  <div className="cmd-stat-row total received"><span>{ru ? 'ИТОГО ПОЛУЧЕНО' : 'JEMI ALYNDY'}</span><span>{money(data.financial.received.total)}</span></div>
                 </div>
               </div>
               {data.financial.receivables && (
-                <button onClick={() => p.credit && onNavigate('creditReports')} className="text-left rounded-xl bg-slate-900 border border-slate-800 p-4 hover:border-amber-500/40">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">{ru ? 'Задолженность' : 'Bergiler'}</div>
-                  <div className="space-y-1 text-xs text-slate-300">
-                    <div className="flex justify-between"><span>{ru ? 'Клиенты' : 'Müşderiler'}</span><span>{money(data.financial.receivables.customer)}</span></div>
-                    <div className="flex justify-between"><span>{ru ? 'Сотрудники' : 'Işgärler'}</span><span>{money(data.financial.receivables.staff)}</span></div>
-                    <div className="flex justify-between font-bold text-amber-400 pt-1 border-t border-slate-800"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(data.financial.receivables.total)}</span></div>
+                <button onClick={() => p.credit && onNavigate('creditReports')} className="cmd-panel linkable boom-focusable" style={{textAlign:'left'}}>
+                  <div className="cmd-panel-title">{ru ? 'Задолженность' : 'Bergiler'}</div>
+                  <div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Клиенты' : 'Müşderiler'}</span><span>{money(data.financial.receivables.customer)}</span></div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Сотрудники' : 'Işgärler'}</span><span>{money(data.financial.receivables.staff)}</span></div>
+                    <div className="cmd-stat-row total receivables"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(data.financial.receivables.total)}</span></div>
                   </div>
                 </button>
               )}
               {data.financial.refunds && (
-                <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 md:col-span-3">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{ru ? 'Возвраты за период' : 'Döwür üçin yzyna gaýtarmalar'}</div>
-                  <div className="text-sm text-white mt-1">{money(data.financial.refunds.total)} {currency} <span className="text-slate-500 text-xs">({data.financial.refunds.count})</span></div>
+                <div className="cmd-panel" style={{gridColumn:'1 / -1'}}>
+                  <div className="cmd-panel-title" style={{marginBottom:0}}>{ru ? 'Возвраты за период' : 'Döwür üçin yzyna gaýtarmalar'}</div>
+                  <div className="cmd-refunds-strip mt-1">{money(data.financial.refunds.total)} {currency} <span className="count">({data.financial.refunds.count})</span></div>
                 </div>
               )}
             </div>
           )}
 
-          <div className="grid lg:grid-cols-2 gap-4">
-            {/* ---- CASH POSITION ---- */}
+          <div className="cmd-grid-2">
+            {/* ---- CASH POSITION -- the difference stays prominent ---- */}
             {data.cash_position && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{ru ? 'Кассовая смена' : 'Kassa çalyşygy'}</div>
-                  <button onClick={() => onNavigate('cashierPos')} className="text-[10px] text-amber-400 flex items-center gap-0.5">{ru ? 'Открыть' : 'Aç'} <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title">{ru ? 'Кассовая смена' : 'Kassa çalyşygy'}</div>
+                  <button onClick={() => onNavigate('cashierPos')} className="cmd-panel-link boom-focusable">{ru ? 'Открыть' : 'Aç'} <ChevronRight /></button>
                 </div>
                 {data.cash_position.open_shift ? (
-                  <div className="space-y-1 text-xs text-slate-300">
-                    <div className="flex justify-between"><span>{ru ? 'Кассир' : 'Kassir'}</span><span className="text-white">{data.cash_position.open_shift.cashier_name}</span></div>
-                    <div className="flex justify-between"><span>{ru ? 'Открытие' : 'Açylyş'}</span><span>{money(data.cash_position.open_shift.opening_cash)}</span></div>
-                    <div className="flex justify-between"><span>{ru ? 'Продажи (нал.)' : 'Satuw (nakt)'}</span><span>{money(data.cash_position.open_shift.cash_sales)}</span></div>
-                    <div className="flex justify-between"><span>{ru ? 'Погашения (нал.)' : 'Üzülme (nakt)'}</span><span>{money(data.cash_position.open_shift.credit_repayments)}</span></div>
-                    <div className="flex justify-between"><span>{ru ? 'Возвраты' : 'Yzyna gaýtarma'}</span><span>{money(data.cash_position.open_shift.refunds)}</span></div>
-                    <div className="flex justify-between font-bold text-white pt-1 border-t border-slate-800"><span>{ru ? 'Ожидаемая касса' : 'Garaşylýan kassa'}</span><span>{money(data.cash_position.expected_cash)}</span></div>
+                  <div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Кассир' : 'Kassir'}</span><span style={{color:'var(--boom-text)'}}>{data.cash_position.open_shift.cashier_name}</span></div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Открытие' : 'Açylyş'}</span><span>{money(data.cash_position.open_shift.opening_cash)}</span></div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Продажи (нал.)' : 'Satuw (nakt)'}</span><span>{money(data.cash_position.open_shift.cash_sales)}</span></div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Погашения (нал.)' : 'Üzülme (nakt)'}</span><span>{money(data.cash_position.open_shift.credit_repayments)}</span></div>
+                    <div className="cmd-stat-row"><span>{ru ? 'Возвраты' : 'Yzyna gaýtarma'}</span><span>{money(data.cash_position.open_shift.refunds)}</span></div>
+                    <div className="cmd-stat-row total"><span>{ru ? 'Ожидаемая касса' : 'Garaşylýan kassa'}</span><span>{money(data.cash_position.expected_cash)}</span></div>
                   </div>
                 ) : <div className="text-xs text-slate-500">{ru ? 'Смена не открыта' : 'Çalyşyk açyk däl'}</div>}
                 {data.cash_position.last_closed_shift && (
-                  <div className="mt-2 pt-2 border-t border-slate-800 text-[11px] text-slate-500">
-                    {ru ? 'Последнее закрытие' : 'Soňky ýapylyş'}: {data.cash_position.last_closed_shift.cashier_name}, {ru ? 'разница' : 'tapawut'} <span className={Number(data.cash_position.last_closed_shift.difference) !== 0 ? 'text-amber-400' : 'text-emerald-400'}>{money(data.cash_position.last_closed_shift.difference)}</span>
+                  <div className="cmd-cash-diff">
+                    <span>{ru ? 'Последнее закрытие' : 'Soňky ýapylyş'}: {data.cash_position.last_closed_shift.cashier_name}</span>
+                    <span className={`value ${Number(data.cash_position.last_closed_shift.difference) !== 0 ? 'off' : 'balanced'}`}>{ru ? 'разница' : 'tapawut'} {money(data.cash_position.last_closed_shift.difference)}</span>
                   </div>
                 )}
               </div>
@@ -257,16 +257,16 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
 
             {/* ---- ORDERS LIVE STATUS ---- */}
             {data.orders && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{ru ? 'Заказы' : 'Sargytlar'}</div>
-                  <button onClick={() => onNavigate('operations')} className="text-[10px] text-amber-400 flex items-center gap-0.5">{ru ? 'Все заказы' : 'Ähli sargytlar'} <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title">{ru ? 'Заказы' : 'Sargytlar'}</div>
+                  <button onClick={() => onNavigate('operations')} className="cmd-panel-link boom-focusable">{ru ? 'Все заказы' : 'Ähli sargytlar'} <ChevronRight /></button>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="cmd-status-grid">
                   {Object.entries(data.orders.by_status).map(([status, count]) => (
-                    <button key={status} onClick={() => onNavigate('operations')} className="rounded-lg bg-slate-800/60 hover:bg-slate-800 p-2 text-left">
-                      <div className="text-lg font-black text-white">{String(count)}</div>
-                      <div className="text-[9px] text-slate-500 uppercase">{ORDER_STATUS_LABELS[status] || status}</div>
+                    <button key={status} onClick={() => onNavigate('operations')} className="cmd-status-tile clickable boom-focusable">
+                      <div className="cmd-status-count">{String(count)}</div>
+                      <div className="cmd-status-label">{ORDER_STATUS_LABELS[status] || status}</div>
                     </button>
                   ))}
                 </div>
@@ -274,19 +274,19 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
             )}
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-4">
+          <div className="cmd-grid-2">
             {/* ---- KITCHEN / KDS ---- */}
             {data.kds && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><ChefHat className="w-3.5 h-3.5" /> {ru ? 'Кухня' : 'Aşhana'}</div>
-                  <button onClick={() => onNavigate('operations')} className="text-[10px] text-amber-400 flex items-center gap-0.5">KDS <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title"><ChefHat /> {ru ? 'Кухня' : 'Aşhana'}</div>
+                  <button onClick={() => onNavigate('operations')} className="cmd-panel-link boom-focusable">KDS <ChevronRight /></button>
                 </div>
-                <div className="grid grid-cols-5 gap-2 mb-2">
+                <div className="cmd-status-grid kds" style={{marginBottom:'8px'}}>
                   {Object.entries(data.kds.by_status).map(([status, count]) => (
-                    <div key={status} className="rounded-lg bg-slate-800/60 p-2 text-center">
-                      <div className="text-lg font-black text-white">{String(count)}</div>
-                      <div className="text-[9px] text-slate-500 uppercase">{KDS_STATUS_LABELS[status] || status}</div>
+                    <div key={status} className="cmd-status-tile" style={{textAlign:'center'}}>
+                      <div className="cmd-status-count">{String(count)}</div>
+                      <div className="cmd-status-label">{KDS_STATUS_LABELS[status] || status}</div>
                     </div>
                   ))}
                 </div>
@@ -301,17 +301,17 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
 
             {/* ---- INVENTORY ---- */}
             {data.inventory && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Boxes className="w-3.5 h-3.5" /> {ru ? 'Склад' : 'Ammar'}</div>
-                  <button onClick={() => onNavigate('inventory')} className="text-[10px] text-amber-400 flex items-center gap-0.5">{ru ? 'Склад' : 'Ammar'} <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title"><Boxes /> {ru ? 'Склад' : 'Ammar'}</div>
+                  <button onClick={() => onNavigate('inventory')} className="cmd-panel-link boom-focusable">{ru ? 'Склад' : 'Ammar'} <ChevronRight /></button>
                 </div>
-                <div className="space-y-1 text-xs">
-                  <button onClick={() => onNavigate('inventory')} className="w-full flex justify-between text-slate-300 hover:text-white"><span>{ru ? 'Заканчивается' : 'Azalýar'}</span><span className={data.inventory.low_stock.length ? 'text-amber-400 font-semibold' : ''}>{data.inventory.low_stock.length}</span></button>
-                  <button onClick={() => onNavigate('inventory')} className="w-full flex justify-between text-slate-300 hover:text-white"><span>{ru ? 'Нет в наличии' : 'Ýok'}</span><span className={data.inventory.out_of_stock.length ? 'text-red-400 font-semibold' : ''}>{data.inventory.out_of_stock.length}</span></button>
-                  <div className="flex justify-between text-slate-500"><span>{ru ? 'Списания' : 'Ýazyp aýyrmalar'}</span><span>{data.inventory.recent_write_offs.length}</span></div>
-                  <div className="flex justify-between text-slate-500"><span>{ru ? 'Поступления' : 'Gelenler'}</span><span>{data.inventory.recent_receipts.length}</span></div>
-                  <div className="flex justify-between text-slate-500"><span>{ru ? 'Перемещения' : 'Geçirmeler'}</span><span>{data.inventory.recent_transfers.length}</span></div>
+                <div>
+                  <button onClick={() => onNavigate('inventory')} className="cmd-stat-row boom-focusable" style={{width:'100%'}}><span>{ru ? 'Заканчивается' : 'Azalýar'}</span><span className={data.inventory.low_stock.length ? 'cmd-flag' : ''}>{data.inventory.low_stock.length}</span></button>
+                  <button onClick={() => onNavigate('inventory')} className="cmd-stat-row boom-focusable" style={{width:'100%'}}><span>{ru ? 'Нет в наличии' : 'Ýok'}</span><span className={data.inventory.out_of_stock.length ? 'cmd-flag' : ''} style={data.inventory.out_of_stock.length ? {color:'var(--boom-danger)'} : undefined}>{data.inventory.out_of_stock.length}</span></button>
+                  <div className="cmd-stat-row"><span>{ru ? 'Списания' : 'Ýazyp aýyrmalar'}</span><span>{data.inventory.recent_write_offs.length}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Поступления' : 'Gelenler'}</span><span>{data.inventory.recent_receipts.length}</span></div>
+                  <div className="cmd-stat-row"><span>{ru ? 'Перемещения' : 'Geçirmeler'}</span><span>{data.inventory.recent_transfers.length}</span></div>
                 </div>
               </div>
             )}
@@ -319,38 +319,38 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
 
           {/* ---- WAITER PERFORMANCE ---- */}
           {data.waiters && (
-            <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
-              <div className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-800"><Users className="w-3.5 h-3.5" /> {ru ? 'Официанты' : 'Ofisiantlar'}</div>
-              <table className="w-full text-xs">
-                <thead className="bg-slate-800/40 text-slate-500">
+            <div className="cmd-table-wrap">
+              <div className="cmd-table-head"><Users /> {ru ? 'Официанты' : 'Ofisiantlar'}</div>
+              <table className="cmd-table">
+                <thead>
                   <tr>
-                    <th className="text-left px-4 py-2">{ru ? 'Официант' : 'Ofisiant'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Заказы' : 'Sargytlar'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Продажи' : 'Satuw'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Ср. чек' : 'Orta çek'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Статус' : 'Status'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Запросы на удаление' : 'Aýyrmak haýyşlary'}</th>
+                    <th>{ru ? 'Официант' : 'Ofisiant'}</th>
+                    <th>{ru ? 'Заказы' : 'Sargytlar'}</th>
+                    <th>{ru ? 'Продажи' : 'Satuw'}</th>
+                    <th>{ru ? 'Ср. чек' : 'Orta çek'}</th>
+                    <th>{ru ? 'Статус' : 'Status'}</th>
+                    <th>{ru ? 'Запросы на удаление' : 'Aýyrmak haýyşlary'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.waiters.map((w: any) => (
                     <React.Fragment key={w.id}>
-                      <tr className="border-t border-slate-800 text-slate-200 hover:bg-slate-800/30 cursor-pointer" onClick={() => setExpandedWaiter(expandedWaiter === w.id ? null : w.id)}>
-                        <td className="px-4 py-2 font-medium">{w.name}</td>
-                        <td className="px-3 py-2 text-right">{w.orders}</td>
-                        <td className="px-3 py-2 text-right">{money(w.sales)}</td>
-                        <td className="px-3 py-2 text-right">{money(w.average_check)}</td>
-                        <td className="px-3 py-2 text-right"><span className={`px-1.5 py-0.5 rounded text-[10px] ${w.status === 'PROFESSIONAL' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-300'}`}>{w.status}</span></td>
-                        <td className="px-3 py-2 text-right">{w.removal_requests > 0 ? <span className="text-amber-400 font-semibold">{w.removal_requests}</span> : w.removal_requests}</td>
+                      <tr className="cmd-waiter-row boom-focusable" onClick={() => setExpandedWaiter(expandedWaiter === w.id ? null : w.id)}>
+                        <td>{w.name}</td>
+                        <td>{w.orders}</td>
+                        <td>{money(w.sales)}</td>
+                        <td>{money(w.average_check)}</td>
+                        <td><span className={`cmd-status-badge ${w.status === 'PROFESSIONAL' ? 'pro' : ''}`}>{w.status}</span></td>
+                        <td>{w.removal_requests > 0 ? <span className="cmd-flag">{w.removal_requests}</span> : w.removal_requests}</td>
                       </tr>
                       {expandedWaiter === w.id && (
-                        <tr className="bg-slate-800/20"><td colSpan={6} className="px-4 py-2 text-[11px] text-slate-400">
+                        <tr><td colSpan={6} style={{padding:'8px 16px',fontSize:'11px',color:'var(--boom-text-muted)',background:'rgba(255,255,255,.02)'}}>
                           {ru ? 'Продажи атрибутируются по официанту заказа (Order Core), не по кассиру.' : 'Satuw sargydyň ofisiantyna görä hasaplanýar (Order Core), kassira görä däl.'}
                         </td></tr>
                       )}
                     </React.Fragment>
                   ))}
-                  {data.waiters.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">{ru ? 'Нет данных' : 'Maglumat ýok'}</td></tr>}
+                  {data.waiters.length === 0 && <tr><td colSpan={6} className="cmd-empty-row">{ru ? 'Нет данных' : 'Maglumat ýok'}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -358,57 +358,57 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
 
           {/* ---- CASHIER PERFORMANCE ---- */}
           {data.cashiers && (
-            <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
-              <div className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-800"><UserCog className="w-3.5 h-3.5" /> {ru ? 'Кассиры' : 'Kassirler'}</div>
-              <table className="w-full text-xs">
-                <thead className="bg-slate-800/40 text-slate-500">
+            <div className="cmd-table-wrap">
+              <div className="cmd-table-head"><UserCog /> {ru ? 'Кассиры' : 'Kassirler'}</div>
+              <table className="cmd-table">
+                <thead>
                   <tr>
-                    <th className="text-left px-4 py-2">{ru ? 'Кассир' : 'Kassir'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Заказы' : 'Sargytlar'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Наличные' : 'Nakt'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Карта' : 'Kart'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Кредит' : 'Kredit'}</th>
-                    <th className="text-right px-3 py-2">{ru ? 'Возвраты' : 'Yzyna gaýtarma'}</th>
-                    {p.credit && <th className="text-right px-3 py-2">{ru ? 'Погашения' : 'Üzülmeler'}</th>}
+                    <th>{ru ? 'Кассир' : 'Kassir'}</th>
+                    <th>{ru ? 'Заказы' : 'Sargytlar'}</th>
+                    <th>{ru ? 'Наличные' : 'Nakt'}</th>
+                    <th>{ru ? 'Карта' : 'Kart'}</th>
+                    <th>{ru ? 'Кредит' : 'Kredit'}</th>
+                    <th>{ru ? 'Возвраты' : 'Yzyna gaýtarma'}</th>
+                    {p.credit && <th>{ru ? 'Погашения' : 'Üzülmeler'}</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {data.cashiers.map((c: any) => (
-                    <tr key={c.id} className="border-t border-slate-800 text-slate-200">
-                      <td className="px-4 py-2 font-medium">{c.name}</td>
-                      <td className="px-3 py-2 text-right">{c.orders}</td>
-                      <td className="px-3 py-2 text-right">{money(c.cash)}</td>
-                      <td className="px-3 py-2 text-right">{money(c.card)}</td>
-                      <td className="px-3 py-2 text-right">{money(c.credit)}</td>
-                      <td className="px-3 py-2 text-right text-red-400">{money(c.refunds)}</td>
-                      {p.credit && <td className="px-3 py-2 text-right">{money(c.credit_repayments)}</td>}
+                    <tr key={c.id}>
+                      <td>{c.name}</td>
+                      <td>{c.orders}</td>
+                      <td>{money(c.cash)}</td>
+                      <td>{money(c.card)}</td>
+                      <td>{money(c.credit)}</td>
+                      <td style={{color:'var(--boom-danger)'}}>{money(c.refunds)}</td>
+                      {p.credit && <td>{money(c.credit_repayments)}</td>}
                     </tr>
                   ))}
-                  {data.cashiers.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-500">{ru ? 'Нет данных' : 'Maglumat ýok'}</td></tr>}
+                  {data.cashiers.length === 0 && <tr><td colSpan={7} className="cmd-empty-row">{ru ? 'Нет данных' : 'Maglumat ýok'}</td></tr>}
                 </tbody>
               </table>
             </div>
           )}
 
-          <div className="grid lg:grid-cols-2 gap-4">
+          <div className="cmd-grid-2">
             {/* ---- CREDIT / RECEIVABLES ---- */}
             {data.credit && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{ru ? 'Кредит и задолженность' : 'Kredit we bergiler'}</div>
-                  <button onClick={() => onNavigate('creditReports')} className="text-[10px] text-amber-400 flex items-center gap-0.5">{ru ? 'Отчёты' : 'Hasabatlar'} <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title">{ru ? 'Кредит и задолженность' : 'Kredit we bergiler'}</div>
+                  <button onClick={() => onNavigate('creditReports')} className="cmd-panel-link boom-focusable">{ru ? 'Отчёты' : 'Hasabatlar'} <ChevronRight /></button>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                  <div><div className="text-slate-500">{ru ? 'Выдано сегодня' : 'Şu gün berildi'}</div><div className="text-white font-semibold">{money(data.credit.issued_today.total)}</div></div>
-                  <div><div className="text-slate-500">{ru ? 'Погашено сегодня' : 'Şu gün üzüldi'}</div><div className="text-emerald-400 font-semibold">{money(data.credit.repayments_today.total)}</div></div>
+                <div className="cmd-grid-3" style={{marginBottom:'12px'}}>
+                  <div className="cmd-mini-stat"><span className="label">{ru ? 'Выдано сегодня' : 'Şu gün berildi'}</span><span className="value">{money(data.credit.issued_today.total)}</span></div>
+                  <div className="cmd-mini-stat"><span className="label">{ru ? 'Погашено сегодня' : 'Şu gün üzüldi'}</span><span className="value positive">{money(data.credit.repayments_today.total)}</span></div>
                 </div>
                 {data.credit.top_debtors.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-[10px] text-slate-500 uppercase">{ru ? 'Крупнейшие должники' : 'Iň uly bergidarlar'}</div>
+                  <div>
+                    <div className="cmd-status-label" style={{marginBottom:'4px'}}>{ru ? 'Крупнейшие должники' : 'Iň uly bergidarlar'}</div>
                     {data.credit.top_debtors.map((d: any) => (
-                      <button key={d.account_id} onClick={() => onNavigate('creditReports')} className="w-full flex justify-between text-xs text-slate-300 hover:text-white">
-                        <span>{d.name} <span className="text-slate-600">({d.type === 'CUSTOMER' ? (ru ? 'клиент' : 'müşderi') : (ru ? 'сотрудник' : 'işgär')})</span></span>
-                        <span className="text-amber-400 font-semibold">{money(d.current_balance)}</span>
+                      <button key={d.account_id} onClick={() => onNavigate('creditReports')} className="cmd-debtor-row boom-focusable">
+                        <span>{d.name} <span className="type">({d.type === 'CUSTOMER' ? (ru ? 'клиент' : 'müşderi') : (ru ? 'сотрудник' : 'işgär')})</span></span>
+                        <span className="amount">{money(d.current_balance)}</span>
                       </button>
                     ))}
                   </div>
@@ -418,19 +418,19 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
 
             {/* ---- STAFF ---- */}
             {data.staff && (
-              <div className="rounded-xl bg-slate-900 border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">{ru ? 'Персонал' : 'Işgärler'}</div>
-                  <button onClick={() => onNavigate('employees')} className="text-[10px] text-amber-400 flex items-center gap-0.5">{ru ? 'Сотрудники' : 'Işgärler'} <ChevronRight className="w-3 h-3" /></button>
+              <div className="cmd-panel">
+                <div className="cmd-panel-head">
+                  <div className="cmd-panel-title">{ru ? 'Персонал' : 'Işgärler'}</div>
+                  <button onClick={() => onNavigate('employees')} className="cmd-panel-link boom-focusable">{ru ? 'Сотрудники' : 'Işgärler'} <ChevronRight /></button>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div><div className="text-slate-500">{ru ? 'Активны' : 'Aktiw'}</div><div className="text-white font-semibold text-base">{data.staff.by_employment_status.ACTIVE}</div></div>
-                  <div><div className="text-slate-500">{ru ? 'Испытат.' : 'Synag'}</div><div className="text-white font-semibold text-base">{data.staff.by_employment_status.PROBATION}</div></div>
-                  <div><div className="text-slate-500">{ru ? 'Архив' : 'Arhiw'}</div><div className="text-white font-semibold text-base">{data.staff.by_employment_status.TERMINATED}</div></div>
+                <div className="cmd-grid-3">
+                  <div className="cmd-mini-stat"><span className="label">{ru ? 'Активны' : 'Aktiw'}</span><span className="value" style={{fontSize:'16px'}}>{data.staff.by_employment_status.ACTIVE}</span></div>
+                  <div className="cmd-mini-stat"><span className="label">{ru ? 'Испытат.' : 'Synag'}</span><span className="value" style={{fontSize:'16px'}}>{data.staff.by_employment_status.PROBATION}</span></div>
+                  <div className="cmd-mini-stat"><span className="label">{ru ? 'Архив' : 'Arhiw'}</span><span className="value" style={{fontSize:'16px'}}>{data.staff.by_employment_status.TERMINATED}</span></div>
                 </div>
-                <div className="mt-2 pt-2 border-t border-slate-800 flex justify-between text-[11px] text-slate-500">
+                <div className="cmd-cash-diff">
                   <span>{ru ? 'Активные POS-сессии' : 'Aktiw POS sessiýalary'}</span>
-                  <span className="text-slate-300">{ru ? 'официанты' : 'ofisiant'} {data.staff.active_pos_sessions.waiters} · {ru ? 'кассиры' : 'kassir'} {data.staff.active_pos_sessions.cashiers}</span>
+                  <span style={{color:'var(--boom-text-secondary)',fontWeight:600,fontSize:'11px'}}>{ru ? 'официанты' : 'ofisiant'} {data.staff.active_pos_sessions.waiters} · {ru ? 'кассиры' : 'kassir'} {data.staff.active_pos_sessions.cashiers}</span>
                 </div>
               </div>
             )}
