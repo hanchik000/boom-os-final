@@ -494,86 +494,86 @@ export const CashierPOSView: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-slate-800 bg-slate-900/60">
-        <div className="flex items-center gap-4 text-sm">
-          <div><span className="text-slate-500">{ru ? 'Филиал' : 'Şahamça'}: </span><strong className="text-white">{user?.branch_name || branchId}</strong></div>
-          <div><span className="text-slate-500">{ru ? 'Кассир' : 'Kassir'}: </span><strong className="text-white">{user?.full_name}</strong></div>
+    <div className="cashier-pos">
+      {/* TOP: BOOM OS / branch identity / cashier / shift / POS lock */}
+      <div className="cashier-topbar">
+        <div className="cashier-identity">
+          <div className="id-block"><span className="id-label">{ru ? 'Филиал' : 'Şahamça'}</span><span className="id-value">{user?.branch_name || branchId}</span></div>
+          <div className="id-block"><span className="id-label">{ru ? 'Кассир' : 'Kassir'}</span><span className="id-value">{user?.full_name}</span></div>
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-500">{ru ? 'Смена' : 'Çalyşyk'}:</span>
-            <span className={`px-2 py-0.5 rounded text-xs font-bold ${shift?.status === 'OPEN' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>{shift?.status === 'OPEN' ? (ru ? 'ОТКРЫТА' : 'AÇYK') : (ru ? 'ЗАКРЫТА' : 'ÝAPYK')}</span>
-            {shift?.status === 'OPEN' && <span className="text-slate-400">· {money(shift.expected_cash)} TMT</span>}
+            <span className="id-label">{ru ? 'Смена' : 'Çalyşyk'}</span>
+            <span className={`shift-pill ${shift?.status === 'OPEN' ? 'open' : 'closed'}`}>{shift?.status === 'OPEN' ? (ru ? 'ОТКРЫТА' : 'AÇYK') : (ru ? 'ЗАКРЫТА' : 'ÝAPYK')}</span>
+            {shift?.status === 'OPEN' && <span className="id-label">· {money(shift.expected_cash)} TMT</span>}
             {shift?.status === 'OPEN' && hasPermission('cash_shifts.close') && (
-              <button className="text-[11px] font-semibold text-red-400 hover:text-red-300 underline" onClick={() => setCloseConfirmOpen(true)}>{ru ? 'закрыть' : 'ýap'}</button>
+              <button className="text-[11px] font-semibold text-red-400 hover:text-red-300 underline boom-focusable" onClick={() => setCloseConfirmOpen(true)}>{ru ? 'закрыть' : 'ýap'}</button>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="cashier-actions">
           {isCashierRole && (posToken ? (
-            <button className="btn bg-slate-800 text-slate-200 flex items-center gap-1.5" onClick={() => void doLock()}><Lock className="w-3.5 h-3.5" /> {ru ? 'Заблокировать POS' : 'POS-y gulplamak'}</button>
+            <button className="cashier-btn boom-focusable" onClick={() => void doLock()}><Lock /> {ru ? 'Заблокировать POS' : 'POS-y gulplamak'}</button>
           ) : (
-            <button className="btn bg-amber-500 text-slate-950 flex items-center gap-1.5" onClick={() => setUnlockOpen(true)}><Unlock className="w-3.5 h-3.5" /> {ru ? 'Разблокировать POS' : 'POS-y açmak'}</button>
+            <button className="cashier-btn gold boom-focusable" onClick={() => setUnlockOpen(true)}><Unlock /> {ru ? 'Разблокировать POS' : 'POS-y açmak'}</button>
           ))}
-          <button className="btn bg-slate-800 text-slate-200 flex items-center gap-1.5" onClick={() => { void loadOrders(); void loadShift(); }}><RefreshCw className="w-3.5 h-3.5" /> {ru ? 'Обновить' : 'Täzelemek'}</button>
+          <button className="cashier-btn boom-focusable" onClick={() => { void loadOrders(); void loadShift(); }}><RefreshCw /> {ru ? 'Обновить' : 'Täzelemek'}</button>
         </div>
       </div>
 
       {posLocked && (
-        <div className="mx-5 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm p-3">
+        <div className="cashier-banner warn">
           {ru ? 'POS session expired. Please unlock POS again.' : 'POS sessiýasy gutardy. POS-y ýene açyň.'}
         </div>
       )}
       {shift?.status !== 'OPEN' && (
-        <div className="mx-5 mt-3 flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm p-3">
+        <div className="cashier-banner danger">
           <span>{ru ? 'SHIFT CLOSED — откройте смену для приёма оплат.' : 'SHIFT CLOSED — töleg kabul etmek üçin çalyşygy açyň.'}</span>
           <div className="flex items-center gap-2">
             <input className="field w-32" value={openingCash} onChange={e => setOpeningCash(e.target.value)} />
-            <button className="btn bg-amber-500 text-slate-950" disabled={shiftBusy || !hasPermission('cash_shifts.open')} onClick={() => void openShift()}>{ru ? 'Открыть смену' : 'Çalyşygy açmak'}</button>
+            <button className="cashier-btn gold boom-focusable" disabled={shiftBusy || !hasPermission('cash_shifts.open')} onClick={() => void openShift()}>{ru ? 'Открыть смену' : 'Çalyşygy açmak'}</button>
           </div>
         </div>
       )}
       {shiftError && <div className="mx-5 mt-2 text-xs text-red-400">{shiftError}</div>}
 
-      {/* MAIN AREA */}
-      <div className="flex-1 flex min-h-0">
-        {/* Active orders */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-slate-800">
-          <div className="p-4 space-y-3 border-b border-slate-800">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input className="field pl-9" placeholder={ru ? 'Поиск: № заказа, стол, официант' : 'Gözleg: sargyt belgisi, stol, ofisiant'} value={search} onChange={e => setSearch(e.target.value)} />
+      {/* MAIN AREA: active orders (left) / selected order + payment actions (right) */}
+      <div className="cashier-main">
+        {/* LEFT: active orders, search, filters */}
+        <div className="orders-rail">
+          <div className="orders-rail-controls">
+            <div className="orders-search">
+              <Search />
+              <input className="boom-focusable" placeholder={ru ? 'Поиск: № заказа, стол, официант' : 'Gözleg: sargyt belgisi, stol, ofisiant'} value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="orders-filters">
               {(['ALL', 'READY', 'UNPAID', 'DINE_IN', 'TAKEAWAY'] as const).map(f => (
-                <button key={f} onClick={() => setFilter(f)} className={`px-2.5 py-1 rounded text-xs font-semibold ${filter === f ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                <button key={f} onClick={() => setFilter(f)} className={`boom-focusable ${filter === f ? 'active' : ''}`}>
                   {f === 'ALL' ? (ru ? 'Все' : 'Ähli') : f === 'READY' ? (ru ? 'Готовы' : 'Taýyn') : f === 'UNPAID' ? (ru ? 'Не оплачены' : 'Tölenmedik') : f === 'DINE_IN' ? (ru ? 'В зале' : 'Zalda') : (ru ? 'С собой' : 'Ýany bilen')}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="orders-list">
             {ordersError && <div className="text-red-400 text-sm p-2">{ordersError}</div>}
             {ordersLoading ? (
               <div className="flex items-center gap-2 text-slate-500 p-4"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>
             ) : visibleOrders.length === 0 ? (
-              <div className="text-slate-500 text-sm p-4">{ru ? 'Нет активных заказов.' : 'Aktiw sargyt ýok.'}</div>
+              <div className="orders-empty">{ru ? 'Нет активных заказов.' : 'Aktiw sargyt ýok.'}</div>
             ) : visibleOrders.map(o => {
               const paid = paidOrderIds.has(o.id);
               return (
-                <button key={o.id} onClick={() => setSelectedId(o.id)} className={`w-full text-left p-3 rounded-lg border transition-colors ${selectedId === o.id ? 'border-amber-500 bg-amber-500/5' : 'border-slate-800 bg-slate-900 hover:border-slate-700'}`}>
-                  <div className="flex items-center justify-between">
-                    <strong className="text-white">#{o.order_number}</strong>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${o.status === 'READY' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{o.status}</span>
+                <button key={o.id} onClick={() => setSelectedId(o.id)} className={`order-card boom-focusable ${selectedId === o.id ? 'selected' : ''}`}>
+                  <div className="order-card-top">
+                    <span className="order-card-num">#{o.order_number}</span>
+                    <span className={`order-status-chip ${o.status === 'READY' ? 'ready' : ''}`}>{o.status}</span>
                   </div>
-                  <div className="text-xs text-slate-400 mt-1 flex flex-wrap gap-x-2">
+                  <div className="order-card-meta">
                     <span>{o.order_type === 'DINE_IN' ? `${ru ? 'Стол' : 'Stol'} ${o.table_code || '—'}` : (ru ? 'С собой' : 'Ýany bilen')}</span>
                     <span>· {o.waiter_name || '—'}</span>
                     <span>· {fmtTime(o.created_at)}</span>
                   </div>
-                  <div className="flex items-center justify-between mt-1.5">
-                    <span className="text-slate-300 text-sm">{money(o.final_amount)} {o.currency}</span>
-                    {paid ? <span className="text-[10px] font-bold text-emerald-400">{ru ? 'ОПЛАЧЕН' : 'TÖLENEN'}</span> : null}
+                  <div className="order-card-bottom">
+                    <span className="order-card-amount">{money(o.final_amount)} {o.currency}</span>
+                    {paid ? <span className="order-paid-tag">{ru ? 'ОПЛАЧЕН' : 'TÖLENEN'}</span> : null}
                   </div>
                 </button>
               );
@@ -581,28 +581,28 @@ export const CashierPOSView: React.FC = () => {
           </div>
         </div>
 
-        {/* RIGHT PANEL -- selected order */}
-        <div className="w-[420px] flex-shrink-0 flex flex-col overflow-y-auto">
+        {/* RIGHT: selected order detail + payment action area */}
+        <div className="order-detail">
           {!selectedId ? (
-            <div className="flex-1 flex items-center justify-center text-slate-600 text-sm p-6 text-center">{ru ? 'Выберите заказ слева' : 'Çepden sargyt saýlaň'}</div>
+            <div className="order-detail-empty">{ru ? 'Выберите заказ слева' : 'Çepden sargyt saýlaň'}</div>
           ) : detailLoading && !detail ? (
-            <div className="flex-1 flex items-center justify-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            <div className="order-detail-empty"><Loader2 className="w-5 h-5 animate-spin" /></div>
           ) : detail ? (
-            <div className="p-4 space-y-4">
+            <div className="order-detail-body">
               {detailError && <div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{detailError}</div>}
-              <div>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-white font-bold text-lg">#{detail.order_number}</h3>
+              <div className="od-head-wrap">
+                <div className="od-head">
+                  <h3>#{detail.order_number}</h3>
                   <span className="text-xs text-slate-400">{detail.status}</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-1">
+                <div className="od-head-sub">
                   {detail.order_type === 'DINE_IN' ? `${ru ? 'Стол' : 'Stol'} ${detail.table_code || '—'}` : (ru ? 'С собой' : 'Ýany bilen')} · {detail.waiter_name || '—'} · {fmtDateTime(detail.created_at)}
                 </div>
               </div>
 
               {/* Stage 34.3: guest + manual discount. Identification alone never changes the price. */}
               {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT', 'COMPLETED'].includes(detail.status) && (
-                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5 space-y-2">
+                <div className="guest-card space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-slate-400 inline-flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5" />{detail.customer_name || (ru ? 'Клиент не выбран' : 'Müşderi saýlanmady')}</div>
                     <div className="flex gap-1.5">
@@ -628,12 +628,12 @@ export const CashierPOSView: React.FC = () => {
               )}
 
               {/* Items */}
-              <div className="space-y-2">
+              <div className="od-line-items">
                 {(detail.items || []).filter((i: any) => i.status === 'ACTIVE').map((item: any) => (
-                  <div key={item.id} className="border border-slate-800 rounded-lg p-2.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-white">{item.title_snapshot}</span>
-                      <span className="text-slate-300">{item.quantity} × {money(item.price_snapshot)}</span>
+                  <div key={item.id} className="od-item">
+                    <div className="od-item-row">
+                      <span className="od-item-name">{item.title_snapshot}</span>
+                      <span className="od-item-qty">{item.quantity} × {money(item.price_snapshot)}</span>
                     </div>
                     {(item.modifiers || []).length > 0 && (
                       <div className="text-xs text-slate-500 mt-0.5">{item.modifiers.map((m: any) => m.name_snapshot).join(', ')}</div>
@@ -664,11 +664,11 @@ export const CashierPOSView: React.FC = () => {
               </div>
 
               {/* Totals -- server-authoritative, never recomputed here */}
-              <div className="border-t border-slate-800 pt-3 space-y-1 text-sm">
-                <div className="flex justify-between text-slate-400"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money(detail.subtotal)} {detail.currency}</span></div>
-                {Number(detail.discount) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money(detail.discount)}</span></div>}
-                {Number(detail.service_charge) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money(detail.service_charge)}</span></div>}
-                <div className="flex justify-between text-white font-bold text-base pt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(detail.final_amount)} {detail.currency}</span></div>
+              <div className="od-totals">
+                <div className="od-total-row"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money(detail.subtotal)} {detail.currency}</span></div>
+                {Number(detail.discount) > 0 && <div className="od-total-row"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money(detail.discount)}</span></div>}
+                {Number(detail.service_charge) > 0 && <div className="od-total-row"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money(detail.service_charge)}</span></div>}
+                <div className="od-total-row grand"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span className="amount">{money(detail.final_amount)} {detail.currency}</span></div>
               </div>
 
               {/* Notes */}
@@ -679,7 +679,7 @@ export const CashierPOSView: React.FC = () => {
                 <button className="btn text-xs" disabled={notesBusy} onClick={() => void saveNotes()}>{notesBusy ? '…' : notesSaved ? (ru ? 'Сохранено ✓' : 'Ýatda saklandy ✓') : (ru ? 'Сохранить заметки' : 'Belliklary ýatda saklamak')}</button>
               </div>
 
-              {/* Pay / receipt actions */}
+              {/* RIGHT / ACTION AREA -- pay / receipt / closure / compliment */}
               <div className="border-t border-slate-800 pt-3 space-y-2">
                 {(() => { const reason = payBlockedReason(detail); return reason ? (
                   <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded p-2">{reason}</div>
@@ -695,26 +695,27 @@ export const CashierPOSView: React.FC = () => {
                         </div>
                         {b.status === 'PAID'
                           ? <span className="text-xs text-emerald-400 shrink-0">{ru ? 'оплачен' : 'tölendi'}</span>
-                          : <button className="btn bg-emerald-500 text-slate-950 text-xs font-bold shrink-0" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(b); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>{ru ? 'Оплатить' : 'Tölemek'}</button>}
+                          : <button className="action-btn bg-emerald-500 text-slate-950 text-xs shrink-0" style={{width:'auto',padding:'7px 12px'}} disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(b); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>{ru ? 'Оплатить' : 'Tölemek'}</button>}
                       </div>
                     ))}
                   </div>
                 ) : selectedPaid ? (
                   <div className="flex gap-2">
-                    <button className="btn flex-1 flex items-center justify-center gap-1.5" onClick={() => void openReceipt(detail, selectedPaid)}><ReceiptIcon className="w-4 h-4" /> {ru ? 'Чек' : 'Çek'}</button>
+                    <button className="action-btn bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center gap-1.5" onClick={() => void openReceipt(detail, selectedPaid)}><ReceiptIcon className="w-4 h-4" /> {ru ? 'Чек' : 'Çek'}</button>
                   </div>
                 ) : (
-                  <button className="btn w-full bg-emerald-500 text-slate-950 font-bold py-2.5" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(null); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>
-                    {ru ? `ОПЛАТИТЬ ${money(detail.final_amount)}` : `TÖLEG ${money(detail.final_amount)}`}
+                  <button className="pay-cta boom-focusable" disabled={Boolean(payBlockedReason(detail))} onClick={() => { setPayingBill(null); setPayMethod('CASH'); setPayError(''); resetCreditFlow(); setPayDialogOpen(true); }}>
+                    <span className="pay-cta-label">{ru ? 'Оплатить заказ' : 'Sargydy tölemek'}</span>
+                    <span className="pay-cta-amount">{money(detail.final_amount)} {detail.currency}</span>
                   </button>
                 )}
                 {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT'].includes(detail.status) && (
-                  <button className="btn w-full bg-purple-600/20 border border-purple-500/40 text-purple-200 font-semibold py-2" onClick={openClosure}>
+                  <button className="action-btn danger-zone boom-focusable" onClick={openClosure}>
                     {ru ? 'ЗАКРЫТО ЗАВЕДЕНИЕМ' : 'KÄRHANA TARAPYNDAN ÝAPYLDY'}
                   </button>
                 )}
                 {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT', 'COMPLETED'].includes(detail.status) && (
-                  <button className="btn w-full bg-sky-600/20 border border-sky-500/40 text-sky-200 font-semibold py-2" onClick={() => { setComplimentError(''); setComplimentSent(false); setComplimentItem(''); setComplimentQty(1); setComplimentReason(''); setComplimentComment(''); setComplimentOpen(true); }}>
+                  <button className="action-btn info-zone boom-focusable" onClick={() => { setComplimentError(''); setComplimentSent(false); setComplimentItem(''); setComplimentQty(1); setComplimentReason(''); setComplimentComment(''); setComplimentOpen(true); }}>
                     {ru ? 'ОТ ЗАВЕДЕНИЯ' : 'KÄRHANADAN'}
                   </button>
                 )}
@@ -725,8 +726,8 @@ export const CashierPOSView: React.FC = () => {
       </div>
 
       {/* Today's payments */}
-      <div className="border-t border-slate-800 max-h-56 overflow-y-auto">
-        <div className="px-4 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider sticky top-0 bg-slate-950">{ru ? "Сегодняшние платежи" : 'Şu günki tölegler'}</div>
+      <div className="payments-ledger">
+        <div className="payments-ledger-head">{ru ? "Сегодняшние платежи" : 'Şu günki tölegler'}</div>
         <table className="w-full text-xs">
           <tbody>
             {payments.slice(0, 30).map(p => {
@@ -935,17 +936,17 @@ export const CashierPOSView: React.FC = () => {
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4">
             {/* A split order is settled one separate check at a time; the figures are the bill's own. */}
             <h2 className="text-white text-lg font-bold">{ru ? 'Оплата' : 'Töleg'} #{detail.order_number}{payingBill ? ` · ${ru ? 'счёт' : 'hasap'} #${payingBill.bill_number}` : ''}</h2>
-            <div className="space-y-1 text-sm border-y border-slate-800 py-3">
-              <div className="flex justify-between text-slate-400"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money((payingBill || detail).subtotal)}</span></div>
-              {Number((payingBill || detail).discount) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money((payingBill || detail).discount)}</span></div>}
-              {Number((payingBill || detail).service_charge) > 0 && <div className="flex justify-between text-slate-400"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money((payingBill || detail).service_charge)}</span></div>}
-              <div className="flex justify-between text-white font-bold text-lg pt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money((payingBill || detail).final_amount)} {detail.currency}</span></div>
+            <div className="pay-modal-total">
+              <div className="flex justify-between text-slate-400 text-sm"><span>{ru ? 'Промежуточный итог' : 'Aralyk jemi'}</span><span>{money((payingBill || detail).subtotal)}</span></div>
+              {Number((payingBill || detail).discount) > 0 && <div className="flex justify-between text-slate-400 text-sm"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money((payingBill || detail).discount)}</span></div>}
+              {Number((payingBill || detail).service_charge) > 0 && <div className="flex justify-between text-slate-400 text-sm"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money((payingBill || detail).service_charge)}</span></div>}
+              <div className="pay-modal-grand"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span className="amount">{money((payingBill || detail).final_amount)} {detail.currency}</span></div>
             </div>
             <div>
               <div className="text-xs text-slate-400 mb-1.5">{ru ? 'Способ оплаты' : 'Töleg usuly'}</div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="pay-method-grid">
                 {PAYMENT_METHODS.map(m => (
-                  <button key={m} onClick={() => setPayMethod(m)} className={`py-2 rounded text-xs font-semibold ${payMethod === m ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}>{m}</button>
+                  <button key={m} onClick={() => setPayMethod(m)} className={`pay-method-btn boom-focusable ${payMethod === m ? 'selected' : ''}`}>{m}</button>
                 ))}
               </div>
             </div>
@@ -1002,8 +1003,8 @@ export const CashierPOSView: React.FC = () => {
             )}
             {payError && <div className="text-red-400 text-xs">{payError}</div>}
             <div className="flex gap-2 justify-end">
-              <button className="btn bg-slate-800 text-slate-200" disabled={paying} onClick={() => setPayDialogOpen(false)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-              <button className="btn bg-emerald-500 text-slate-950 flex items-center gap-1.5" disabled={paying || (payMethod === 'CREDIT' && !creditAccount)} onClick={() => void pay()}>
+              <button className="pay-cancel-btn boom-focusable" disabled={paying} onClick={() => setPayDialogOpen(false)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
+              <button className="pay-confirm-btn boom-focusable" disabled={paying || (payMethod === 'CREDIT' && !creditAccount)} onClick={() => void pay()}>
                 {paying ? <><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'ОПЛАТА…' : 'TÖLENÝÄR…'}</> : <><CheckCircle2 className="w-4 h-4" /> {payMethod === 'CREDIT' ? (ru ? 'ПОДТВЕРДИТЬ КРЕДИТ' : 'KREDITI TASSYKLA') : (ru ? 'ПОДТВЕРДИТЬ' : 'TASSYKLA')}</>}
               </button>
             </div>
@@ -1018,7 +1019,7 @@ export const CashierPOSView: React.FC = () => {
             <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
             <h2 className="text-white text-xl font-bold">{ru ? 'ОПЛАТА ПРОШЛА УСПЕШНО' : 'TÖLEG ÜSTÜNLIKLI'}</h2>
             <p className="text-slate-400 text-sm">{ru ? 'Заказ' : 'Sargyt'} #{successOrder.order_number}</p>
-            <div className="text-3xl font-black text-white">{money(successPayment.amount)} {successOrder.currency}</div>
+            <div className="pay-success-amount">{money(successPayment.amount)} {successOrder.currency}</div>
             <div className="text-xs text-slate-500">{successPayment.method} · {fmtTime(successPayment.created_at)}</div>
             {successPayment.method === 'CREDIT' && creditAccount && (
               <div className="rounded-lg bg-slate-800/60 p-2.5 text-xs space-y-1 text-left">

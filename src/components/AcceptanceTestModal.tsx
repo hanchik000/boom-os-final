@@ -64,12 +64,11 @@ const initialFoundationTests: TestResult[] = [
   { id: 16, title: 'Verify OpenAPI 3.0 / Swagger Documentation (/api/docs/openapi.json)', category: 'API Documentation', status: 'PENDING' }
 ];
 
-const { t } = useLanguage();
-
 export const AcceptanceTestModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
   onClose
 }) => {
+  const { t } = useLanguage();
   const [activeSuite, setActiveSuite] = useState<'stage12' | 'foundation'>('stage12');
   const [stage12Tests, setStage12Tests] = useState<TestResult[]>(initialStage12Tests);
   const [foundationTests, setFoundationTests] = useState<TestResult[]>(initialFoundationTests);
