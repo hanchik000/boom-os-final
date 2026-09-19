@@ -6,9 +6,13 @@ import { requireOperatorPosSession } from './operator-pos';
 import { applyCreditSale } from './credit';
 import { refundPaymentFinancials } from '../order-closure';
 import { recordServiceChargeLedger } from '../service-charge';
-import { accrueBoomcoinForSettlement } from '../loyalty';
+import { accrueBoomcoinForSettlement, accrueBoombackForSettlement, redeemBoomback, boombackBalance } from '../loyalty';
 const router=Router();
-const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT']);
+// Stage 34.7: BOOMBACK joins the existing methods. It is the ONE method that may settle an order
+// only partially, because it is money the guest already holds rather than a price change -- the
+// remainder is then settled by cash or card as usual.
+const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT','BOOMBACK']);
+const PARTIAL_METHODS=new Set(['BOOMBACK']);
 function cents(v:unknown){const s=String(v??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(s))throw new Error('INVALID_MONEY');const [a,b='']=s.split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));}
 function text(c:bigint){return `${c/100n}.${(c%100n).toString().padStart(2,'0')}`;}
 function allowed(req:Request,b:string){return Boolean(req.user?.isSuperUser||req.user?.allowedBranchIds.includes(b));}
@@ -76,24 +80,40 @@ router.post('/',requirePermission('payments.create'),requireOperatorPosSession,a
       const paidRow=await tx.queryOne<any>(isSplit
         ? `SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE bill_id=? AND status='PAID'`
         : `SELECT COALESCE(SUM(amount),0) AS paid FROM payments WHERE order_id=? AND status='PAID'`,[isSplit?bill.id:orderId]);
-      const paid=cents(paidRow?.paid||'0');const remaining=cents(isSplit?bill.final_amount:order.final_amount)-paid;
-      if(requested!==remaining)throw Object.assign(new Error('PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'),{httpStatus:409,details:{expected:text(remaining)}});let shiftId:null|string=null;if(method==='CASH'||method==='CARD'){const shift=await tx.queryOne<any>('SELECT id,status FROM cash_shifts WHERE branch_id=? AND status=\'OPEN\' FOR UPDATE',[order.branch_id]);if(!shift)throw Object.assign(new Error('OPEN_SHIFT_REQUIRED'),{httpStatus:409});shiftId=shift.id;}await tx.execute(`INSERT INTO payments (id,order_id,bill_id,branch_id,cash_shift_id,cashier_user_id,method,status,amount,idempotency_key,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'PAID',CAST(? AS numeric),?,?,?)`,[paymentId,orderId,bill?bill.id:null,order.branch_id,shiftId,req.user!.id,method,text(requested),idem,now,now]);if(shiftId){const col=method==='CASH'?'cash_sales':'card_sales';const expectedExpr=col==='cash_sales'?'opening_cash+cash_sales+CAST(? AS numeric)-refunds-voids':'opening_cash+cash_sales-refunds-voids';const shiftParams=col==='cash_sales'?[text(requested),text(requested),now,shiftId]:[text(requested),now,shiftId];await tx.execute(`UPDATE cash_shifts SET ${col}=${col}+CAST(? AS numeric),expected_cash=${expectedExpr},updated_at=? WHERE id=?`,shiftParams);}
+      const paid=cents(paidRow?.paid||'0');const total=cents(isSplit?bill.final_amount:order.final_amount);const remaining=total-paid;
+      const allowPartial=PARTIAL_METHODS.has(method);
+      if(allowPartial ? (requested>remaining||requested<=0n) : (requested!==remaining))throw Object.assign(new Error('PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'),{httpStatus:409,details:{expected:text(remaining),partial_allowed:allowPartial}});
+      // A BOOMBACK payment spends the guest's own balance, so the order must actually have a guest
+      // and the balance must cover it. The ledger re-checks under a row lock below.
+      let boombackCustomerId:string|null=null;
+      if(method==='BOOMBACK'){
+        boombackCustomerId=(bill?bill.customer_id:order.customer_id)||null;
+        if(!boombackCustomerId)throw Object.assign(new Error('BOOMBACK_REQUIRES_CUSTOMER'),{httpStatus:409});
+        const balance=await boombackBalance(tx,boombackCustomerId);
+        if(requested>balance)throw Object.assign(new Error('BOOMBACK_INSUFFICIENT_BALANCE'),{httpStatus:409,details:{balance:text(balance)}});
+      }
+      const fullySettled=paid+requested>=total;let shiftId:null|string=null;if(method==='CASH'||method==='CARD'){const shift=await tx.queryOne<any>('SELECT id,status FROM cash_shifts WHERE branch_id=? AND status=\'OPEN\' FOR UPDATE',[order.branch_id]);if(!shift)throw Object.assign(new Error('OPEN_SHIFT_REQUIRED'),{httpStatus:409});shiftId=shift.id;}await tx.execute(`INSERT INTO payments (id,order_id,bill_id,branch_id,cash_shift_id,cashier_user_id,method,status,amount,idempotency_key,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'PAID',CAST(? AS numeric),?,?,?)`,[paymentId,orderId,bill?bill.id:null,order.branch_id,shiftId,req.user!.id,method,text(requested),idem,now,now]);if(shiftId){const col=method==='CASH'?'cash_sales':'card_sales';const expectedExpr=col==='cash_sales'?'opening_cash+cash_sales+CAST(? AS numeric)-refunds-voids':'opening_cash+cash_sales-refunds-voids';const shiftParams=col==='cash_sales'?[text(requested),text(requested),now,shiftId]:[text(requested),now,shiftId];await tx.execute(`UPDATE cash_shifts SET ${col}=${col}+CAST(? AS numeric),expected_cash=${expectedExpr},updated_at=? WHERE id=?`,shiftParams);}
       if(method==='CREDIT'){const accountId=String(req.body?.credit_account_id||'');if(!accountId)throw Object.assign(new Error('CREDIT_ACCOUNT_REQUIRED'),{httpStatus:400});const isManager=Boolean(req.user!.isSuperUser||req.user!.permissions.includes('credit.manage_limit'));await applyCreditSale(tx,{branchId:order.branch_id,accountId,amount:requested,orderId,paymentId,cashierUserId:req.user!.id,isManager,now});}
-      if(bill){
+      if(method==='BOOMBACK'&&boombackCustomerId){
+        await redeemBoomback(tx,{branchId:order.branch_id,customerId:boombackCustomerId,amountCents:requested,orderId,billId:bill?bill.id:null,paymentId,actorId:req.user!.id,now,req});
+      }
+      if(bill&&fullySettled){
         await tx.execute(`UPDATE order_bills SET status='PAID',closed_at=?,updated_at=? WHERE id=? AND status='OPEN'`,[now,now,bill.id]);
       }
-      // Stage 34.5: BOOMCOIN is earned on what the guest actually settled -- per separate check when
-      // the order is split (each bill has its own guest), otherwise once for the whole order.
+      // Stage 34.5/34.7: loyalty is earned on what the guest actually settled -- per separate check
+      // when the order is split (each bill has its own guest), otherwise once for the whole order.
       await accrueBoomcoinForSettlement(tx,{branchId:order.branch_id,customerId:bill?bill.customer_id:order.customer_id,orderId:orderId,billId:bill?bill.id:null,amountCents:requested,actorId:req.user!.id,now,req});
+      await accrueBoombackForSettlement(tx,{branchId:order.branch_id,customerId:bill?bill.customer_id:order.customer_id,orderId:orderId,billId:bill?bill.id:null,amountCents:requested,actorId:req.user!.id,now,req});
       // Consumption, the service-charge ledger and order completion happen ONCE per order, when the
       // last separate check is settled -- never once per bill, which would consume stock N times.
-      const stillOpen=isSplit?await tx.queryOne<any>(`SELECT id FROM order_bills WHERE order_id=? AND status='OPEN' LIMIT 1`,[orderId]):null;
+      // A partially settled order (BOOMBACK paid, cash still owed) is not settled at all yet.
+      const stillOpen=!fullySettled?{id:'partial'}:(isSplit?await tx.queryOne<any>(`SELECT id FROM order_bills WHERE order_id=? AND status='OPEN' LIMIT 1`,[orderId]):null);
       if(!stillOpen){
       await consumeInventoryForOrder(tx,orderId,order.branch_id,req.user!.id,now);
       await recordServiceChargeLedger(tx, order, req.user!.id, now);
       await tx.execute(`UPDATE orders SET status='COMPLETED',updated_at=? WHERE id=?`,[now,orderId]); if(order.table_id) await releaseTableIfNoActiveOrders(tx,order.table_id,order.branch_id,now); await tx.execute(`UPDATE kds_tickets SET status='COMPLETED',completed_at=COALESCE(completed_at,?),updated_at=? WHERE order_id=? AND status<>'CANCELLED'`,[now,now,orderId]);
       }
-      await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:order.branch_id,action:'PAYMENT_CREATED',entityType:'PAYMENT',entityId:paymentId,newValues:{order_id:orderId,bill_id:bill?bill.id:null,method,amount:text(requested)},req});return {payment:await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[paymentId]),replayed:false};});res.status(result.replayed?200:201).json(result);}catch(e:any){const map:any={ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],ORDER_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','ORDER_NOT_READY_FOR_PAYMENT'],KDS_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','KDS_NOT_READY_FOR_PAYMENT'],PAYMENT_AMOUNT_MUST_EQUAL_REMAINING:[409,'INVALID_STATE','PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'],OPEN_SHIFT_REQUIRED:[409,'INVALID_STATE','OPEN_SHIFT_REQUIRED'],BILL_REQUIRED_FOR_SPLIT_ORDER:[409,'INVALID_STATE','BILL_REQUIRED_FOR_SPLIT_ORDER'],BILL_NOT_FOUND:[404,'NOT_FOUND','BILL_NOT_FOUND'],BILL_ALREADY_PAID:[409,'INVALID_STATE','BILL_ALREADY_PAID'],ORDER_NOT_SPLIT:[409,'INVALID_STATE','ORDER_NOT_SPLIT'],INSUFFICIENT_STOCK:[409,'INVALID_STATE','INSUFFICIENT_STOCK'],INVENTORY_ITEM_NOT_FOUND:[409,'INVALID_STATE','INVENTORY_ITEM_NOT_FOUND'],CREDIT_ACCOUNT_REQUIRED:[400,'VALIDATION_ERROR','CREDIT_ACCOUNT_REQUIRED'],CREDIT_ACCOUNT_NOT_FOUND:[404,'NOT_FOUND','CREDIT_ACCOUNT_NOT_FOUND'],CREDIT_LIMIT_EXCEEDED:[409,'INVALID_STATE','CREDIT_LIMIT_EXCEEDED']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:e.details||{}});throw e;}});
+      await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:order.branch_id,action:'PAYMENT_CREATED',entityType:'PAYMENT',entityId:paymentId,newValues:{order_id:orderId,bill_id:bill?bill.id:null,method,amount:text(requested)},req});return {payment:await tx.queryOne<any>('SELECT * FROM payments WHERE id=?',[paymentId]),replayed:false};});res.status(result.replayed?200:201).json(result);}catch(e:any){const map:any={ORDER_NOT_FOUND:[404,'NOT_FOUND','ORDER_NOT_FOUND'],BRANCH_ACCESS_DENIED:[403,'BRANCH_ACCESS_DENIED','BRANCH_ACCESS_DENIED'],ORDER_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','ORDER_NOT_READY_FOR_PAYMENT'],KDS_NOT_READY_FOR_PAYMENT:[409,'INVALID_STATE','KDS_NOT_READY_FOR_PAYMENT'],PAYMENT_AMOUNT_MUST_EQUAL_REMAINING:[409,'INVALID_STATE','PAYMENT_AMOUNT_MUST_EQUAL_REMAINING'],OPEN_SHIFT_REQUIRED:[409,'INVALID_STATE','OPEN_SHIFT_REQUIRED'],BILL_REQUIRED_FOR_SPLIT_ORDER:[409,'INVALID_STATE','BILL_REQUIRED_FOR_SPLIT_ORDER'],BILL_NOT_FOUND:[404,'NOT_FOUND','BILL_NOT_FOUND'],BILL_ALREADY_PAID:[409,'INVALID_STATE','BILL_ALREADY_PAID'],ORDER_NOT_SPLIT:[409,'INVALID_STATE','ORDER_NOT_SPLIT'],BOOMBACK_REQUIRES_CUSTOMER:[409,'INVALID_STATE','BOOMBACK_REQUIRES_CUSTOMER'],BOOMBACK_INSUFFICIENT_BALANCE:[409,'INVALID_STATE','BOOMBACK_INSUFFICIENT_BALANCE'],CUSTOMER_NOT_FOUND:[404,'NOT_FOUND','CUSTOMER_NOT_FOUND'],INSUFFICIENT_STOCK:[409,'INVALID_STATE','INSUFFICIENT_STOCK'],INVENTORY_ITEM_NOT_FOUND:[409,'INVALID_STATE','INVENTORY_ITEM_NOT_FOUND'],CREDIT_ACCOUNT_REQUIRED:[400,'VALIDATION_ERROR','CREDIT_ACCOUNT_REQUIRED'],CREDIT_ACCOUNT_NOT_FOUND:[404,'NOT_FOUND','CREDIT_ACCOUNT_NOT_FOUND'],CREDIT_LIMIT_EXCEEDED:[409,'INVALID_STATE','CREDIT_LIMIT_EXCEEDED']};if(map[e.message])return res.status(map[e.message][0]).json({error:map[e.message][1],code:map[e.message][2],message:e.message,details:e.details||{}});throw e;}});
 // Stage 34.1: a refund is never an arbitrary historical action. It is only ever the financial
 // half of an APPROVED cancellation / establishment closure, and it never touches inventory -- the
 // product decision was applied independently when that closure was approved.

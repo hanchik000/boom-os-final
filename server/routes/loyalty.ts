@@ -2,7 +2,7 @@ import { Router, Request } from 'express';
 import { query, queryOne, transaction } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { getWaiterSession } from './waiters';
-import { boomcoinSettings, boomcoinStateFor, adjustBoomcoin } from '../loyalty';
+import { boomcoinSettings, boomcoinStateFor, adjustBoomcoin, boombackBalance, adjustBoomback } from '../loyalty';
 
 // Stage 34.5 -- BOOMCOIN read surface and manual adjustments.
 // Everything returned here is recomputed from the authoritative boomcoin_ledger.
@@ -75,6 +75,44 @@ router.post('/boomcoin/adjust', requirePermission('loyalty.manage'), async (req,
   if (!allowed(req, customer.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
   const now = new Date().toISOString();
   const row = await transaction(async (tx) => adjustBoomcoin(tx, { branchId: customer.branch_id, customerId, coins, reason, actorId: req.user!.id, now, req }));
+  res.status(201).json({ entry: row });
+});
+
+// ---------------------------------------------------------------- BOOMBACK (Stage 34.7)
+router.get('/boomback/customers/:id', requirePermission('loyalty.view'), async (req, res) => {
+  const customer = await queryOne<any>('SELECT id,branch_id,name,boomback_balance FROM customers WHERE id=? AND deleted_at IS NULL', [String(req.params.id)]);
+  if (!customer) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
+  if (!allowed(req, customer.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
+  // Computed from the authoritative ledger, with the cache shown beside it.
+  const balance = await boombackBalance({ query, queryOne }, customer.id);
+  res.json({ customer_id: customer.id, customer_name: customer.name, balance: `${balance / 100n}.${String(balance % 100n).padStart(2, '0')}`, cached_balance: String(customer.boomback_balance ?? '0') });
+});
+
+router.get('/boomback/ledger', requirePermission('loyalty.view'), async (req, res) => {
+  const b = String(req.query.branch_id || req.user!.branch_id || '');
+  if (!b || !allowed(req, b)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Branch is outside your access scope.',details:{}});
+  const customerId = typeof req.query.customer_id === 'string' ? req.query.customer_id : null;
+  const where = customerId ? 'l.branch_id=? AND l.customer_id=?' : 'l.branch_id=?';
+  const params = customerId ? [b, customerId] : [b];
+  const entries = await query<any>(`SELECT l.*,c.name AS customer_name,o.order_number,u.full_name AS created_by_name FROM boomback_ledger l LEFT JOIN customers c ON c.id=l.customer_id LEFT JOIN orders o ON o.id=l.order_id LEFT JOIN users u ON u.id=l.created_by WHERE ${where} ORDER BY l.created_at DESC LIMIT 500`, params);
+  const totals = await query<any>(`SELECT type,COALESCE(SUM(amount),0) AS amount FROM boomback_ledger WHERE branch_id=? GROUP BY type ORDER BY type`, [b]);
+  res.json({ branch_id: b, entries, totals });
+});
+
+router.post('/boomback/adjust', requirePermission('loyalty.manage'), async (req, res) => {
+  const customerId = String(req.body?.customer_id || '');
+  const raw = String(req.body?.amount ?? '').trim();
+  const reason = String(req.body?.reason || '').trim().slice(0, 500);
+  if (!customerId || !/^-?\d+(?:\.\d{1,2})?$/.test(raw) || Number(raw) === 0) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_BOOMBACK_ADJUSTMENT',message:'customer_id and a non-zero amount are required.',details:{}});
+  if (!reason) return res.status(400).json({error:'VALIDATION_ERROR',code:'ADJUSTMENT_REASON_REQUIRED',message:'A reason is required for a manual BOOMBACK adjustment.',details:{}});
+  const customer = await queryOne<any>('SELECT id,branch_id FROM customers WHERE id=? AND deleted_at IS NULL', [customerId]);
+  if (!customer) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
+  if (!allowed(req, customer.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
+  const neg = raw.startsWith('-'); const clean = neg ? raw.slice(1) : raw;
+  const [a, b2 = ''] = clean.split('.');
+  const amountCents = (BigInt(a) * 100n + BigInt((b2 + '00').slice(0, 2))) * (neg ? -1n : 1n);
+  const now = new Date().toISOString();
+  const row = await transaction(async (tx) => adjustBoomback(tx, { branchId: customer.branch_id, customerId, amountCents, reason, actorId: req.user!.id, now, req }));
   res.status(201).json({ entry: row });
 });
 

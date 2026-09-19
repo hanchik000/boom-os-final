@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import crypto from 'node:crypto';
 import { query, queryOne, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
+import { recomputeOrderTotals } from '../order-totals';
 
 // Stage 34.6 -- BOOMCARD lifecycle and the guest's personal cabinet.
 //
@@ -69,8 +70,8 @@ router.get('/cabinet/:token', async (req, res) => {
   if (!card) return res.status(404).json({ error: 'NOT_FOUND', code: 'CABINET_NOT_FOUND', message: 'Cabinet not found.', details: {} });
   const now = new Date().toISOString();
   const gifts = await query<any>(`SELECT id,status,quantity,valid_from,valid_until FROM boomcard_birthday_gifts WHERE boomcard_id=? AND status='GRANTED' AND valid_from<=? AND valid_until>=?`, [card.id, now, now]);
-  // Cashback (BOOMBACK) is wired into this cabinet in Stage 34.7, which introduces its ledger.
-  // Reporting null is honest; inventing a number here would not be.
+  // Stage 34.7: cashback is the guest's BOOMBACK balance, recomputed from its authoritative ledger.
+  const boomback = await queryOne<any>(`SELECT COALESCE(SUM(amount),0) AS balance FROM boomback_ledger WHERE customer_id=?`, [card.customer_id]);
   res.json({
     customer_name: card.customer_name,
     status: card.status,
@@ -79,7 +80,7 @@ router.get('/cabinet/:token', async (req, res) => {
     // Generic on purpose: the guest learns that a birthday benefit is waiting and how many, never
     // which dish it is.
     birthday_benefit: gifts.length > 0 ? { available: true, quantity: gifts.reduce((s, g) => s + Number(g.quantity), 0), valid_until: gifts[0].valid_until } : { available: false },
-    cashback_balance: null,
+    cashback_balance: String(boomback?.balance ?? '0'),
   });
 });
 
@@ -141,6 +142,11 @@ const CARD_ERRORS: any = {
   MENU_ITEM_NOT_FOUND: [404, 'NOT_FOUND', 'MENU_ITEM_NOT_FOUND'],
   MENU_ITEM_BRANCH_MISMATCH: [403, 'BRANCH_ACCESS_DENIED', 'MENU_ITEM_BRANCH_MISMATCH'],
   INVALID_GIFT_QUANTITY: [400, 'VALIDATION_ERROR', 'INVALID_GIFT_QUANTITY'],
+  BREAKFAST_BALANCE_EXHAUSTED: [409, 'INVALID_STATE', 'BREAKFAST_BALANCE_EXHAUSTED'],
+  ORDER_NOT_FOUND: [404, 'NOT_FOUND', 'ORDER_NOT_FOUND'],
+  ORDER_BRANCH_MISMATCH: [403, 'BRANCH_ACCESS_DENIED', 'ORDER_BRANCH_MISMATCH'],
+  ORDER_NOT_EDITABLE: [409, 'INVALID_STATE', 'ORDER_NOT_EDITABLE'],
+  ORDER_BELONGS_TO_ANOTHER_GUEST: [409, 'INVALID_STATE', 'ORDER_BELONGS_TO_ANOTHER_GUEST'],
 };
 function sendCardError(res: any, e: any) { const m = CARD_ERRORS[e.message]; if (!m) throw e; return res.status(m[0]).json({ error: m[1], code: m[2], message: e.message, details: e.details || {} }); }
 
@@ -207,6 +213,52 @@ router.post('/:id/birthday-gift', requirePermission('boomcard.manage'), async (r
       return await tx.queryOne<any>('SELECT * FROM boomcard_birthday_gifts WHERE id=?', [giftId]);
     });
     res.status(201).json({ gift: result });
+  } catch (e: any) { return sendCardError(res, e); }
+});
+
+/**
+ * Stage 34.7 -- redeeming a breakfast.
+ *
+ * The breakfast is a REAL menu item added to a real open order at a customer price of 0. It is
+ * never a discount and never a phantom line: because it is an ordinary order item with an ordinary
+ * recipe, the EXISTING payment -> consumption path consumes its real ingredients and records its
+ * real cost -- there is no second inventory path here. The card's breakfast balance decreases, and
+ * the redemption is recorded in the card's own event ledger, separate from BOOMBACK.
+ *
+ * BOOM OS does not hardcode which dishes count as breakfast; the cashier names the item the guest
+ * actually took, and the card's remaining allowance is what limits it.
+ */
+router.post('/:id/breakfast/redeem', requirePermission('boomcard.manage'), async (req, res) => {
+  const orderId = String(req.body?.order_id || '');
+  const menuItemId = String(req.body?.menu_item_id || '');
+  const quantity = Number(req.body?.quantity ?? 1);
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      const card = await loadCardForDecision(tx, req, String(req.params.id));
+      if (card.status !== 'ACTIVE') throw Object.assign(new Error('BOOMCARD_NOT_ACTIVE'), { httpStatus: 409 });
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 20) throw Object.assign(new Error('INVALID_GIFT_QUANTITY'), { httpStatus: 400 });
+      const remaining = Number(card.breakfast_granted) - Number(card.breakfast_used);
+      if (quantity > remaining) throw Object.assign(new Error('BREAKFAST_BALANCE_EXHAUSTED'), { httpStatus: 409, details: { remaining } });
+      const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [orderId]);
+      if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), { httpStatus: 404 });
+      if (order.branch_id !== card.branch_id) throw Object.assign(new Error('ORDER_BRANCH_MISMATCH'), { httpStatus: 403 });
+      if (!['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY'].includes(order.status)) throw Object.assign(new Error('ORDER_NOT_EDITABLE'), { httpStatus: 409 });
+      if (order.customer_id && order.customer_id !== card.customer_id) throw Object.assign(new Error('ORDER_BELONGS_TO_ANOTHER_GUEST'), { httpStatus: 409 });
+      const item = await tx.queryOne<any>('SELECT id,branch_id,name_ru FROM menu_items WHERE id=?', [menuItemId]);
+      if (!item) throw Object.assign(new Error('MENU_ITEM_NOT_FOUND'), { httpStatus: 404 });
+      if (item.branch_id && item.branch_id !== card.branch_id) throw Object.assign(new Error('MENU_ITEM_BRANCH_MISMATCH'), { httpStatus: 403 });
+
+      const lineId = id('oi');
+      await tx.execute(`INSERT INTO order_items (id,order_id,menu_item_id,title_snapshot,price_snapshot,quantity,subtotal,comment,status,created_at) VALUES (?,?,?,?,0,?,0,?,'ACTIVE',?)`,
+        [lineId, order.id, item.id, item.name_ru, quantity, 'BOOMCARD breakfast', now]);
+      await tx.execute('UPDATE boomcards SET breakfast_used=breakfast_used+?,updated_at=? WHERE id=?', [quantity, now, card.id]);
+      if (!order.customer_id) await tx.execute('UPDATE orders SET customer_id=?,updated_at=? WHERE id=?', [card.customer_id, now, order.id]);
+      await recomputeOrderTotals(tx, order, now);
+      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BREAKFAST_REDEEMED', statusAfter: card.status, quantity, reason: `Redeemed on order ${order.order_number}`, decidedBy: req.user!.id, automatic: false, now, req });
+      return { order_item_id: lineId, card: await tx.queryOne<any>('SELECT * FROM boomcards WHERE id=?', [card.id]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
+    });
+    res.status(201).json(result);
   } catch (e: any) { return sendCardError(res, e); }
 });
 

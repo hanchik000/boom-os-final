@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { TxClient } from './db';
 import { insertAuditLog } from './auth';
-import { reverseBoomcoinForOrder } from './loyalty';
+import { reverseBoomcoinForOrder, reverseBoombackForOrder } from './loyalty';
 
 // Stage 34.1 -- the single place where a cancellation / "closed by establishment" is applied.
 //
@@ -183,6 +183,9 @@ export async function applyApprovedClosure(tx: TxClient, closure: any, actorUser
   // Stage 34.5: coins earned on an order that is cancelled, refunded or closed are given back, as
   // their own ledger rows -- the original entries are never edited or deleted.
   await reverseBoomcoinForOrder(tx, { orderId: order.id, branchId: order.branch_id, actorId: actorUserId, now, req });
+  // Stage 34.7: BOOMBACK spent on a refunded order goes back to the guest, and cashback earned on it
+  // is taken back -- both as their own ledger rows.
+  await reverseBoombackForOrder(tx, { orderId: order.id, branchId: order.branch_id, actorId: actorUserId, now, req });
   if (order.table_id) await releaseTableIfNoActiveOrders(tx, order.table_id, order.branch_id, now);
 
   await tx.execute(`UPDATE order_closures SET status='APPROVED',approver_user_id=?,decided_at=?,inventory_applied=true,write_off_cost=CAST(? AS numeric),refund_payment_id=? WHERE id=? AND status='PENDING'`, [actorUserId, now, writeOffCost, refundPaymentId, closure.id]);

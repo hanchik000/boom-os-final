@@ -330,6 +330,11 @@ export const api = {
   grantBirthdayGift: (id:string, menuItemId:string, quantity:number, reason?:string) => request<{ gift:any }>(`/api/boomcard/${id}/birthday-gift`, { method:'POST', body: JSON.stringify({ menu_item_id: menuItemId, quantity, reason }) }),
   evaluateBoomcardLifecycle: (branchId:string, from:string, to:string) => request<any>('/api/boomcard/lifecycle/evaluate', { method:'POST', body: JSON.stringify({ branch_id: branchId, from, to }) }),
   updateCustomer: (id:string, body:{ name?:string; birth_date?:string|null }) => request<{ customer:any }>(`/api/customers/${id}`, { method:'PATCH', body: JSON.stringify(body) }),
+  // Stage 34.7 -- BOOMBACK. Money the guest holds, not a discount; every amount is the server's.
+  getBoombackBalance: (customerId:string) => request<{ customer_id:string; balance:string; cached_balance:string }>(`/api/loyalty/boomback/customers/${customerId}`),
+  getBoombackLedger: (params:{ branch_id?:string; customer_id?:string }) => { const q=new URLSearchParams(); if(params.branch_id) q.set('branch_id',params.branch_id); if(params.customer_id) q.set('customer_id',params.customer_id); return request<{ entries:any[]; totals:any[] }>(`/api/loyalty/boomback/ledger?${q.toString()}`); },
+  adjustBoomback: (customerId:string, amount:string, reason:string) => request<{ entry:any }>('/api/loyalty/boomback/adjust', { method:'POST', body: JSON.stringify({ customer_id: customerId, amount, reason }) }),
+  redeemBreakfast: (boomcardId:string, orderId:string, menuItemId:string, quantity:number) => request<{ order_item_id:string; card:any; order:any }>(`/api/boomcard/${boomcardId}/breakfast/redeem`, { method:'POST', body: JSON.stringify({ order_id: orderId, menu_item_id: menuItemId, quantity }) }),
   adjustBoomcoin: (customerId:string, coins:number, reason:string) => request<{ entry:any }>('/api/loyalty/boomcoin/adjust', { method:'POST', body: JSON.stringify({ customer_id: customerId, coins, reason }) }),
   getWaiterOrderBills: (orderId:string) => waiterRequest<{ order_id:string; split_mode:string; order_final_amount:string; bills:any[]; unassigned_items:any[] }>(`/api/orders/${orderId}/bills`),
   splitWaiterOrderBills: (orderId:string, mode:'ITEMS'|'EQUAL', count:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/split`, { method:'POST', body: JSON.stringify({ mode, count }) }),

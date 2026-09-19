@@ -129,3 +129,97 @@ export async function adjustBoomcoin(tx: TxClient, opts: { branchId: string; cus
 }
 
 export { cents as loyaltyCents, centsText as loyaltyCentsText };
+
+// ---------------------------------------------------------------------------
+// Stage 34.7 -- BOOMBACK.
+//
+// BOOMBACK IS NOT A DISCOUNT. It is money the guest holds and spends: paying 500 BOOMBACK against a
+// 1000 order leaves 500 to settle in cash or card, and the receipt shows it as a payment line
+// (BOOMBACK -500). The order's subtotal, discount and final amount are never touched by it -- which
+// is exactly why it can be partial, unlike every other payment method.
+//
+// Same discipline as BOOMCOIN: boomback_ledger is authoritative, the customer column is a cache,
+// and every entry carries a never-null key so a retry cannot spend or grant the same money twice.
+// ---------------------------------------------------------------------------
+
+export const BOOMBACK_SETTING_CASHBACK_ENABLED = 'BOOMBACK_CASHBACK_ENABLED';
+export const BOOMBACK_SETTING_CASHBACK_PERCENT = 'BOOMBACK_CASHBACK_PERCENT';
+
+export async function boombackBalance(r: Reader, customerId: string): Promise<bigint> {
+  const row = await r.queryOne<any>(`SELECT COALESCE(SUM(amount),0) AS balance FROM boomback_ledger WHERE customer_id=?`, [customerId]);
+  return cents(row?.balance ?? '0');
+}
+
+async function writeBoomback(tx: TxClient, opts: { entryKey: string; branchId: string; customerId: string; type: string; amountCents: bigint; orderId?: string | null; billId?: string | null; paymentId?: string | null; reason?: string | null; actorId: string | null; now: string }) {
+  const customer = await tx.queryOne<any>('SELECT id,boomback_balance FROM customers WHERE id=? FOR UPDATE', [opts.customerId]);
+  if (!customer) return null;
+  const before = cents(customer.boomback_balance ?? '0');
+  const after = before + opts.amountCents;
+  await tx.execute(
+    `INSERT INTO boomback_ledger (id,branch_id,customer_id,type,amount,balance_before,balance_after,order_id,bill_id,payment_id,reason,created_by,created_at,entry_key)
+     VALUES (?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),?,?,?,?,?,?,?)
+     ON CONFLICT (entry_key) DO NOTHING`,
+    [id('bbl'), opts.branchId, opts.customerId, opts.type, centsText(opts.amountCents), centsText(before), centsText(after), opts.orderId ?? null, opts.billId ?? null, opts.paymentId ?? null, opts.reason ?? null, opts.actorId, opts.now, opts.entryKey]);
+  const written = await tx.queryOne<any>('SELECT * FROM boomback_ledger WHERE entry_key=?', [opts.entryKey]);
+  if (!written || written.created_at !== opts.now) return written;
+  await tx.execute('UPDATE customers SET boomback_balance=CAST(? AS numeric),updated_at=? WHERE id=?', [centsText(after), opts.now, opts.customerId]);
+  return written;
+}
+
+/** The guest spends BOOMBACK. Never more than they hold -- the caller must have checked, and this
+ *  re-checks under the row lock so two concurrent tills cannot spend the same balance twice. */
+export async function redeemBoomback(tx: TxClient, opts: { branchId: string; customerId: string; amountCents: bigint; orderId: string; billId?: string | null; paymentId: string; actorId: string; now: string; req?: any }) {
+  const customer = await tx.queryOne<any>('SELECT id,boomback_balance FROM customers WHERE id=? FOR UPDATE', [opts.customerId]);
+  if (!customer) throw Object.assign(new Error('CUSTOMER_NOT_FOUND'), { httpStatus: 404 });
+  const balance = cents(customer.boomback_balance ?? '0');
+  if (opts.amountCents > balance) throw Object.assign(new Error('BOOMBACK_INSUFFICIENT_BALANCE'), { httpStatus: 409, details: { balance: centsText(balance) } });
+  const row = await writeBoomback(tx, { entryKey: `PAY|${opts.paymentId}`, branchId: opts.branchId, customerId: opts.customerId, type: 'REDEEMED', amountCents: -opts.amountCents, orderId: opts.orderId, billId: opts.billId ?? null, paymentId: opts.paymentId, reason: 'Settled with BOOMBACK', actorId: opts.actorId, now: opts.now });
+  if (row) await insertAuditLog(tx.execute, { userId: opts.actorId, branchId: opts.branchId, action: 'BOOMBACK_REDEEMED', entityType: 'BOOMBACK_LEDGER', entityId: row.id, newValues: { customer_id: opts.customerId, order_id: opts.orderId, payment_id: opts.paymentId, amount: centsText(-opts.amountCents), balance_before: row.balance_before, balance_after: row.balance_after }, req: opts.req });
+  return row;
+}
+
+/** Gives back BOOMBACK that was spent on a payment which has now been refunded. */
+export async function reverseBoombackForOrder(tx: TxClient, opts: { orderId: string; branchId: string; actorId: string | null; now: string; req?: any }) {
+  const spent = await tx.query<any>(`SELECT * FROM boomback_ledger WHERE order_id=? AND type='REDEEMED'`, [opts.orderId]);
+  for (const e of spent) {
+    const row = await writeBoomback(tx, { entryKey: `REV|${e.id}`, branchId: opts.branchId, customerId: e.customer_id, type: 'REVERSED', amountCents: -cents(e.amount), orderId: opts.orderId, billId: e.bill_id, paymentId: e.payment_id, reason: 'Order closed or refunded', actorId: opts.actorId, now: opts.now });
+    if (row) await insertAuditLog(tx.execute, { userId: opts.actorId || undefined, branchId: opts.branchId, action: 'BOOMBACK_REVERSED', entityType: 'BOOMBACK_LEDGER', entityId: row.id, oldValues: { source_entry: e.id, amount: e.amount }, newValues: { amount: centsText(-cents(e.amount)), balance_after: row.balance_after }, req: opts.req });
+  }
+  // The earning side is reversed too, so a refunded order leaves no cashback behind.
+  const earned = await tx.query<any>(`SELECT * FROM boomback_ledger WHERE order_id=? AND type='EARNED'`, [opts.orderId]);
+  for (const e of earned) {
+    await writeBoomback(tx, { entryKey: `REVE|${e.id}`, branchId: opts.branchId, customerId: e.customer_id, type: 'REVERSED', amountCents: -cents(e.amount), orderId: opts.orderId, billId: e.bill_id, reason: 'Cashback reversed with the order', actorId: opts.actorId, now: opts.now });
+  }
+}
+
+/**
+ * Cashback earning. OFF by default and zero by default: BOOM OS does not invent a cashback rule.
+ * When a percentage is configured and the switch is on, an ACTIVE BOOMCARD holder earns it on what
+ * they actually settled.
+ */
+export async function accrueBoombackForSettlement(tx: TxClient, opts: { branchId: string; customerId: string | null; orderId: string; billId?: string | null; amountCents: bigint; actorId: string; now: string; req?: any }) {
+  if (!opts.customerId || opts.amountCents <= 0n) return null;
+  const rows = await tx.query<any>(`SELECT key,value FROM system_settings WHERE key IN (?,?)`, [BOOMBACK_SETTING_CASHBACK_ENABLED, BOOMBACK_SETTING_CASHBACK_PERCENT]);
+  const get = (k: string) => rows.find(x => x.key === k)?.value;
+  if (String(get(BOOMBACK_SETTING_CASHBACK_ENABLED) ?? 'false').toLowerCase() !== 'true') return null;
+  const pctRaw = String(get(BOOMBACK_SETTING_CASHBACK_PERCENT) ?? '0');
+  if (!/^\d+(?:\.\d{1,2})?$/.test(pctRaw)) return null;
+  const [a, b = ''] = pctRaw.split('.');
+  const pctHundredths = BigInt(a) * 100n + BigInt((b + '00').slice(0, 2));
+  if (pctHundredths <= 0n) return null;
+  // Only an ACTIVE card earns cashback -- an expired or candidate card earns nothing.
+  const card = await tx.queryOne<any>(`SELECT id,status FROM boomcards WHERE customer_id=? AND status='ACTIVE'`, [opts.customerId]);
+  if (!card) return null;
+  const amount = (opts.amountCents * pctHundredths + 5000n) / 10000n;
+  if (amount <= 0n) return null;
+  const row = await writeBoomback(tx, { entryKey: `EARN|${opts.orderId}|${opts.billId ?? 'ORDER'}`, branchId: opts.branchId, customerId: opts.customerId, type: 'EARNED', amountCents: amount, orderId: opts.orderId, billId: opts.billId ?? null, reason: `Cashback ${pctRaw}%`, actorId: opts.actorId, now: opts.now });
+  if (row) await insertAuditLog(tx.execute, { userId: opts.actorId, branchId: opts.branchId, action: 'BOOMBACK_EARNED', entityType: 'BOOMBACK_LEDGER', entityId: row.id, newValues: { customer_id: opts.customerId, order_id: opts.orderId, amount: centsText(amount), percent: pctRaw, balance_after: row.balance_after }, req: opts.req });
+  return row;
+}
+
+/** A manual manager grant or correction. Always a new row, always with a reason. */
+export async function adjustBoomback(tx: TxClient, opts: { branchId: string; customerId: string; amountCents: bigint; reason: string; actorId: string; now: string; req?: any }) {
+  const row = await writeBoomback(tx, { entryKey: `ADJ|${id('adj')}`, branchId: opts.branchId, customerId: opts.customerId, type: 'ADJUSTMENT', amountCents: opts.amountCents, reason: opts.reason, actorId: opts.actorId, now: opts.now });
+  if (row) await insertAuditLog(tx.execute, { userId: opts.actorId, branchId: opts.branchId, action: 'BOOMBACK_ADJUSTED', entityType: 'BOOMBACK_LEDGER', entityId: row.id, newValues: { customer_id: opts.customerId, amount: centsText(opts.amountCents), reason: opts.reason, balance_before: row.balance_before, balance_after: row.balance_after }, req: opts.req });
+  return row;
+}

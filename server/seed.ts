@@ -304,6 +304,10 @@ export async function seedInitialData() {
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_threshold','BOOMCARD_MONTHLY_SPEND_THRESHOLD','5000.00','number','Qualifying spend in a period that makes a guest a BOOMCARD candidate.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_validity_days','BOOMCARD_VALIDITY_DAYS','30','number','How many days a BOOMCARD stays valid after activation or renewal.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_breakfasts','BOOMCARD_BREAKFAST_PER_PERIOD','4','number','Breakfasts granted with each BOOMCARD activation or renewal.',now,now]);
+  // Stage 34.7: BOOMBACK cashback. OFF and zero by default -- BOOM OS does not invent a cashback
+  // rule; a business decides whether it earns any and at what rate.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomback_cashback_enabled','BOOMBACK_CASHBACK_ENABLED','false','boolean','Whether an ACTIVE BOOMCARD holder earns BOOMBACK cashback on what they settle.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomback_cashback_percent','BOOMBACK_CASHBACK_PERCENT','0','number','Percentage of a settled amount credited as BOOMBACK cashback.',now,now]);
   // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.

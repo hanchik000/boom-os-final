@@ -201,6 +201,7 @@ model Branch {
   boomcards              Boomcard[]
   boomcard_events        BoomcardEvent[]
   boomcard_gifts         BoomcardBirthdayGift[]
+  boomback_ledger        BoombackLedger[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -517,6 +518,7 @@ model Order {
   discounts          OrderDiscount[]
   bills              OrderBill[]
   boomcoin_ledger    BoomcoinLedger[]
+  boomback_ledger    BoombackLedger[]
   service_charge_config ServiceChargeConfig? @relation(fields: [service_charge_config_id], references: [id], onDelete: SetNull)
   customer           Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
 
@@ -667,6 +669,40 @@ model BoomcardBirthdayGift {
   @@map("boomcard_birthday_gifts")
 }
 
+// Stage 34.7: the authoritative BOOMBACK record.
+//
+// BOOMBACK IS NOT A DISCOUNT. It is a monetary instrument the guest holds and spends: paying 500
+// BOOMBACK against a 1000 order leaves 500 to settle in cash or card, and the receipt shows it as a
+// payment line (BOOMBACK -500), never as a price reduction. The order's subtotal, discount and
+// final amount are completely untouched by it.
+model BoombackLedger {
+  id             String   @id
+  branch_id      String
+  customer_id    String
+  type           String   // EARNED | REDEEMED | ADJUSTMENT | REVERSED
+  amount         Decimal  @db.Decimal(12, 2) // signed: negative when the guest spends it
+  balance_before Decimal  @db.Decimal(12, 2)
+  balance_after  Decimal  @db.Decimal(12, 2)
+  order_id       String?
+  bill_id        String?
+  payment_id     String?
+  reason         String?
+  created_by     String?
+  created_at     String
+  // Never null, so idempotency genuinely holds.
+  entry_key      String   @unique(map: "uq_boomback_ledger_entry_key")
+
+  branch   Branch     @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  customer Customer   @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  order    Order?     @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  bill     OrderBill? @relation(fields: [bill_id], references: [id], onDelete: SetNull)
+  payment  Payment?   @relation(fields: [payment_id], references: [id], onDelete: SetNull)
+
+  @@index([branch_id, created_at], map: "idx_boomback_ledger_branch_created")
+  @@index([customer_id, created_at], map: "idx_boomback_ledger_customer_created")
+  @@map("boomback_ledger")
+}
+
 model BoomcoinLedger {
   id                String   @id
   branch_id         String
@@ -718,6 +754,7 @@ model OrderBill {
   payments  Payment[]
   discounts OrderDiscount[]
   boomcoin_ledger BoomcoinLedger[]
+  boomback_ledger BoombackLedger[]
 
   @@unique([order_id, bill_number], map: "uq_order_bills_order_number")
   @@index([branch_id, status], map: "idx_order_bills_branch_status")
@@ -888,6 +925,7 @@ model Payment {
   cash_shift         CashShift? @relation(fields: [cash_shift_id], references: [id], onDelete: Restrict)
   cashier            User     @relation(fields: [cashier_user_id], references: [id], onDelete: Restrict)
   credit_transactions CreditTransaction[]
+  boomback_ledger    BoombackLedger[]
 
   @@unique([branch_id, idempotency_key], map: "payments_branch_idempotency_key_key")
   @@index([order_id, status], map: "idx_payments_order_status")
@@ -923,11 +961,15 @@ model Customer {
   // Stage 34.6: the guest's date of birth, used only to decide when a birthday benefit may be
   // granted. It is never a discount and never grants anything by itself.
   birth_date       String?
+  // Stage 34.7: BOOMBACK is MONEY the guest holds, not a discount. Same rule as BOOMCOIN -- this
+  // column is a cache; boomback_ledger is the authoritative balance.
+  boomback_balance Decimal @db.Decimal(12, 2) @default(0)
 
   orders          Order[]
   discounts       OrderDiscount[]
   bills           OrderBill[]
   boomcoin_ledger BoomcoinLedger[]
+  boomback_ledger BoombackLedger[]
   boomcard        Boomcard?
   boomcard_events BoomcardEvent[]
   birthday_gifts  BoomcardBirthdayGift[]

@@ -13,7 +13,10 @@ import { useLanguage } from '../context/LanguageContext';
 
 const POS_TOKEN_KEY = 'boom_cashier_pos_token';
 const POS_BRANCH_KEY = 'boom_cashier_pos_branch';
-const PAYMENT_METHODS = ['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER', 'CREDIT'];
+// Stage 34.7: BOOMBACK is a payment method, not a discount -- and the only one that may settle an
+// order partially, because it spends money the guest already holds.
+const PAYMENT_METHODS = ['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER', 'CREDIT', 'BOOMBACK'];
+const PARTIAL_PAYMENT_METHODS = ['BOOMBACK'];
 const QUICK_NOTES_RU = ['Без лука', 'Без соли', 'Соус отдельно', 'Острый соус', 'Без кетчупа', 'Без майонеза'];
 const QUICK_NOTES_TK = ['Sogansyz', 'Duzsuz', 'Sous aýratyn', 'Ýiti sous', 'Ketçupsyz', 'Maýonezsiz'];
 
@@ -149,6 +152,8 @@ export const CashierPOSView: React.FC = () => {
   // Stage 34.5 -- the BOOMCOIN counter. Pure guidance: it is read from the server and shown only
   // when the counter switch is on; the POS never computes or grants a coin.
   const [boomcoin, setBoomcoin] = useState<any | null>(null);
+  const [boombackBalance, setBoombackBalance] = useState<string | null>(null);
+  const [boombackAmount, setBoombackAmount] = useState('');
 
   // Stage 34.1 -- "ЗАКРЫТО ЗАВЕДЕНИЕМ". The cashier may only REQUEST it; a manager approves.
   // The product decision (write off / do not write off) is always picked here explicitly, never
@@ -315,9 +320,13 @@ export const CashierPOSView: React.FC = () => {
     if (!detail || paying) return;
     if (payMethod === 'CREDIT' && !creditAccount) { setPayError(friendlyError({ code: 'CREDIT_ACCOUNT_REQUIRED' }, ru)); return; }
     setPaying(true); setPayError('');
-    const idemKey = payingBill ? `cashier-pay-bill-${payingBill.id}` : `cashier-pay-${detail.id}`;
+    const idemKey = `${payingBill ? `cashier-pay-bill-${payingBill.id}` : `cashier-pay-${detail.id}`}${PARTIAL_PAYMENT_METHODS.includes(payMethod) ? `-${payMethod.toLowerCase()}` : ''}`;
     try {
-      const r = await api.createPayment({ order_id: detail.id, ...(payingBill ? { bill_id: payingBill.id } : {}), method: payMethod, amount: String(payingBill ? payingBill.final_amount : detail.final_amount), ...(payMethod === 'CREDIT' && creditAccount ? { credit_account_id: creditAccount.account.id } : {}) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
+      // For BOOMBACK the cashier may settle only part of the bill; every other method must settle it
+      // in full. Either way the SERVER validates the amount -- this only decides what to send.
+      const dueAmount = String(payingBill ? payingBill.final_amount : detail.final_amount);
+      const sentAmount = payMethod === 'BOOMBACK' && boombackAmount.trim() ? boombackAmount.trim() : dueAmount;
+      const r = await api.createPayment({ order_id: detail.id, ...(payingBill ? { bill_id: payingBill.id } : {}), method: payMethod, amount: sentAmount, ...(payMethod === 'CREDIT' && creditAccount ? { credit_account_id: creditAccount.account.id } : {}) }, idemKey, isCashierRole ? (posToken || undefined) : undefined);
       setSuccessPayment(r.payment);
       setSuccessOrder(detail);
       setPayDialogOpen(false);
@@ -357,6 +366,7 @@ export const CashierPOSView: React.FC = () => {
     if (!detail?.customer_id) { setBoomcoin(null); return; }
     let cancelled = false;
     void api.getBoomcoinCounter(detail.customer_id).then(r => { if (!cancelled) setBoomcoin(r); }).catch(() => { if (!cancelled) setBoomcoin(null); });
+    void api.getBoombackBalance(detail.customer_id).then(r => { if (!cancelled) setBoombackBalance(r.balance); }).catch(() => { if (!cancelled) setBoombackBalance(null); });
     return () => { cancelled = true; };
   }, [detail?.customer_id, detail?.updated_at]);
 
@@ -409,12 +419,15 @@ export const CashierPOSView: React.FC = () => {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
   const [receiptPayment, setReceiptPayment] = useState<any | null>(null);
+  // Every payment on the receipted order, so a BOOMBACK settlement prints as its own payment line.
+  const [receiptPayments, setReceiptPayments] = useState<any[]>([]);
   const [profile, setProfile] = useState<any | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
   const [lastPrintJob, setLastPrintJob] = useState<any | null>(null);
 
   const openReceipt = async (order: any, payment: any) => {
     setReceiptOrder(order); setReceiptPayment(payment); setReceiptOpen(true); setLastPrintJob(null);
+    setReceiptPayments(payments.filter((p: any) => p.order_id === order.id && p.status === 'PAID'));
     try {
       const r = await api.getPrintProfiles(branchId);
       setProfile(r.profiles.find((p: any) => p.name === 'CUSTOMER_RECEIPT') || null);
@@ -850,6 +863,16 @@ export const CashierPOSView: React.FC = () => {
                 ))}
               </div>
             </div>
+            {payMethod === 'BOOMBACK' && (
+              <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3 space-y-2">
+                <div className="text-xs text-slate-400">{ru ? 'Баланс BOOMBACK' : 'BOOMBACK balansy'}: <b className="text-white">{boombackBalance ?? '—'}</b></div>
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Списать BOOMBACK (можно частично)' : 'BOOMBACK ýazmak (bölekleýin bolup biler)'}</span>
+                  <input className="field w-full" value={boombackAmount} onChange={e => setBoombackAmount(e.target.value)} placeholder={String((payingBill || detail).final_amount)} />
+                </label>
+                <p className="text-[11px] text-slate-500">{ru ? 'BOOMBACK — это не скидка: итог заказа не меняется, остаток доплачивается наличными или картой.' : 'BOOMBACK arzanladyş däl: sargydyň jemi üýtgemeýär, galany nagt ýa-da kart bilen tölenýär.'}</p>
+              </div>
+            )}
             {payMethod === 'CREDIT' && (
               <div className="space-y-2 border-t border-slate-800 pt-3">
                 <div className="grid grid-cols-2 gap-1.5">
@@ -955,6 +978,10 @@ export const CashierPOSView: React.FC = () => {
             {show('show_discount') && Number(receiptOrder.discount) > 0 && <div className="flex justify-between"><span>{ru ? 'Скидка' : 'Arzanladyş'}</span><span>-{money(receiptOrder.discount)}</span></div>}
             {show('show_service_charge') && Number(receiptOrder.service_charge) > 0 && <div className="flex justify-between"><span>{ru ? 'Сервисный сбор' : 'Hyzmat tölegi'}</span><span>{money(receiptOrder.service_charge)}</span></div>}
             <div className="flex justify-between font-bold text-sm border-t border-slate-400 pt-1 mt-1"><span>{ru ? 'ИТОГО' : 'JEMI'}</span><span>{money(receiptOrder.final_amount)}</span></div>
+            {/* Stage 34.7: BOOMBACK prints as a PAYMENT line (BOOMBACK -500), never as a discount. */}
+            {(receiptPayments || []).filter((p: any) => p.method === 'BOOMBACK').map((p: any) => (
+              <div key={p.id} className="flex justify-between"><span>BOOMBACK</span><span>-{money(p.amount)}</span></div>
+            ))}
             {show('show_payment_method') && receiptPayment && <div className="flex justify-between mt-1"><span>{ru ? 'Оплата' : 'Töleg'}</span><span>{receiptPayment.method}</span></div>}
             {receiptPayment?.method === 'CREDIT' && creditAccount && (
               <div className="mt-1 pl-2 text-[10px] space-y-0.5">
