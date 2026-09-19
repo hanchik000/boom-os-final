@@ -83,7 +83,7 @@ assert.equal(badAllocation.body.code, 'INVALID_SERVICE_CHARGE_CATEGORY');
 // A caller still sending the removed payload is told so, never silently misconfigured.
 const legacyPayload = await request(`/api/service-charge/${branchId}`, {
   method: 'PUT', headers: auth,
-  body: JSON.stringify({ percent: '10.00', categories: [{ category: 'WAITERS', percent: '5.00', mode: 'INDIVIDUAL', members: [] }] }),
+  body: JSON.stringify({ percent: '10.00', allocations: [{ target_type: 'GROUP', department: 'WAITERS', percent: '5.00' }] }),
 });
 expect('legacy allocations payload rejected with 400', legacyPayload.status, 400, legacyPayload.body);
 assert.equal(legacyPayload.body.code, 'ALLOCATIONS_REPLACED_BY_CATEGORIES');

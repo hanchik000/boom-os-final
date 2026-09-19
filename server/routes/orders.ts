@@ -4,6 +4,7 @@ import { query, queryOne, execute, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { getWaiterSession } from './waiters';
 import { serviceChargePercentFor } from '../service-charge';
+import { recomputeOrderTotals, orderCents, centsText as totalsText, percentHundredths, applyPercent } from '../order-totals';
 import { CLOSURE_TYPES, INVENTORY_TREATMENTS, CLOSABLE_ORDER_STATUSES, CLOSED_ORDER_STATUSES, productionSnapshot, applyApprovedClosure } from '../order-closure';
 
 const router=Router();
@@ -184,17 +185,9 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
       // decimal places (e.g. "1.0000") -- Postgres rejects a direct text-to-integer bind for
       // that shape (42804), so round it through NUMERIC first, same as the DB's own rounding.
       await tx.execute(`UPDATE order_items SET quantity=CAST(CAST(? AS numeric) AS integer),subtotal=CAST(? AS numeric),status=?,removed_quantity=removed_quantity+CAST(? AS numeric),removed_at=?,removed_by=?,removal_reason=? WHERE id=?`,[String(qtyRow.remaining_qty),fullRemoval?'0.00':String(qtyRow.remaining_subtotal),fullRemoval?'REMOVED':'ACTIVE',reqQty,now,req.user!.id,a.reason,item.id]);
-      const subtotalRow = await tx.queryOne<any>(`SELECT COALESCE(SUM(CASE WHEN status='ACTIVE' THEN subtotal ELSE 0 END),0) AS subtotal FROM order_items WHERE order_id=?`,[order.id]);
-      const subtotal = String(subtotalRow.subtotal);
-      // Recalculating after a removal must use the SAME percentage the order was priced with, not
-      // whatever is configured today -- so it resolves against the order's own creation moment.
-      const {percent: scPct} = await serviceChargePercentFor(tx, order.branch_id, order.order_type, order.created_at);
-      const bps = percentToBps(scPct);
-      const serviceRow = await tx.queryOne<any>(`SELECT ROUND((CAST(? AS DECIMAL(12,2))*CAST(? AS DECIMAL(12,2))/10000),2) AS service`,[subtotal,bps]);
-      const service = String(serviceRow.service);
-      const totalRow = await tx.queryOne<any>(`SELECT (CAST(? AS DECIMAL(12,2))-CAST(? AS DECIMAL(12,2))-CAST(? AS DECIMAL(12,2))+CAST(? AS DECIMAL(12,2))) AS final_amount`,[subtotal,order.discount,order.promotion_amount,service]);
-      const finalAmount = String(totalRow.final_amount);
-      await tx.execute(`UPDATE orders SET subtotal=CAST(? AS numeric),service_charge=CAST(? AS numeric),final_amount=CAST(? AS numeric),updated_at=? WHERE id=?`,[subtotal,service,finalAmount,now,order.id]);
+      // Stage 34.3: one order-pricing rule, shared with the manual-discount path. It still uses the
+      // percentage of the configuration version that priced this order, never today's.
+      await recomputeOrderTotals(tx, order, now);
       await tx.execute(`UPDATE order_item_removal_approvals SET status='APPROVED',approver_user_id=?,decided_at=?,decision_reason=? WHERE id=? AND status='PENDING'`,[req.user!.id,now,decisionReason,approvalId]);
       await insertAuditLog(tx.execute,{userId:req.user!.id,branchId:a.branch_id,action:'MANAGER_APPROVAL',entityType:'ORDER_ITEM_REMOVAL',entityId:approvalId,oldValues:{status:'PENDING'},newValues:{type:'REMOVE_ITEM',status:'APPROVED',approver_user_id:req.user!.id,requested_quantity:reqQty,reason:a.reason,decision_reason:decisionReason},req});
       return {approval:await tx.queryOne<any>('SELECT * FROM order_item_removal_approvals WHERE id=?',[approvalId]),order:await tx.queryOne<any>('SELECT * FROM orders WHERE id=?',[order.id])};
@@ -367,6 +360,163 @@ router.post('/closures/auto-cancel', authenticateToken, requirePermission('order
   res.json({branch_id: branchId, order_confirmation_timeout_minutes: confirmTimeout, kitchen_accept_timeout_minutes: kitchenTimeout, cancelled_order_ids: cancelled, cancelled_count: cancelled.length});
 });
 
+// ---------------------------------------------------------------------------
+// Stage 34.3 -- customer attachment and MANUAL discounts.
+//
+// There is no automatic discount anywhere in BOOM OS: a customer profile has no discount field,
+// attaching a guest to an order never changes its price, and a discount exists only because an
+// authorised employee granted it on one specific order. The amount is always computed by the
+// server from the order's real subtotal, snapshotted with who granted it and why, and never
+// applied to an order that has already been settled -- so an old receipt can never change.
+// ---------------------------------------------------------------------------
+
+const DISCOUNT_SETTING_PRESETS = 'MANUAL_DISCOUNT_PRESETS';
+const DISCOUNT_SETTING_MAX = 'MAX_MANUAL_DISCOUNT_PERCENT';
+const DISCOUNTABLE_ORDER_STATUSES = ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY'];
+
+/** Dual auth: a waiter POS session acting on its own order, or an authenticated operator. */
+function posOrAuth(permission: string, handler: (req: Request, res: any, actor: { userId: string | null; role: string; source: string; waiterBranchId?: string; waiterUserId?: string }) => Promise<any>) {
+  return async (req: Request, res: any, next: any) => {
+    try {
+      const session = await getWaiterSession(req);
+      if (session) return await handler(req, res, { userId: session.user_id, role: 'WAITER', source: 'WAITER_POS', waiterBranchId: session.branch_id, waiterUserId: session.user_id });
+      authenticateToken(req, res, () => {
+        requirePermission(permission)(req, res, () => {
+          handler(req, res, { userId: req.user!.id, role: req.user!.roleCodes[0] || 'USER', source: 'CASHIER_POS' }).catch(next);
+        });
+      });
+    } catch (e) { next(e); }
+  };
+}
+
+async function loadDiscountableOrder(tx: TxClient, req: Request, orderId: string, actor: { waiterBranchId?: string; waiterUserId?: string }) {
+  const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [orderId]);
+  if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), { httpStatus: 404 });
+  if (actor.waiterBranchId) {
+    if (order.branch_id !== actor.waiterBranchId || order.waiter_user_id !== actor.waiterUserId) throw Object.assign(new Error('ORDER_ACCESS_DENIED'), { httpStatus: 403 });
+  } else if (!allowed(req, order.branch_id)) throw Object.assign(new Error('BRANCH_ACCESS_DENIED'), { httpStatus: 403 });
+  // An order that has been settled or closed is history: its price is never touched again.
+  if (!DISCOUNTABLE_ORDER_STATUSES.includes(order.status)) throw Object.assign(new Error('ORDER_NOT_EDITABLE'), { httpStatus: 409 });
+  return order;
+}
+
+const DISCOUNT_ERRORS: any = {
+  ORDER_NOT_FOUND: [404, 'NOT_FOUND', 'ORDER_NOT_FOUND'],
+  ORDER_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'ORDER_ACCESS_DENIED'],
+  BRANCH_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'BRANCH_ACCESS_DENIED'],
+  ORDER_NOT_EDITABLE: [409, 'INVALID_STATE', 'ORDER_NOT_EDITABLE'],
+  CUSTOMER_NOT_FOUND: [404, 'NOT_FOUND', 'CUSTOMER_NOT_FOUND'],
+  CUSTOMER_BRANCH_MISMATCH: [403, 'BRANCH_ACCESS_DENIED', 'CUSTOMER_BRANCH_MISMATCH'],
+  DISCOUNT_ALREADY_APPLIED: [409, 'CONFLICT', 'DISCOUNT_ALREADY_APPLIED'],
+  DISCOUNT_EXCEEDS_LIMIT: [403, 'FORBIDDEN', 'DISCOUNT_EXCEEDS_LIMIT'],
+  DISCOUNT_EXCEEDS_SUBTOTAL: [409, 'INVALID_STATE', 'DISCOUNT_EXCEEDS_SUBTOTAL'],
+  NO_ACTIVE_DISCOUNT: [409, 'INVALID_STATE', 'NO_ACTIVE_DISCOUNT'],
+};
+function sendDiscountError(res: any, e: any) {
+  const m = DISCOUNT_ERRORS[e.message];
+  if (!m) throw e;
+  return res.status(m[0]).json({ error: m[1], code: m[2], message: e.message, details: e.details || {} });
+}
+
+// Attach or detach the guest an order belongs to. This is identification only -- it can never
+// change the price by itself.
+router.post('/:id/customer', posOrAuth('orders.confirm', async (req, res, actor) => {
+  const customerId = req.body?.customer_id ? String(req.body.customer_id) : null;
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
+      if (customerId) {
+        const customer = await tx.queryOne<any>('SELECT id,branch_id,name,phone FROM customers WHERE id=? AND deleted_at IS NULL', [customerId]);
+        if (!customer) throw Object.assign(new Error('CUSTOMER_NOT_FOUND'), { httpStatus: 404 });
+        if (customer.branch_id !== order.branch_id) throw Object.assign(new Error('CUSTOMER_BRANCH_MISMATCH'), { httpStatus: 403 });
+      }
+      await tx.execute('UPDATE orders SET customer_id=?,updated_at=? WHERE id=?', [customerId, now, order.id]);
+      await tx.execute(`UPDATE order_discounts SET customer_id=? WHERE order_id=? AND status='ACTIVE'`, [customerId, order.id]);
+      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: customerId ? 'ORDER_CUSTOMER_ATTACHED' : 'ORDER_CUSTOMER_DETACHED', entityType: 'ORDER', entityId: order.id, oldValues: { customer_id: order.customer_id }, newValues: { customer_id: customerId, by_role: actor.role }, req });
+      return await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]);
+    });
+    res.json({ order: result });
+  } catch (e: any) { return sendDiscountError(res, e); }
+}));
+
+// The presets and the ceiling are configurable operational settings, not numbers baked into the UI.
+router.get('/discount-options', authenticateToken, requirePermission('orders.view'), async (_req, res) => {
+  const rows = await query<any>(`SELECT key,value FROM system_settings WHERE key IN (?,?)`, [DISCOUNT_SETTING_PRESETS, DISCOUNT_SETTING_MAX]);
+  const presetRaw = rows.find(r => r.key === DISCOUNT_SETTING_PRESETS)?.value ?? '10,15,20,30';
+  const maxRaw = rows.find(r => r.key === DISCOUNT_SETTING_MAX)?.value ?? '30';
+  res.json({ presets: String(presetRaw).split(',').map(s => s.trim()).filter(s => /^\d+(?:\.\d{1,2})?$/.test(s)), max_percent: String(maxRaw) });
+});
+
+router.post('/:id/discount', posOrAuth('orders.discount.apply', async (req, res, actor) => {
+  const hasPercent = req.body?.percent !== undefined && req.body?.percent !== null && String(req.body.percent).trim() !== '';
+  const hasAmount = req.body?.amount !== undefined && req.body?.amount !== null && String(req.body.amount).trim() !== '';
+  if (hasPercent === hasAmount) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'DISCOUNT_PERCENT_OR_AMOUNT_REQUIRED', message: 'Provide exactly one of percent or amount.', details: {} });
+  const percentRaw = hasPercent ? String(req.body.percent).trim() : null;
+  const amountRaw = hasAmount ? String(req.body.amount).trim() : null;
+  if (percentRaw !== null && !/^\d+(?:\.\d{1,2})?$/.test(percentRaw)) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'INVALID_DISCOUNT_PERCENT', message: 'percent must be a non-negative number with up to two decimals.', details: {} });
+  if (amountRaw !== null && !/^\d+(?:\.\d{1,2})?$/.test(amountRaw)) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'INVALID_DISCOUNT_AMOUNT', message: 'amount must be a non-negative amount with up to two decimals.', details: {} });
+  const reason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+  const now = new Date().toISOString();
+  const discountId = `odsc_${crypto.randomUUID()}`;
+  try {
+    const result = await transaction(async (tx) => {
+      const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
+      const active = await tx.queryOne<any>(`SELECT id FROM order_discounts WHERE order_id=? AND status='ACTIVE' FOR UPDATE`, [order.id]);
+      if (active) throw Object.assign(new Error('DISCOUNT_ALREADY_APPLIED'), { httpStatus: 409 });
+
+      const maxRow = await tx.queryOne<any>(`SELECT value FROM system_settings WHERE key=?`, [DISCOUNT_SETTING_MAX]);
+      const maxH = percentHundredths(maxRow?.value ?? '30');
+      const subtotal = orderCents(order.subtotal);
+
+      // The server -- never the caller -- decides what the discount is worth.
+      let amount: bigint;
+      if (percentRaw !== null) {
+        const percentH = percentHundredths(percentRaw);
+        if (percentH > maxH && !(req.user?.isSuperUser || req.user?.permissions.includes('orders.discount.override'))) {
+          throw Object.assign(new Error('DISCOUNT_EXCEEDS_LIMIT'), { httpStatus: 403, details: { max_percent: String(maxRow?.value ?? '30') } });
+        }
+        amount = applyPercent(subtotal, percentH);
+      } else {
+        amount = orderCents(amountRaw);
+      }
+      if (amount > subtotal) throw Object.assign(new Error('DISCOUNT_EXCEEDS_SUBTOTAL'), { httpStatus: 409, details: { subtotal: String(order.subtotal) } });
+
+      await tx.execute(`INSERT INTO order_discounts (id,branch_id,order_id,customer_id,percent,amount,base_amount,reason,applied_by_user_id,applied_by_role,source,status,created_at) VALUES (?,?,?,?,${percentRaw !== null ? 'CAST(? AS numeric)' : '?'},CAST(? AS numeric),CAST(? AS numeric),?,?,?,?, 'ACTIVE',?)`,
+        [discountId, order.branch_id, order.id, order.customer_id, percentRaw !== null ? percentRaw : null, totalsText(amount), String(order.subtotal), reason, actor.userId, actor.role, actor.source, now]);
+      const totals = await recomputeOrderTotals(tx, order, now);
+      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: 'ORDER_DISCOUNT_APPLIED', entityType: 'ORDER_DISCOUNT', entityId: discountId, newValues: { order_id: order.id, customer_id: order.customer_id, percent: percentRaw, amount: totalsText(amount), base_amount: String(order.subtotal), reason, applied_by_user_id: actor.userId, applied_by_role: actor.role, source: actor.source, totals }, req });
+      return { discount: await tx.queryOne<any>('SELECT * FROM order_discounts WHERE id=?', [discountId]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
+    });
+    res.status(201).json(result);
+  } catch (e: any) { return sendDiscountError(res, e); }
+}));
+
+router.delete('/:id/discount', posOrAuth('orders.discount.apply', async (req, res, actor) => {
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
+      const active = await tx.queryOne<any>(`SELECT * FROM order_discounts WHERE order_id=? AND status='ACTIVE' FOR UPDATE`, [order.id]);
+      if (!active) throw Object.assign(new Error('NO_ACTIVE_DISCOUNT'), { httpStatus: 409 });
+      // Soft removal: the granted discount stays on the record for audit, it is never deleted.
+      await tx.execute(`UPDATE order_discounts SET status='REMOVED',removed_at=?,removed_by=? WHERE id=? AND status='ACTIVE'`, [now, actor.userId, active.id]);
+      const totals = await recomputeOrderTotals(tx, order, now);
+      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: 'ORDER_DISCOUNT_REMOVED', entityType: 'ORDER_DISCOUNT', entityId: active.id, oldValues: { status: 'ACTIVE', amount: String(active.amount) }, newValues: { status: 'REMOVED', removed_by: actor.userId, by_role: actor.role, totals }, req });
+      return { discount: await tx.queryOne<any>('SELECT * FROM order_discounts WHERE id=?', [active.id]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
+    });
+    res.json(result);
+  } catch (e: any) { return sendDiscountError(res, e); }
+}));
+
+router.get('/:id/discounts', authenticateToken, requirePermission('orders.view'), async (req, res) => {
+  const order = await queryOne<any>('SELECT id,branch_id FROM orders WHERE id=?', [req.params.id]);
+  if (!order) return res.status(404).json({ error: 'NOT_FOUND', code: 'ORDER_NOT_FOUND', message: 'Order not found.', details: {} });
+  if (!allowed(req, order.branch_id)) return res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Order belongs to an unauthorized branch.', details: {} });
+  const discounts = await query<any>(`SELECT d.*,u.full_name AS applied_by_name,c.name AS customer_name FROM order_discounts d LEFT JOIN users u ON u.id=d.applied_by_user_id LEFT JOIN customers c ON c.id=d.customer_id WHERE d.order_id=? ORDER BY d.created_at DESC`, [req.params.id]);
+  res.json({ order_id: req.params.id, discounts });
+});
+
 // Order-level notes. `notes` is customer-facing (pre-existing field, set at creation, now also
 // editable); `internal_notes` is staff-only and must never be selected onto a customer receipt.
 router.patch('/:id/notes', authenticateToken, requirePermission('orders.confirm'), async(req,res)=>{
@@ -403,5 +553,5 @@ router.patch('/:id/items/:itemId/note', authenticateToken, requirePermission('or
   res.json({item:await queryOne<any>('SELECT * FROM order_items WHERE id=?',[item.id])});
 });
 
-router.get('/:id', authenticateToken, requirePermission('orders.view'), async(req,res)=>{const o=await queryOne<any>('SELECT o.*,u.full_name AS waiter_name,t.code AS table_code FROM orders o LEFT JOIN users u ON u.id=o.waiter_user_id LEFT JOIN dining_tables t ON t.id=o.table_id WHERE o.id=?',[req.params.id]); if(!o){res.status(404).json({error:'NOT_FOUND',code:'ORDER_NOT_FOUND',message:'Order not found.',details:{}});return;} if(!allowed(req,o.branch_id)){res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Order belongs to an unauthorized branch.',details:{}});return;} const items=await query<any>('SELECT * FROM order_items WHERE order_id=? ORDER BY created_at',[o.id]); for(const item of items) item.modifiers=await query<any>('SELECT * FROM order_item_modifiers WHERE order_item_id=? ORDER BY created_at',[item.id]); res.json({order:{...o,items}});});
+router.get('/:id', authenticateToken, requirePermission('orders.view'), async(req,res)=>{const o=await queryOne<any>('SELECT o.*,u.full_name AS waiter_name,t.code AS table_code,c.name AS customer_name,c.phone AS customer_phone FROM orders o LEFT JOIN users u ON u.id=o.waiter_user_id LEFT JOIN dining_tables t ON t.id=o.table_id LEFT JOIN customers c ON c.id=o.customer_id WHERE o.id=?',[req.params.id]); if(!o){res.status(404).json({error:'NOT_FOUND',code:'ORDER_NOT_FOUND',message:'Order not found.',details:{}});return;} if(!allowed(req,o.branch_id)){res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Order belongs to an unauthorized branch.',details:{}});return;} const items=await query<any>('SELECT * FROM order_items WHERE order_id=? ORDER BY created_at',[o.id]); for(const item of items) item.modifiers=await query<any>('SELECT * FROM order_item_modifiers WHERE order_item_id=? ORDER BY created_at',[item.id]); res.json({order:{...o,items}});});
 export default router;

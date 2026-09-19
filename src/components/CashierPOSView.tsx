@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
+import { UserRound, Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -124,6 +124,23 @@ export const CashierPOSView: React.FC = () => {
   };
 
   // ---- Active orders
+  // Stage 34.3 -- guest identification and MANUAL discounts. Attaching a guest never changes the
+  // price, and every amount shown here is the one the server computed and returned.
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerResults, setCustomerResults] = useState<any[]>([]);
+  const [customerBusy, setCustomerBusy] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState('');
+  const [newCustomerPhone, setNewCustomerPhone] = useState('');
+  const [customerError, setCustomerError] = useState('');
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountPresets, setDiscountPresets] = useState<string[]>([]);
+  const [discountMax, setDiscountMax] = useState('');
+  const [discountPercent, setDiscountPercent] = useState('');
+  const [discountReason, setDiscountReason] = useState('');
+  const [discountBusy, setDiscountBusy] = useState(false);
+  const [discountError, setDiscountError] = useState('');
+
   // Stage 34.1 -- "ЗАКРЫТО ЗАВЕДЕНИЕМ". The cashier may only REQUEST it; a manager approves.
   // The product decision (write off / do not write off) is always picked here explicitly, never
   // defaulted and never inferred from whether money is being refunded.
@@ -325,6 +342,46 @@ export const CashierPOSView: React.FC = () => {
   };
   const openClosure = () => { setClosureReason(''); setClosureComment(''); setClosureTreatment(''); setClosureRefund(Boolean(selectedPaid)); setClosureError(''); setClosureSent(false); setClosureOpen(true); };
 
+  useEffect(() => { void api.getDiscountOptions().then(r => { setDiscountPresets(r.presets); setDiscountMax(r.max_percent); }).catch(() => undefined); }, []);
+
+  const searchCustomers = async (q: string) => {
+    setCustomerQuery(q);
+    if (q.trim().length < 2) { setCustomerResults([]); return; }
+    try { setCustomerResults((await api.getCustomers({ branch_id: branchId, search: q.trim() })).customers); } catch { setCustomerResults([]); }
+  };
+  const attachCustomer = async (customerId: string | null) => {
+    if (!detail || customerBusy) return;
+    setCustomerBusy(true); setCustomerError('');
+    try { await api.setOrderCustomer(detail.id, customerId); setCustomerOpen(false); await loadDetail(detail.id); await loadOrders(true); }
+    catch (e: any) { setCustomerError(friendlyError(e, ru)); }
+    finally { setCustomerBusy(false); }
+  };
+  const createAndAttach = async () => {
+    if (!detail || customerBusy || !newCustomerName.trim() || !newCustomerPhone.trim()) return;
+    setCustomerBusy(true); setCustomerError('');
+    try {
+      const r = await api.createCustomer({ branch_id: branchId, name: newCustomerName.trim(), phone: newCustomerPhone.trim() });
+      await api.setOrderCustomer(detail.id, r.customer.id);
+      setNewCustomerName(''); setNewCustomerPhone(''); setCustomerOpen(false);
+      await loadDetail(detail.id); await loadOrders(true);
+    } catch (e: any) { setCustomerError(friendlyError(e, ru)); }
+    finally { setCustomerBusy(false); }
+  };
+  const applyDiscount = async (percent: string) => {
+    if (!detail || discountBusy || !percent.trim()) return;
+    setDiscountBusy(true); setDiscountError('');
+    try { await api.applyOrderDiscount(detail.id, { percent: percent.trim(), reason: discountReason.trim() || null }); setDiscountOpen(false); setDiscountPercent(''); setDiscountReason(''); await loadDetail(detail.id); await loadOrders(true); }
+    catch (e: any) { setDiscountError(friendlyError(e, ru)); }
+    finally { setDiscountBusy(false); }
+  };
+  const removeDiscount = async () => {
+    if (!detail || discountBusy) return;
+    setDiscountBusy(true); setDiscountError('');
+    try { await api.removeOrderDiscount(detail.id); await loadDetail(detail.id); await loadOrders(true); }
+    catch (e: any) { setDiscountError(friendlyError(e, ru)); }
+    finally { setDiscountBusy(false); }
+  };
+
   // ---- Receipt preview / print / reprint
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<any | null>(null);
@@ -475,6 +532,26 @@ export const CashierPOSView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Stage 34.3: guest + manual discount. Identification alone never changes the price. */}
+              {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT', 'COMPLETED'].includes(detail.status) && (
+                <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-2.5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-slate-400 inline-flex items-center gap-1.5"><UserRound className="w-3.5 h-3.5" />{detail.customer_name || (ru ? 'Клиент не выбран' : 'Müşderi saýlanmady')}</div>
+                    <div className="flex gap-1.5">
+                      <button className="text-xs px-2 py-1 rounded border border-slate-700 text-slate-300" onClick={() => { setCustomerError(''); setCustomerQuery(''); setCustomerResults([]); setCustomerOpen(true); }}>{ru ? 'Поиск клиента' : 'Müşderi gözlemek'}</button>
+                      {detail.customer_id && <button className="text-xs px-2 py-1 rounded border border-slate-700 text-slate-400" onClick={() => void attachCustomer(null)}>{ru ? 'Открепить' : 'Aýyrmak'}</button>}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-slate-400">{ru ? 'Скидка' : 'Arzanladyş'}: <b className="text-white">{money(detail.discount)}</b></div>
+                    {Math.round(parseFloat(detail.discount || '0') * 100) > 0
+                      ? <button className="text-xs px-2 py-1 rounded border border-red-500/40 text-red-300" disabled={discountBusy} onClick={() => void removeDiscount()}>{ru ? 'Убрать скидку' : 'Arzanladyşy aýyrmak'}</button>
+                      : <button className="text-xs px-2 py-1 rounded border border-amber-500/40 text-amber-300" onClick={() => { setDiscountError(''); setDiscountOpen(true); }}>+ {ru ? 'Скидка' : 'Arzanladyş'}</button>}
+                  </div>
+                  {discountError && <div className="text-[11px] text-red-400">{discountError}</div>}
+                </div>
+              )}
+
               {/* Items */}
               <div className="space-y-2">
                 {(detail.items || []).filter((i: any) => i.status === 'ACTIVE').map((item: any) => (
@@ -605,6 +682,63 @@ export const CashierPOSView: React.FC = () => {
         </div>
       )}
       {/* ---- Payment dialog ---- */}
+      {customerOpen && detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !customerBusy && setCustomerOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-white text-lg font-bold">{ru ? 'Поиск клиента' : 'Müşderi gözlemek'}</h2>
+            <p className="text-slate-400 text-xs">{ru ? 'Привязка клиента не меняет цену заказа — скидка назначается отдельно и вручную.' : 'Müşderini baglamak sargydyň bahasyny üýtgetmeýär — arzanladyş aýratyn we el bilen berilýär.'}</p>
+            {customerError && <div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{customerError}</div>}
+            <input className="field w-full" value={customerQuery} onChange={e => void searchCustomers(e.target.value)} placeholder={ru ? 'Имя или телефон' : 'At ýa-da telefon'} />
+            <div className="max-h-52 overflow-y-auto space-y-1">
+              {customerResults.map(c => (
+                <button key={c.id} className="w-full text-left px-3 py-2 rounded-lg border border-slate-800 hover:border-amber-500/40 text-sm" disabled={customerBusy} onClick={() => void attachCustomer(c.id)}>
+                  <span className="text-white">{c.name}</span> <span className="text-slate-500 text-xs">{c.phone}</span>
+                </button>
+              ))}
+              {customerQuery.trim().length >= 2 && !customerResults.length && <div className="text-slate-500 text-xs px-1">{ru ? 'Ничего не найдено.' : 'Hiç zat tapylmady.'}</div>}
+            </div>
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              <div className="text-xs text-slate-400">{ru ? 'Новый клиент' : 'Täze müşderi'}</div>
+              <input className="field w-full" value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder={ru ? 'Имя' : 'At'} />
+              <input className="field w-full" value={newCustomerPhone} onChange={e => setNewCustomerPhone(e.target.value)} placeholder={ru ? 'Телефон' : 'Telefon'} />
+              <div className="flex gap-2 justify-end">
+                <button className="btn" disabled={customerBusy} onClick={() => setCustomerOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
+                <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={customerBusy || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void createAndAttach()}>{ru ? 'Создать и привязать' : 'Döretmek we baglamak'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {discountOpen && detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !discountBusy && setDiscountOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h2 className="text-white text-lg font-bold">{ru ? 'Скидка на заказ' : 'Sargyda arzanladyş'} · #{detail.order_number}</h2>
+              <p className="text-slate-400 text-xs mt-1">{ru ? `Сумму рассчитывает сервер. Максимум без отдельного разрешения — ${discountMax}%.` : `Möçberi serwer hasaplaýar. Aýratyn rugsatsyz iň ýokary — ${discountMax}%.`}</p>
+            </div>
+            {discountError && <div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{discountError}</div>}
+            <div className="flex flex-wrap gap-2">
+              {discountPresets.map(p => (
+                <button key={p} className={`px-3 py-2 rounded-lg border text-sm ${discountPercent === p ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-700 text-slate-300'}`} onClick={() => setDiscountPercent(p)}>{p}%</button>
+              ))}
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs text-slate-400">{ru ? 'Другой процент' : 'Başga göterim'}</span>
+              <input className="field w-full" value={discountPercent} onChange={e => setDiscountPercent(e.target.value)} placeholder="0" />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-slate-400">{ru ? 'Причина' : 'Sebäp'}</span>
+              <input className="field w-full" value={discountReason} onChange={e => setDiscountReason(e.target.value)} />
+            </label>
+            <div className="flex gap-2 justify-end">
+              <button className="btn" disabled={discountBusy} onClick={() => setDiscountOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
+              <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={discountBusy || !discountPercent.trim()} onClick={() => void applyDiscount(discountPercent)}>{ru ? 'Применить' : 'Ulanmak'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {closureOpen && detail && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !closureBusy && setClosureOpen(false)}>
           <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>

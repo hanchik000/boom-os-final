@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import crypto from 'node:crypto';
 import { query, queryOne, execute, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
+import { findOrCreateCustomer } from './customers';
 import { requireOperatorPosSession } from './operator-pos';
 
 const router = Router();
@@ -56,14 +57,11 @@ router.post('/customers', requirePermission('credit.issue'), async (req, res) =>
   const name = String(req.body?.name || '').trim();
   const phone = String(req.body?.phone || '').trim();
   if (!name || !phone) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'CUSTOMER_FIELDS_REQUIRED', message: 'name and phone are required.', details: {} });
-  const existing = await queryOne<any>('SELECT * FROM customers WHERE branch_id=? AND phone=? AND deleted_at IS NULL', [b, phone]);
-  if (existing) { res.status(200).json({ customer: existing, existed: true }); return; }
-  const now = new Date().toISOString(), cid = id('cust');
-  await transaction(async (tx) => {
-    await tx.execute('INSERT INTO customers (id,branch_id,name,phone,email,status,created_at,updated_at) VALUES (?,?,?,?,?,\'ACTIVE\',?,?)', [cid, b, name, phone, req.body?.email ? String(req.body.email) : null, now, now]);
-    await insertAuditLog(tx.execute, { userId: req.user!.id, branchId: b, action: 'CREDIT_CUSTOMER_CREATED', entityType: 'CUSTOMER', entityId: cid, newValues: { name, phone }, req });
-  });
-  res.status(201).json({ customer: await queryOne<any>('SELECT * FROM customers WHERE id=?', [cid]), existed: false });
+  // Stage 34.3: one create-or-return routine shared with the CRM surface, so a guest is never
+  // duplicated by being reached through a different door.
+  const now = new Date().toISOString();
+  const result = await transaction(async (tx) => findOrCreateCustomer(tx, { branchId: b, name, phone, email: req.body?.email ? String(req.body.email) : null, actorUserId: req.user!.id, action: 'CREDIT_CUSTOMER_CREATED', req, now }));
+  res.status(result.existed ? 200 : 201).json(result);
 });
 
 router.get('/customers', requirePermission('credit.view'), async (req, res) => {

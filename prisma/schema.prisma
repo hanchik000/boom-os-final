@@ -52,6 +52,7 @@ model User {
   credit_transactions_as_cashier CreditTransaction[] @relation("CreditTransactionsAsCashier")
   credit_transactions_as_approver CreditTransaction[] @relation("CreditTransactionsAsApprover")
   inventory_counts    InventoryCount[]
+  order_discounts_applied  OrderDiscount[] @relation("OrderDiscountAppliedBy")
   order_closures_requested OrderClosure[] @relation("OrderClosureRequester")
   order_closures_approved  OrderClosure[] @relation("OrderClosureApprover")
 
@@ -194,6 +195,7 @@ model Branch {
   credit_transactions    CreditTransaction[]
   inventory_counts       InventoryCount[]
   order_closures         OrderClosure[]
+  order_discounts        OrderDiscount[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -486,6 +488,9 @@ model Order {
   // Stage 34.2: which service charge configuration VERSION produced this order's service_charge.
   // Changing the configuration later never re-prices or re-distributes this order.
   service_charge_config_id String?
+  // Stage 34.3: the guest this order belongs to. Attaching a customer NEVER applies a discount --
+  // there is no discount field on a customer anywhere in this schema, by design.
+  customer_id        String?
 
   branch             Branch      @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   waiter             User?       @relation("WaiterOrders", fields: [waiter_user_id], references: [id], onDelete: SetNull)
@@ -498,7 +503,9 @@ model Order {
   print_jobs PrintJob[]
   credit_transactions CreditTransaction[]
   closures           OrderClosure[]
+  discounts          OrderDiscount[]
   service_charge_config ServiceChargeConfig? @relation(fields: [service_charge_config_id], references: [id], onDelete: SetNull)
+  customer           Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
 
   @@unique([branch_id, order_number], map: "orders_branch_order_number_key")
   @@unique([branch_id, idempotency_key], map: "orders_branch_idempotency_key_key")
@@ -545,6 +552,38 @@ model OrderClosure {
   @@index([branch_id, status, created_at], map: "idx_order_closures_branch_status_created")
   @@index([order_id, status], map: "idx_order_closures_order_status")
   @@map("order_closures")
+}
+
+// Stage 34.3: a manual discount, granted per order by a person, never by a rule. There is no
+// automatic or profile-level discount anywhere in the system: a discount exists only because this
+// row exists, and this row only exists because an authorised employee asked for it on that order.
+// The row is the audit-grade snapshot (customer, percentage, amount, employee, role, reason,
+// timestamp) and is never deleted -- removing a discount marks it REMOVED.
+model OrderDiscount {
+  id                 String   @id
+  branch_id          String
+  order_id           String
+  customer_id        String?
+  percent            Decimal? @db.Decimal(5, 2)
+  amount             Decimal  @db.Decimal(12, 2)
+  base_amount        Decimal  @db.Decimal(12, 2)
+  reason             String?
+  applied_by_user_id String?
+  applied_by_role    String
+  source             String   // WAITER_POS | CASHIER_POS
+  status             String   @default("ACTIVE") // ACTIVE | REMOVED
+  created_at         String
+  removed_at         String?
+  removed_by         String?
+
+  branch     Branch    @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order      Order     @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  customer   Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  applied_by User?     @relation("OrderDiscountAppliedBy", fields: [applied_by_user_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id, status], map: "idx_order_discounts_order_status")
+  @@index([branch_id, created_at], map: "idx_order_discounts_branch_created")
+  @@map("order_discounts")
 }
 
 model OrderItem {
@@ -701,6 +740,8 @@ model Customer {
 
   branch          Branch          @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   credit_accounts CreditAccount[]
+  orders          Order[]
+  discounts       OrderDiscount[]
 
   @@unique([branch_id, phone], map: "customers_branch_phone_key")
   @@index([branch_id], map: "idx_customers_branch")

@@ -229,10 +229,17 @@ export async function seedInitialData() {
     // finalise it alone, because the request decides both an order's fate and (independently)
     // whether produced food is written off and whether money leaves the till.
     { id: 'perm_order_closure_request', code: 'orders.closure.request', name: 'Request Order Closure', module: 'orders', description: 'Request a cancellation or an establishment closure of an order (requires manager approval)' },
-    { id: 'perm_order_closure_approve', code: 'orders.closure.approve', name: 'Approve Order Closure', module: 'orders', description: 'Approve or reject a cancellation / establishment closure, its inventory treatment and its refund' }
+    { id: 'perm_order_closure_approve', code: 'orders.closure.approve', name: 'Approve Order Closure', module: 'orders', description: 'Approve or reject a cancellation / establishment closure, its inventory treatment and its refund' },
+    // Stage 34.3: manual, per-order customer discounts. There is no automatic discount in BOOM OS,
+    // so a discount always requires someone holding this permission (or an identified waiter POS
+    // session) to grant it explicitly on one order.
+    { id: 'perm_order_discount_apply', code: 'orders.discount.apply', name: 'Apply Order Discount', module: 'orders', description: 'Grant or remove a manual discount on an open order' },
+    { id: 'perm_order_discount_override', code: 'orders.discount.override', name: 'Exceed Discount Limit', module: 'orders', description: 'Grant a manual discount above the configured maximum percentage' },
+    { id: 'perm_customers_view', code: 'customers.view', name: 'View Customers', module: 'customers', description: 'View customer records, their orders and their granted discounts' },
+    { id: 'perm_customers_manage', code: 'customers.manage', name: 'Manage Customers', module: 'customers', description: 'Create and update customer records' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -261,7 +268,7 @@ export async function seedInitialData() {
     // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
     // within their own approved limit; credit.manage_limit (set limits, approve over-limit
     // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request']) {
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }
@@ -273,6 +280,10 @@ export async function seedInitialData() {
   // version overrides these; they are the fallback when no version is in force.
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_takeaway_service_charge','TAKEAWAY_SERVICE_CHARGE_PERCENT','0','number','Service charge percentage for TAKEAWAY (pickup) orders.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_delivery_service_charge','DELIVERY_SERVICE_CHARGE_PERCENT','0','number','Service charge percentage for DELIVERY orders.',now,now]);
+  // Stage 34.3: the discount buttons a cashier sees and the ceiling above which a manual discount
+  // needs orders.discount.override. Both are configurable, never hardcoded in the UI.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_manual_discount_presets','MANUAL_DISCOUNT_PRESETS','10,15,20,30','string','Comma-separated manual discount percentages offered in the POS.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_max_manual_discount','MAX_MANUAL_DISCOUNT_PERCENT','30','number','Maximum manual discount percentage without the orders.discount.override permission.',now,now]);
   // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.
