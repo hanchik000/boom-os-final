@@ -20,6 +20,7 @@ export const ru = {
   "nav.foodCost": "Себестоимость",
   "nav.serviceCharge": "Сервисный сбор",
   "nav.boomcard": "BOOMCARD",
+  "nav.customers": "Клиенты",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

@@ -989,7 +989,10 @@ model Customer {
   id         String   @id
   branch_id  String
   name       String
-  phone      String
+  // Stage 34.9: a guest can be created from the POS with a NAME ALONE. A phone is what lets the
+  // same guest be recognised across visits and surfaces, so it stays unique per branch when given
+  // -- Postgres allows many NULLs in a unique index, so "no phone" never collides.
+  phone      String?
   email      String?
   notes      String?
   status     String   @default("ACTIVE")

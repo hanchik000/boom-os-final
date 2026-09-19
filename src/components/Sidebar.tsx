@@ -31,7 +31,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'serviceCharge' | 'boomcard' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'serviceCharge' | 'boomcard' | 'customers' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -65,6 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
     { id: 'creditReports', key: 'nav.creditReports', icon: Wallet, permission: 'credit.reports' },
     { id: 'serviceCharge', key: 'nav.serviceCharge', icon: Percent, permission: 'service_charge.view' },
     { id: 'boomcard', key: 'nav.boomcard', icon: CreditCard, permission: 'boomcard.view' },
+    { id: 'customers', key: 'nav.customers', icon: Users, permission: 'customers.view' },
     { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },
     { id: 'audit', key: 'nav.audit', icon: History, permission: 'audit.view' },
   ];

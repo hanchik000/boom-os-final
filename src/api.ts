@@ -224,7 +224,7 @@ export const api = {
   // Stage 34.3: one customer core. Listing and creating a guest go through /api/customers for every
   // surface; the credit module's own detail view stays separate only because it returns the credit
   // account alongside the same customer record.
-  createCustomer: (data:{branch_id:string;name:string;phone:string;email?:string}) => request<{customer:any;existed:boolean}>('/api/customers',{method:'POST',body:JSON.stringify(data)}),
+  createCustomer: (data:{branch_id:string;name:string;phone?:string;email?:string}) => request<{customer:any;existed:boolean}>('/api/customers',{method:'POST',body:JSON.stringify(data)}),
   getCustomers: (params:{branch_id:string;search?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.search) q.set('search',params.search); return request<{customers:any[]}>(`/api/customers?${q.toString()}`); },
   getCreditCustomer: (id:string) => request<{customer:any;account:any;orders:any[];transactions:any[]}>(`/api/credit/customers/${id}`),
   createCreditAccount: (data:{branch_id:string;type:'CUSTOMER'|'EMPLOYEE';customer_id?:string;employee_id?:string}) => request<{account:any;existed:boolean}>('/api/credit/accounts',{method:'POST',body:JSON.stringify(data)}),
@@ -294,9 +294,12 @@ export const api = {
 
   // Stage 34.3 -- CRM customers and MANUAL, per-order discounts. There is no automatic discount:
   // attaching a customer never changes a price, and every amount below is computed by the server.
-  getCrmCustomer: (id:string) => request<{ customer:any; orders:any[]; discounts:any[] }>(`/api/customers/${id}`),
+  // Stage 34.9: one identity, every surface -- orders, discounts, BOOMCARD, BOOMCOIN, BOOMBACK and
+  // credit for one guest, each balance recomputed by the server from its own ledger.
+  getCrmCustomer: (id:string) => request<{ customer:any; orders:any[]; discounts:any[]; boomcard:any; boomcoin:any; boomback:any; credit:any }>(`/api/customers/${id}`),
+  getWaiterCustomerIdentity: (id:string) => waiterRequest<{ customer:any; orders:any[]; boomcard:any; boomcoin:any; boomback:any; credit:any }>(`/api/customers/pos/${id}`),
   searchWaiterCustomers: (search:string) => waiterRequest<{ branch_id:string; customers:any[] }>(`/api/customers/pos/search?search=${encodeURIComponent(search)}`),
-  createWaiterCustomer: (body:{ name:string; phone:string }) => waiterRequest<{ customer:any; existed:boolean }>('/api/customers/pos', { method:'POST', body: JSON.stringify(body) }),
+  createWaiterCustomer: (body:{ name:string; phone?:string }) => waiterRequest<{ customer:any; existed:boolean }>('/api/customers/pos', { method:'POST', body: JSON.stringify(body) }),
   setOrderCustomer: (orderId:string, customerId:string|null) => request<{ order:any }>(`/api/orders/${orderId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
   setWaiterOrderCustomer: (orderId:string, customerId:string|null) => waiterRequest<{ order:any }>(`/api/orders/${orderId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
   getDiscountOptions: () => request<{ presets:string[]; max_percent:string }>('/api/orders/discount-options'),

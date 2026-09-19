@@ -18,12 +18,18 @@ function id(prefix: string){ return `${prefix}_${crypto.randomUUID()}`; }
  * The one create-or-return-existing customer routine, shared by the CRM and credit surfaces so a
  * guest is never duplicated: a branch + phone already on file returns the existing record.
  */
-export async function findOrCreateCustomer(tx: TxClient, opts: { branchId: string; name: string; phone: string; email?: string | null; actorUserId: string | null; action: string; req?: any; now: string }) {
-  const existing = await tx.queryOne<any>('SELECT * FROM customers WHERE branch_id=? AND phone=? AND deleted_at IS NULL', [opts.branchId, opts.phone]);
-  if (existing) return { customer: existing, existed: true };
+export async function findOrCreateCustomer(tx: TxClient, opts: { branchId: string; name: string; phone?: string | null; email?: string | null; actorUserId: string | null; action: string; req?: any; now: string }) {
+  // Stage 34.9: a phone is optional. It is what lets a guest be recognised across visits, so when
+  // one is given an existing record is returned instead of a duplicate; without one there is
+  // nothing to match on, so a new record is created.
+  const phone = opts.phone && opts.phone.trim() ? opts.phone.trim() : null;
+  if (phone) {
+    const existing = await tx.queryOne<any>('SELECT * FROM customers WHERE branch_id=? AND phone=? AND deleted_at IS NULL', [opts.branchId, phone]);
+    if (existing) return { customer: existing, existed: true };
+  }
   const cid = id('cust');
-  await tx.execute(`INSERT INTO customers (id,branch_id,name,phone,email,status,created_at,updated_at) VALUES (?,?,?,?,?,'ACTIVE',?,?)`, [cid, opts.branchId, opts.name, opts.phone, opts.email || null, opts.now, opts.now]);
-  await insertAuditLog(tx.execute, { userId: opts.actorUserId || undefined, branchId: opts.branchId, action: opts.action, entityType: 'CUSTOMER', entityId: cid, newValues: { name: opts.name, phone: opts.phone }, req: opts.req });
+  await tx.execute(`INSERT INTO customers (id,branch_id,name,phone,email,status,created_at,updated_at) VALUES (?,?,?,?,?,'ACTIVE',?,?)`, [cid, opts.branchId, opts.name, phone, opts.email || null, opts.now, opts.now]);
+  await insertAuditLog(tx.execute, { userId: opts.actorUserId || undefined, branchId: opts.branchId, action: opts.action, entityType: 'CUSTOMER', entityId: cid, newValues: { name: opts.name, phone }, req: opts.req });
   return { customer: await tx.queryOne<any>('SELECT * FROM customers WHERE id=?', [cid]), existed: false };
 }
 
@@ -36,6 +42,30 @@ async function posBranch(req: Request): Promise<{ branchId: string; actorId: str
   const session = await getWaiterSession(req);
   if (session) return { branchId: session.branch_id, actorId: session.user_id, role: 'WAITER' };
   return null;
+}
+
+/**
+ * Stage 34.9: everything one guest IS, in one place -- their orders, the discounts they were
+ * granted, their BOOMCARD, their BOOMCOIN and BOOMBACK balances (each recomputed from its own
+ * authoritative ledger) and their credit account. One customer record backs every surface: waiter
+ * POS, cashier POS, the BOOMCARD cabinet, credit and CRM. There is no second customer identity
+ * anywhere, and still no discount field on the profile.
+ */
+async function customerIdentity(c: any) {
+  const [orders, discounts, boomcard, coin, back, credit] = await Promise.all([
+    query<any>(`SELECT id,order_number,status,order_type,subtotal,discount,final_amount,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]),
+    query<any>(`SELECT * FROM order_discounts WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]),
+    queryOne<any>('SELECT * FROM boomcards WHERE customer_id=?', [c.id]),
+    queryOne<any>(`SELECT COALESCE(SUM(coins),0) AS balance, COALESCE(SUM(qualifying_amount),0) AS spend FROM boomcoin_ledger WHERE customer_id=?`, [c.id]),
+    queryOne<any>(`SELECT COALESCE(SUM(amount),0) AS balance FROM boomback_ledger WHERE customer_id=?`, [c.id]),
+    queryOne<any>(`SELECT id,type,credit_limit,current_balance,status FROM credit_accounts WHERE customer_id=?`, [c.id]),
+  ]);
+  return {
+    customer: c, orders, discounts, boomcard,
+    boomcoin: { balance: Number(coin?.balance ?? 0), qualifying_spend: String(coin?.spend ?? '0') },
+    boomback: { balance: String(back?.balance ?? '0') },
+    credit: credit || null,
+  };
 }
 
 router.get('/pos/search', async (req, res) => {
@@ -53,10 +83,19 @@ router.post('/pos', async (req, res) => {
   const name = String(req.body?.name || '').trim().slice(0, 200);
   const phone = String(req.body?.phone || '').trim().slice(0, 40);
   if (!name) return res.status(400).json({error:'VALIDATION_ERROR',code:'CUSTOMER_NAME_REQUIRED',message:'A customer name is required.',details:{}});
-  if (!phone) return res.status(400).json({error:'VALIDATION_ERROR',code:'CUSTOMER_PHONE_REQUIRED',message:'A customer phone is required to identify the guest across visits.',details:{}});
   const now = new Date().toISOString();
   const result = await transaction(async (tx) => findOrCreateCustomer(tx, { branchId: pos.branchId, name, phone, actorUserId: pos.actorId, action: 'CUSTOMER_CREATED', req, now }));
   res.status(result.existed ? 200 : 201).json(result);
+});
+
+// The same identity, reachable from a waiter POS session for its own branch.
+router.get('/pos/:id', async (req, res) => {
+  const pos = await posBranch(req);
+  if (!pos) return res.status(401).json({error:'WAITER_SESSION_INVALID',code:'WAITER_SESSION_INVALID',message:'Valid Waiter POS session required.',details:{}});
+  const c = await queryOne<any>('SELECT * FROM customers WHERE id=? AND deleted_at IS NULL', [String(req.params.id)]);
+  if (!c) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
+  if (c.branch_id !== pos.branchId) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to another branch.',details:{}});
+  res.json(await customerIdentity(c));
 });
 
 router.use(authenticateToken);
@@ -75,7 +114,7 @@ router.post('/', requirePermission('customers.manage'), async (req, res) => {
   if (!b || !allowed(req, b)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Branch is outside your access scope.',details:{}});
   const name = String(req.body?.name || '').trim().slice(0, 200);
   const phone = String(req.body?.phone || '').trim().slice(0, 40);
-  if (!name || !phone) return res.status(400).json({error:'VALIDATION_ERROR',code:'CUSTOMER_FIELDS_REQUIRED',message:'name and phone are required.',details:{}});
+  if (!name) return res.status(400).json({error:'VALIDATION_ERROR',code:'CUSTOMER_NAME_REQUIRED',message:'A customer name is required.',details:{}});
   const now = new Date().toISOString();
   const result = await transaction(async (tx) => findOrCreateCustomer(tx, { branchId: b, name, phone, email: req.body?.email ? String(req.body.email) : null, actorUserId: req.user!.id, action: 'CUSTOMER_CREATED', req, now }));
   res.status(result.existed ? 200 : 201).json(result);
@@ -103,10 +142,7 @@ router.get('/:id', requirePermission('customers.view'), async (req, res) => {
   const c = await queryOne<any>('SELECT * FROM customers WHERE id=? AND deleted_at IS NULL', [req.params.id]);
   if (!c) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
   if (!allowed(req, c.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
-  const orders = await query<any>(`SELECT id,order_number,status,order_type,subtotal,discount,final_amount,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]);
-  const discounts = await query<any>(`SELECT * FROM order_discounts WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]);
-  const boomcard = await queryOne<any>('SELECT * FROM boomcards WHERE customer_id=?', [c.id]);
-  res.json({ customer: c, orders, discounts, boomcard });
+  res.json(await customerIdentity(c));
 });
 
 export default router;
