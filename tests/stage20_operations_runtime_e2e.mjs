@@ -428,9 +428,15 @@ const unknown = await request('/api/no-such-endpoint-here');
 expect('unknown API path returns JSON 404', unknown.status, 404, unknown.body);
 assert.equal(unknown.body.code, 'ENDPOINT_NOT_FOUND');
 
-// Reserved-but-inactive business modules keep answering 501.
-const reserved = await request('/api/boomcard/anything');
+// Reserved-but-inactive business modules keep answering 501. '/api/boomcard' was one of them until
+// Stage 34.6 activated it, so the still-reserved '/api/crm' now carries this contract.
+const reserved = await request('/api/crm/anything');
 expect('reserved module answers 501', reserved.status, 501, reserved.body);
+assert.equal(reserved.body.code, 'MODULE_NOT_ACTIVATED');
+
+// And the activated module no longer answers 501 -- an unknown path under it is an ordinary API 404.
+const activated = await request('/api/boomcard/no-such-path');
+assert.ok(activated.status !== 501, 'an activated module must not still answer MODULE_NOT_ACTIVATED');
 
 console.log(`STAGE 20 OPERATIONS RUNTIME E2E: PASS (${checks.length} checks)`);
 console.log('Covered: service charge config + ledger, inventory receiving/write-off/transfer/low-stock,');

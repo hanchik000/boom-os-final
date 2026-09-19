@@ -81,13 +81,32 @@ router.post('/', requirePermission('customers.manage'), async (req, res) => {
   res.status(result.existed ? 200 : 201).json(result);
 });
 
+// Stage 34.6: a guest's date of birth is recorded here so a manager can decide when a birthday
+// benefit is due. It is never a discount and grants nothing by itself.
+router.patch('/:id', requirePermission('customers.manage'), async (req, res) => {
+  const c = await queryOne<any>('SELECT * FROM customers WHERE id=? AND deleted_at IS NULL', [req.params.id]);
+  if (!c) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
+  if (!allowed(req, c.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
+  const birth = req.body?.birth_date === null ? null : (typeof req.body?.birth_date === 'string' ? String(req.body.birth_date).trim().slice(0, 32) : undefined);
+  if (birth !== undefined && birth !== null && !/^\d{4}-\d{2}-\d{2}$/.test(birth)) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_BIRTH_DATE',message:'birth_date must be YYYY-MM-DD.',details:{}});
+  const name = typeof req.body?.name === 'string' ? String(req.body.name).trim().slice(0, 200) : undefined;
+  const now = new Date().toISOString();
+  await transaction(async (tx) => {
+    if (birth !== undefined) await tx.execute('UPDATE customers SET birth_date=?,updated_at=? WHERE id=?', [birth, now, c.id]);
+    if (name) await tx.execute('UPDATE customers SET name=?,updated_at=? WHERE id=?', [name, now, c.id]);
+    await insertAuditLog(tx.execute, { userId: req.user!.id, branchId: c.branch_id, action: 'CUSTOMER_UPDATED', entityType: 'CUSTOMER', entityId: c.id, oldValues: { name: c.name, birth_date: c.birth_date }, newValues: { name: name ?? c.name, birth_date: birth === undefined ? c.birth_date : birth }, req });
+  });
+  res.json({ customer: await queryOne<any>('SELECT * FROM customers WHERE id=?', [c.id]) });
+});
+
 router.get('/:id', requirePermission('customers.view'), async (req, res) => {
   const c = await queryOne<any>('SELECT * FROM customers WHERE id=? AND deleted_at IS NULL', [req.params.id]);
   if (!c) return res.status(404).json({error:'NOT_FOUND',code:'CUSTOMER_NOT_FOUND',message:'Customer not found.',details:{}});
   if (!allowed(req, c.branch_id)) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'Customer belongs to an unauthorized branch.',details:{}});
   const orders = await query<any>(`SELECT id,order_number,status,order_type,subtotal,discount,final_amount,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]);
   const discounts = await query<any>(`SELECT * FROM order_discounts WHERE customer_id=? ORDER BY created_at DESC LIMIT 50`, [c.id]);
-  res.json({ customer: c, orders, discounts });
+  const boomcard = await queryOne<any>('SELECT * FROM boomcards WHERE customer_id=?', [c.id]);
+  res.json({ customer: c, orders, discounts, boomcard });
 });
 
 export default router;

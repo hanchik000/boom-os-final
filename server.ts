@@ -33,6 +33,7 @@ import inventoryRouter from './server/routes/inventory';
 import serviceChargeRouter from './server/routes/service-charge';
 import customersRouter from './server/routes/customers';
 import loyaltyRouter from './server/routes/loyalty';
+import boomcardRouter from './server/routes/boomcard';
 import kpiRouter from './server/routes/kpi';
 import operatorPosRouter from './server/routes/operator-pos';
 import printRouter from './server/routes/print';
@@ -137,7 +138,7 @@ async function startServer() {
   [
     docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
     menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
-    inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, kpiRouter, operatorPosRouter, printRouter,
+    inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, boomcardRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
     organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter,
   ].forEach(enableAsyncErrorForwarding);
@@ -164,6 +165,7 @@ async function startServer() {
   app.use('/api/service-charge', serviceChargeRouter);
   app.use('/api/customers', customersRouter);
   app.use('/api/loyalty', loyaltyRouter);
+  app.use('/api/boomcard', boomcardRouter);
   app.use('/api/kpi', kpiRouter);
   app.use('/api/operator-pos', operatorPosRouter);
   app.use('/api/print', printRouter);
@@ -182,7 +184,9 @@ async function startServer() {
   app.use('/api/system', systemRouter);
 
   // 2. Future Business Modules (Reserved Architectural Endpoints - Not Implemented)
-  const futureModules = ['boomcard', 'crm', 'analytics'];
+  // Stage 34.6 activated '/api/boomcard' for real, so it is no longer reserved -- leaving it here
+  // would have shadowed the module with a 501 (or, worse, let its own auth answer 401 first).
+  const futureModules = ['crm', 'analytics'];
   for (const mod of futureModules) {
     app.all(`/api/${mod}*`, (req: Request, res: Response) => {
       res.status(501).json({

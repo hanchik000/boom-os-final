@@ -197,6 +197,10 @@ model Branch {
   order_closures         OrderClosure[]
   order_discounts        OrderDiscount[]
   order_bills            OrderBill[]
+  boomcoin_ledger        BoomcoinLedger[]
+  boomcards              Boomcard[]
+  boomcard_events        BoomcardEvent[]
+  boomcard_gifts         BoomcardBirthdayGift[]
 
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
@@ -367,6 +371,7 @@ model MenuItem {
   order_items    OrderItem[]
   recipes        Recipe[]
   modifier_groups MenuModifierGroup[]
+  birthday_gifts BoomcardBirthdayGift[]
 
   @@index([branch_id], map: "idx_menu_items_branch")
   @@index([category_id], map: "idx_menu_items_category")
@@ -511,6 +516,7 @@ model Order {
   closures           OrderClosure[]
   discounts          OrderDiscount[]
   bills              OrderBill[]
+  boomcoin_ledger    BoomcoinLedger[]
   service_charge_config ServiceChargeConfig? @relation(fields: [service_charge_config_id], references: [id], onDelete: SetNull)
   customer           Customer? @relation(fields: [customer_id], references: [id], onDelete: SetNull)
 
@@ -569,6 +575,127 @@ model OrderClosure {
 // Stage 34.4: a separate check on one order. A table can carry several of these; the ORDER stays
 // the single sale (one order, N bills), so revenue is counted once while each guest settles their
 // own part with their own guest, discount, payment method and receipt.
+// Stage 34.5: the authoritative BOOMCOIN record. Every coin a guest has ever earned, redeemed or
+// had adjusted is one row here, with the balance before and after, so the balance is never a number
+// somebody typed -- it is the sum of this ledger. The POS counter is only UI guidance derived from
+// the same numbers.
+// Stage 34.6: a guest's BOOMCARD. One card per guest, with an explicit lifecycle that a MANAGER
+// drives: CANDIDATE (the CRM noticed enough qualifying spend) -> ACTIVE (a manager approved it) ->
+// INACTIVE (it lapsed or was withdrawn). Nothing here activates itself; automation only ever
+// proposes candidates, and every transition is recorded as its own event so the history survives.
+model Boomcard {
+  id              String  @id
+  branch_id       String
+  customer_id     String  @unique
+  card_number     String  @unique
+  status          String  @default("CANDIDATE") // CANDIDATE | ACTIVE | INACTIVE
+  // The personal cabinet is reached by this opaque token, never by the customer id, so a cabinet
+  // link cannot be guessed from a record the guest can see elsewhere.
+  cabinet_token   String  @unique
+  qualifying_spend Decimal @db.Decimal(12, 2) @default(0)
+  activated_at    String?
+  valid_until     String?
+  deactivated_at  String?
+  breakfast_granted Int   @default(0)
+  breakfast_used    Int   @default(0)
+  created_by      String?
+  created_at      String
+  updated_at      String
+
+  branch   Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  events   BoomcardEvent[]
+  gifts    BoomcardBirthdayGift[]
+
+  @@index([branch_id, status], map: "idx_boomcards_branch_status")
+  @@map("boomcards")
+}
+
+// Every lifecycle transition and benefit grant, kept forever. Stage 34.12 reads this as part of the
+// unified BOOMCARD operations journal.
+model BoomcardEvent {
+  id          String  @id
+  branch_id   String
+  boomcard_id String
+  customer_id String
+  type        String  // CANDIDATE_IDENTIFIED | ACTIVATED | RENEWED | DEACTIVATED | BREAKFAST_GRANTED | BIRTHDAY_GIFT_GRANTED
+  status_before String?
+  status_after  String?
+  qualifying_spend Decimal? @db.Decimal(12, 2)
+  period_start String?
+  period_end   String?
+  quantity     Int?
+  reason       String?
+  decided_by   String?
+  automatic    Boolean @default(false)
+  created_at   String
+
+  branch   Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  boomcard Boomcard @relation(fields: [boomcard_id], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+
+  @@index([branch_id, created_at], map: "idx_boomcard_events_branch_created")
+  @@index([boomcard_id, created_at], map: "idx_boomcard_events_card_created")
+  @@map("boomcard_events")
+}
+
+// A birthday benefit a MANAGER assigns by hand: a specific menu item, a specific quantity, a
+// specific validity window. The guest's own cabinet deliberately sees only that a birthday benefit
+// is waiting -- never which product it is.
+model BoomcardBirthdayGift {
+  id           String  @id
+  branch_id    String
+  boomcard_id  String
+  customer_id  String
+  menu_item_id String
+  quantity     Int     @default(1)
+  status       String  @default("GRANTED") // GRANTED | REDEEMED | EXPIRED
+  valid_from   String
+  valid_until  String
+  granted_by   String?
+  granted_at   String
+  redeemed_at  String?
+  redeemed_order_id String?
+
+  branch    Branch   @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  boomcard  Boomcard @relation(fields: [boomcard_id], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  menu_item MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Restrict)
+
+  @@index([branch_id, status], map: "idx_boomcard_gifts_branch_status")
+  @@index([customer_id, status], map: "idx_boomcard_gifts_customer_status")
+  @@map("boomcard_birthday_gifts")
+}
+
+model BoomcoinLedger {
+  id                String   @id
+  branch_id         String
+  customer_id       String
+  type              String   // EARNED | REDEEMED | ADJUSTMENT | REVERSED
+  coins             Int      // signed: negative for a redemption or a reversal
+  qualifying_amount Decimal  @db.Decimal(12, 2) @default(0)
+  balance_before    Int
+  balance_after     Int
+  spend_before      Decimal  @db.Decimal(12, 2) @default(0)
+  spend_after       Decimal  @db.Decimal(12, 2) @default(0)
+  order_id          String?
+  bill_id           String?
+  reason            String?
+  created_by        String?
+  created_at        String
+  // Never null, so idempotency genuinely holds: a retried payment cannot mint a second coin.
+  entry_key         String   @unique(map: "uq_boomcoin_ledger_entry_key")
+
+  branch   Branch     @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  customer Customer   @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  order    Order?     @relation(fields: [order_id], references: [id], onDelete: SetNull)
+  bill     OrderBill? @relation(fields: [bill_id], references: [id], onDelete: SetNull)
+
+  @@index([branch_id, created_at], map: "idx_boomcoin_ledger_branch_created")
+  @@index([customer_id, created_at], map: "idx_boomcoin_ledger_customer_created")
+  @@map("boomcoin_ledger")
+}
+
 model OrderBill {
   id             String   @id
   branch_id      String
@@ -590,6 +717,7 @@ model OrderBill {
   items     OrderItem[]
   payments  Payment[]
   discounts OrderDiscount[]
+  boomcoin_ledger BoomcoinLedger[]
 
   @@unique([order_id, bill_number], map: "uq_order_bills_order_number")
   @@index([branch_id, status], map: "idx_order_bills_branch_status")
@@ -787,9 +915,22 @@ model Customer {
 
   branch          Branch          @relation(fields: [branch_id], references: [id], onDelete: Restrict)
   credit_accounts CreditAccount[]
+  // Stage 34.5: loyalty aggregates. These are a CACHE maintained in the same transaction as the
+  // ledger row that caused them -- the boomcoin_ledger is the authoritative record, and the read
+  // endpoints recompute from it so the two can be proven equal.
+  boomcoin_balance Int    @default(0)
+  qualifying_spend Decimal @db.Decimal(12, 2) @default(0)
+  // Stage 34.6: the guest's date of birth, used only to decide when a birthday benefit may be
+  // granted. It is never a discount and never grants anything by itself.
+  birth_date       String?
+
   orders          Order[]
   discounts       OrderDiscount[]
   bills           OrderBill[]
+  boomcoin_ledger BoomcoinLedger[]
+  boomcard        Boomcard?
+  boomcard_events BoomcardEvent[]
+  birthday_gifts  BoomcardBirthdayGift[]
 
   @@unique([branch_id, phone], map: "customers_branch_phone_key")
   @@index([branch_id], map: "idx_customers_branch")

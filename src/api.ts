@@ -318,6 +318,18 @@ export const api = {
   getWaiterBoomcoinCounter: (customerId:string) => waiterRequest<any>(`/api/loyalty/boomcoin/customers/${customerId}`),
   getBoomcoinSettings: () => request<{ earning_enabled:boolean; counter_ui_enabled:boolean; spend_per_coin:string }>('/api/loyalty/boomcoin/settings'),
   getBoomcoinLedger: (params:{ branch_id?:string; customer_id?:string }) => { const q=new URLSearchParams(); if(params.branch_id) q.set('branch_id',params.branch_id); if(params.customer_id) q.set('customer_id',params.customer_id); return request<{ entries:any[]; totals:any[] }>(`/api/loyalty/boomcoin/ledger?${q.toString()}`); },
+  // Stage 34.6 -- BOOMCARD lifecycle. Every transition below is a manager decision the server
+  // records; the client never decides a status or a validity window on its own.
+  getBoomcardSettings: () => request<{ automatic_lifecycle_enabled:boolean; monthly_spend_threshold:string; validity_days:number; breakfasts_per_period:number }>('/api/boomcard/settings'),
+  getBoomcards: (params:{ branch_id?:string; status?:string }) => { const q=new URLSearchParams(); if(params.branch_id) q.set('branch_id',params.branch_id); if(params.status) q.set('status',params.status); return request<{ branch_id:string; cards:any[] }>(`/api/boomcard?${q.toString()}`); },
+  getBoomcard: (id:string) => request<{ card:any; events:any[]; gifts:any[] }>(`/api/boomcard/${id}`),
+  createBoomcard: (customerId:string, reason?:string) => request<{ card:any }>('/api/boomcard', { method:'POST', body: JSON.stringify({ customer_id: customerId, reason }) }),
+  activateBoomcard: (id:string, body:any={}) => request<{ card:any }>(`/api/boomcard/${id}/activate`, { method:'POST', body: JSON.stringify(body) }),
+  renewBoomcard: (id:string, body:any={}) => request<{ card:any }>(`/api/boomcard/${id}/renew`, { method:'POST', body: JSON.stringify(body) }),
+  deactivateBoomcard: (id:string, reason?:string) => request<{ card:any }>(`/api/boomcard/${id}/deactivate`, { method:'POST', body: JSON.stringify({ reason }) }),
+  grantBirthdayGift: (id:string, menuItemId:string, quantity:number, reason?:string) => request<{ gift:any }>(`/api/boomcard/${id}/birthday-gift`, { method:'POST', body: JSON.stringify({ menu_item_id: menuItemId, quantity, reason }) }),
+  evaluateBoomcardLifecycle: (branchId:string, from:string, to:string) => request<any>('/api/boomcard/lifecycle/evaluate', { method:'POST', body: JSON.stringify({ branch_id: branchId, from, to }) }),
+  updateCustomer: (id:string, body:{ name?:string; birth_date?:string|null }) => request<{ customer:any }>(`/api/customers/${id}`, { method:'PATCH', body: JSON.stringify(body) }),
   adjustBoomcoin: (customerId:string, coins:number, reason:string) => request<{ entry:any }>('/api/loyalty/boomcoin/adjust', { method:'POST', body: JSON.stringify({ customer_id: customerId, coins, reason }) }),
   getWaiterOrderBills: (orderId:string) => waiterRequest<{ order_id:string; split_mode:string; order_final_amount:string; bills:any[]; unassigned_items:any[] }>(`/api/orders/${orderId}/bills`),
   splitWaiterOrderBills: (orderId:string, mode:'ITEMS'|'EQUAL', count:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/split`, { method:'POST', body: JSON.stringify({ mode, count }) }),

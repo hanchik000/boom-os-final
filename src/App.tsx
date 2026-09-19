@@ -27,6 +27,7 @@ import { CreditReportsView } from './components/CreditReportsView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
 import { LiveOperationsView } from './components/LiveOperationsView';
 import { ServiceChargeView } from './components/ServiceChargeView';
+import { BoomcardView } from './components/BoomcardView';
 import { FoodCostView } from './components/FoodCostView';
 
 function MainLayout() {
@@ -122,6 +123,8 @@ function MainLayout() {
         return { title: t('nav.commandCenter'), subtitle: language === 'ru' ? 'Продажи, касса, кухня, официанты, кассиры, склад и персонал в реальном времени' : 'Hakyky wagtda satuw, kassa, aşhana, ofisiantlar, kassirler, ammar we işgärler' };
       case 'liveOperations':
         return { title: t('nav.liveOperations'), subtitle: language === 'ru' ? 'Активные заказы, кухня, нагрузка официантов и кассиров прямо сейчас' : 'Häzirki wagtda işjeň sargytlar, aşhana, ofisiant we kassir ýüki' };
+      case 'boomcard':
+        return { title: t('nav.boomcard'), subtitle: language === 'ru' ? 'Жизненный цикл карты, льготы и личный кабинет гостя' : 'Kartyň ýaşaýyş sikli, ýeňillikler we myhmanyň şahsy kabineti' };
       case 'serviceCharge':
         return { title: t('nav.serviceCharge'), subtitle: language === 'ru' ? 'Процент обслуживания, распределение по категориям и история версий' : 'Hyzmat göterimi, kategoriýalar boýunça paýlanyş we wersiýa taryhy' };
       case 'foodCost':
@@ -192,6 +195,7 @@ function MainLayout() {
           {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'foodCost' && <FoodCostView />}
           {currentTab === 'serviceCharge' && <ServiceChargeView />}
+          {currentTab === 'boomcard' && <BoomcardView />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}

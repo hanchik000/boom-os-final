@@ -19,6 +19,7 @@ export const ru = {
   "nav.liveOperations": "Живые операции",
   "nav.foodCost": "Себестоимость",
   "nav.serviceCharge": "Сервисный сбор",
+  "nav.boomcard": "BOOMCARD",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

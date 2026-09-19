@@ -240,10 +240,14 @@ export async function seedInitialData() {
     // Stage 34.5: BOOMCOIN. Viewing a guest's balance and the ledger is separate from changing it:
     // a manual adjustment always needs loyalty.manage and always needs a reason.
     { id: 'perm_loyalty_view', code: 'loyalty.view', name: 'View Loyalty', module: 'loyalty', description: 'View BOOMCOIN balances, the progress counter and the loyalty ledger' },
-    { id: 'perm_loyalty_manage', code: 'loyalty.manage', name: 'Manage Loyalty', module: 'loyalty', description: 'Post manual BOOMCOIN adjustments' }
+    { id: 'perm_loyalty_manage', code: 'loyalty.manage', name: 'Manage Loyalty', module: 'loyalty', description: 'Post manual BOOMCOIN adjustments' },
+    // Stage 34.6: BOOMCARD. Creating a guest's cabinet, approving a card and granting a birthday
+    // benefit are all explicit manager decisions -- automation only ever proposes candidates.
+    { id: 'perm_boomcard_view', code: 'boomcard.view', name: 'View BOOMCARD', module: 'boomcard', description: 'View BOOMCARD holders, their lifecycle history and granted benefits' },
+    { id: 'perm_boomcard_manage', code: 'boomcard.manage', name: 'Manage BOOMCARD', module: 'boomcard', description: 'Create, activate, renew and deactivate a BOOMCARD and grant its birthday benefit' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage','boomcard.view','boomcard.manage'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -272,7 +276,7 @@ export async function seedInitialData() {
     // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
     // within their own approved limit; credit.manage_limit (set limits, approve over-limit
     // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage','loyalty.view']) {
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage','loyalty.view','boomcard.view']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }
@@ -293,6 +297,13 @@ export async function seedInitialData() {
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_enabled','BOOMCOIN_EARNING_ENABLED','true','boolean','Whether settled orders earn BOOMCOIN for the attached guest.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_counter_ui','BOOMCOIN_COUNTER_UI_ENABLED','true','boolean','Whether the POS and customer menu show the BOOMCOIN progress counter.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_spend_per_coin','BOOMCOIN_SPEND_PER_COIN','200.00','number','Qualifying spend, in currency units, that earns one BOOMCOIN.',now,now]);
+  // Stage 34.6: BOOMCARD lifecycle. The threshold, the validity window and the breakfast allowance
+  // are configuration; the automation switch only controls whether candidates are PROPOSED, never
+  // whether a manager can manage cards by hand.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_auto','BOOMCARD_AUTO_LIFECYCLE_ENABLED','true','boolean','Whether the monthly evaluation records candidates and lapses expired cards automatically.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_threshold','BOOMCARD_MONTHLY_SPEND_THRESHOLD','5000.00','number','Qualifying spend in a period that makes a guest a BOOMCARD candidate.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_validity_days','BOOMCARD_VALIDITY_DAYS','30','number','How many days a BOOMCARD stays valid after activation or renewal.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcard_breakfasts','BOOMCARD_BREAKFAST_PER_PERIOD','4','number','Breakfasts granted with each BOOMCARD activation or renewal.',now,now]);
   // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.

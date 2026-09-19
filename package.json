@@ -18,7 +18,7 @@
     "test:stage2": "tsx tests/stage2_auth_rbac.ts",
     "test:stage1.hardening": "node tests/stage1_hardening.mjs",
     "test:stage7": "node tests/stage7_waiter_codes.mjs",
-    "test:static": "npm run test:stage1.hardening && npm run test:stage7 && npm run test:stage11 && npm run test:stage12 && npm run test:stage12.contract && npm run test:stage13 && npm run test:stage14 && npm run test:stage15 && npm run test:stage16 && npm run test:stage16.1 && npm run test:stage17 && npm run test:stage18 && npm run test:stage18.2 && npm run test:stage18.3 && npm run test:stage18.4 && npm run test:stage18.6 && npm run test:stage18.7 && npm run test:stage18.8 && npm run test:async && npm run test:isolation && npm run test:tenant && npm run test:invariants && npm run test:stage24 && npm run test:stage25 && npm run test:stage26 && npm run test:stage27.5 && npm run test:stage29 && npm run test:stage30 && npm run test:stage31 && npm run test:stage32 && npm run test:stage33 && npm run test:stage34 && npm run test:stage34.1 && npm run test:stage34.2 && npm run test:stage34.3 && npm run test:stage34.4 && npm run test:stage34.5",
+    "test:static": "npm run test:stage1.hardening && npm run test:stage7 && npm run test:stage11 && npm run test:stage12 && npm run test:stage12.contract && npm run test:stage13 && npm run test:stage14 && npm run test:stage15 && npm run test:stage16 && npm run test:stage16.1 && npm run test:stage17 && npm run test:stage18 && npm run test:stage18.2 && npm run test:stage18.3 && npm run test:stage18.4 && npm run test:stage18.6 && npm run test:stage18.7 && npm run test:stage18.8 && npm run test:async && npm run test:isolation && npm run test:tenant && npm run test:invariants && npm run test:stage24 && npm run test:stage25 && npm run test:stage26 && npm run test:stage27.5 && npm run test:stage29 && npm run test:stage30 && npm run test:stage31 && npm run test:stage32 && npm run test:stage33 && npm run test:stage34 && npm run test:stage34.1 && npm run test:stage34.2 && npm run test:stage34.3 && npm run test:stage34.4 && npm run test:stage34.5 && npm run test:stage34.6",
     "test:stage11": "node tests/stage11_empty_baseline_static.mjs",
     "test:stage12": "node tests/stage12_clean_source_static.mjs",
     "test:stage12.contract": "node tests/stage12_clean_runtime_contract_static.mjs",
@@ -71,12 +71,14 @@
     "test:stage34.3": "node tests/stage34_3_discounts_static.mjs",
     "test:stage34.4": "node tests/stage34_4_split_bill_static.mjs",
     "test:stage34.5": "node tests/stage34_5_boomcoin_static.mjs",
+    "test:stage34.6": "node tests/stage34_6_boomcard_static.mjs",
     "test:e2e:stage34": "node tests/stage34_food_cost_e2e.mjs",
     "test:e2e:stage34.1": "node tests/stage34_1_closure_e2e.mjs",
     "test:e2e:stage34.2": "node tests/stage34_2_service_charge_e2e.mjs",
     "test:e2e:stage34.3": "node tests/stage34_3_discounts_e2e.mjs",
     "test:e2e:stage34.4": "node tests/stage34_4_split_bill_e2e.mjs",
-    "test:e2e:stage34.5": "node tests/stage34_5_boomcoin_e2e.mjs"
+    "test:e2e:stage34.5": "node tests/stage34_5_boomcoin_e2e.mjs",
+    "test:e2e:stage34.6": "node tests/stage34_6_boomcard_e2e.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
