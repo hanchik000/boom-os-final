@@ -23,6 +23,11 @@
 .cmd-refresh-btn:hover:not(:disabled){background:var(--boom-surface-soft);border-color:var(--boom-border-strong);color:var(--boom-text)}
 .cmd-refresh-btn:disabled{opacity:.6;cursor:default}
 .cmd-refresh-btn svg{width:14px;height:14px}
+/* Stage 35.9 -- last-updated / stale-data UX. Gold is used only as a quiet accent, never a
+ * dominant alarm colour; the stale banner is intentionally softer than the hard-error banner
+ * below it, since it means "old data is still shown", not "nothing loaded". */
+.cmd-last-updated{font-size:10.5px;color:var(--boom-text-muted);white-space:nowrap;min-width:0}
+.cmd-stale{border:1px solid rgba(245,158,11,.28);background:rgba(245,158,11,.06);color:#fbbf24;border-radius:12px;padding:10px 14px;font-size:12px}
 .cmd-branch-select:focus-visible,.cmd-preset-btn:focus-visible,.cmd-refresh-btn:focus-visible,.cmd-alert:focus-visible,.cmd-kpi.clickable:focus-visible,.cmd-panel-link:focus-visible,.cmd-status-tile.clickable:focus-visible,.cmd-waiter-row:focus-visible{outline:none;box-shadow:var(--boom-focus-ring)}
 
 .cmd-error{border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:#fca5a5;border-radius:12px;padding:12px 14px;font-size:13px}
@@ -118,4 +123,8 @@
 @media (max-width:900px){.cmd-status-grid{grid-template-columns:repeat(2,1fr)}.cmd-status-grid.kds{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:640px){.cmd-center{padding:14px;gap:14px}.cmd-topbar{flex-direction:column;align-items:stretch}.cmd-toolbar{justify-content:flex-start}.cmd-kpi-grid{grid-template-columns:repeat(2,1fr)}.cmd-table{font-size:11px}}
 
-@media (prefers-reduced-motion:reduce){.cmd-kpi.clickable,.cmd-preset-btn,.cmd-refresh-btn,.cmd-alert,.cmd-panel.linkable,.cmd-status-tile.clickable,.cmd-waiter-row{transition:none}}
+@media (prefers-reduced-motion:reduce){.cmd-kpi.clickable,.cmd-preset-btn,.cmd-refresh-btn,.cmd-alert,.cmd-panel.linkable,.cmd-status-tile.clickable,.cmd-waiter-row{transition:none}
+/* Stage 35.9 -- the refresh button's spin icon is the one continuously-animating element this
+ * stage adds; reduced motion removes the spin itself (the button's disabled/aria-busy state and
+ * the "Обновляется…" text still communicate the same thing, so nothing is lost). */
+.cmd-refresh-btn svg.animate-spin{animation:none}}

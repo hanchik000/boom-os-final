@@ -26,7 +26,11 @@ const checks = [
   ['money() still only formats a server-given value, never computes one', /function money\(v: any\) \{ const n = Number\(v \?\? 0\); return Number\.isFinite\(n\) \? n\.toLocaleString/.test(view)],
   ['no arithmetic on financial fields anywhere in the render (+/-/*// on data.* fields)', !/data\.(financial|cash_position|credit)\.[a-zA-Z_.]+\s*[+\-*/]/.test(view)],
   ['date-range presets are still computed the same way (today/yesterday/week/month/custom)', view.includes("function computeRange(preset: Preset, customStart: string, customEnd: string)")],
-  ['auto-refresh interval is unchanged', view.includes('const REFRESH_MS = 45000;') && view.includes('setInterval(() => { void load(); }, REFRESH_MS)')],
+  // REFRESH_MS itself was deliberately changed by Stage 35.9 (45s -> the spec-mandated 30s); this
+  // check only pins that SOME interval-driven auto-refresh mechanism still exists at all -- the
+  // exact interval value and its pause/cleanup behavior are Stage 35.9's own responsibility now
+  // (tests/stage35_9_live_operations_static.mjs).
+  ['an auto-refresh interval mechanism exists', /const REFRESH_MS = \d+;/.test(view) && view.includes('window.setInterval(')],
 
   // -- SALES != CASH RECEIVED stays visually distinct (two separate panels, two separate totals)
   ['sales and received-money are still two separate panels, never merged into one total', /cmd-panel">[\s\S]{0,80}Продажи[\s\S]{0,1200}cmd-panel">[\s\S]{0,80}Получено/.test(view)],

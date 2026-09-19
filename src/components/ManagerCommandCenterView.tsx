@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   RefreshCw, TrendingUp, Wallet, CreditCard, Banknote, Receipt, ShoppingBag, ChefHat,
   Users, UserCog, Boxes, AlertTriangle, ChevronRight, Loader2
@@ -29,7 +29,30 @@ function computeRange(preset: Preset, customStart: string, customEnd: string): {
   return { start: customStart ? new Date(customStart).toISOString() : startOfDay(now).toISOString(), end: customEnd ? new Date(customEnd).toISOString() : now.toISOString() };
 }
 
-const REFRESH_MS = 45000;
+// Stage 35.9 -- live operational refresh. 30s default poll, paused whenever the tab is not
+// visible so an idle background tab never keeps hitting the server. This constant is the only
+// timing change in this stage; the request itself, its params and its permission/branch gating
+// are entirely unchanged.
+const REFRESH_MS = 30000;
+
+// Stage 35.9 -- "N назад" / "N ago". A tiny, local, presentation-only helper -- it formats a
+// client-side timestamp of the last SUCCESSFUL fetch, never a server value, and never feeds back
+// into any request or calculation. `agoFragment` is the bare relative-time text (reused by both
+// the header's "Обновлено N назад" and the stale banner's "данные от N"); `timeAgoLabel` adds the
+// "Обновлено"/full-sentence wrapper for the header indicator.
+function agoFragment(ms: number, ru: boolean): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (seconds < 5) return ru ? 'только что' : 'häzir';
+  if (seconds < 60) return ru ? `${seconds} сек назад` : `${seconds} sek öň`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return ru ? `${minutes} мин назад` : `${minutes} min öň`;
+  const hours = Math.floor(minutes / 60);
+  return ru ? `${hours} ч назад` : `${hours} sag öň`;
+}
+function timeAgoLabel(ms: number, ru: boolean): string {
+  const frag = agoFragment(ms, ru);
+  return ru ? `Обновлено ${frag}` : `${frag} täzelendi`;
+}
 
 export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
   const { user } = useAuth();
@@ -46,25 +69,84 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
   const [error, setError] = useState('');
   const [expandedWaiter, setExpandedWaiter] = useState<string | null>(null);
 
+  // Stage 35.9 -- live refresh state. `refreshing` is a background fetch with data already on
+  // screen (button spinner + a quiet header note), distinct from `loading` (no data yet, the
+  // existing full-panel loading state below). `lastUpdatedAt` is a client-side timestamp of the
+  // last fetch that actually SUCCEEDED -- a failed refresh never touches it, and it is never sent
+  // back to the server or used in any calculation.
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [, setTick] = useState(0); // re-renders the "N sec ago" text; never touches data/requests
+
   useEffect(() => { api.getBranches().then(r => { setBranches(r.branches || []); if (!branchId && r.branches?.[0]) setBranchId(r.branches[0].id); }).catch(() => {}); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const range = useMemo(() => computeRange(preset, customStart, customEnd), [preset, customStart, customEnd]);
 
-  const load = useCallback(async () => {
+  // Stage 35.9 -- requestIdRef is the race-protection mechanism: the project's existing api.ts
+  // request() has no abort/sequencing support to reuse, so this is the smallest safe addition.
+  // Every load() call gets a new id; a response is only ever applied if it is still the NEWEST
+  // outstanding request when it resolves, so a slow, superseded (e.g. stale-filter) response can
+  // never overwrite fresher data. busyRef is a separate, simple guard used only by the manual
+  // refresh button and the auto-poll tick, to skip firing a redundant network call while one is
+  // already in flight for the current filters -- it deliberately does NOT gate the filter-change
+  // effect below, since a branch/date change must always fetch immediately regardless of what was
+  // already in flight.
+  const requestIdRef = useRef(0);
+  const busyRef = useRef(false);
+
+  const load = useCallback(async (mode: 'initial' | 'manual' | 'auto' = 'manual') => {
     if (!branchId) return;
-    setError('');
+    const myId = ++requestIdRef.current;
+    busyRef.current = true;
+    if (mode === 'initial') setLoading(true); else setRefreshing(true);
     try {
       const r = await api.getManagerDashboard({ branch_id: branchId, start: range.start, end: range.end });
+      if (requestIdRef.current !== myId) return; // superseded by a newer request -- discard
       setData(r);
-    } catch (e: any) { setError(e?.message || (ru ? 'Не удалось загрузить панель.' : 'Panel ýüklenip bilmedi.')); }
-    finally { setLoading(false); }
+      setError('');
+      setLastUpdatedAt(Date.now());
+    } catch (e: any) {
+      if (requestIdRef.current !== myId) return; // superseded -- do not report a stale failure
+      setError(e?.message || (ru ? 'Не удалось загрузить панель.' : 'Panel ýüklenip bilmedi.'));
+    } finally {
+      if (requestIdRef.current === myId) { setLoading(false); setRefreshing(false); }
+      busyRef.current = false;
+    }
   }, [branchId, range.start, range.end, ru]);
 
-  useEffect(() => { setLoading(true); void load(); }, [load]);
+  // Initial load AND every branch/date-filter change -- always fires (bypasses busyRef on
+  // purpose): a deliberate filter change must refetch now, not wait for whatever was in flight.
+  useEffect(() => { void load('initial'); }, [load]);
+
+  // Manual refresh: guarded against duplicate concurrent clicks.
+  const manualRefresh = useCallback(() => { if (!busyRef.current) void load('manual'); }, [load]);
+
+  // Auto refresh -- exactly one interval per mounted instance, paused while the tab is hidden,
+  // an immediate refresh + resumed interval when the tab becomes visible again, guarded against
+  // overlapping an already-running fetch, and always cleaned up on unmount/filter change.
   useEffect(() => {
-    const t = setInterval(() => { void load(); }, REFRESH_MS);
-    return () => clearInterval(t);
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => { if (!busyRef.current) void load('auto'); }, REFRESH_MS); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else { if (!busyRef.current) void load('auto'); start(); }
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [load]);
+
+  // "N sec/min ago" ticker -- display-only, paused while the tab is hidden, never fetches.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => setTick(x => x + 1), 1000); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) stop(); else start(); };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   const presets: Array<{ id: Preset; label: string }> = [
     { id: 'today', label: ru ? 'Сегодня' : 'Şu gün' },
@@ -149,13 +231,33 @@ export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
               <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
             </div>
           )}
-          <button className="cmd-refresh-btn boom-focusable" disabled={loading} onClick={() => { setLoading(true); void load(); }}>
-            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />} {ru ? 'Обновить' : 'Täzele'}
+          {/* Stage 35.9 -- last-updated reflects the last SUCCESSFUL fetch only; a running or
+              failed refresh never changes this text. */}
+          <span className="cmd-last-updated" aria-live="polite">
+            {refreshing ? (ru ? 'Обновляется…' : 'Täzelenýär…') : lastUpdatedAt ? timeAgoLabel(lastUpdatedAt, ru) : ''}
+          </span>
+          <button
+            className="cmd-refresh-btn boom-focusable"
+            disabled={loading || refreshing}
+            aria-label={ru ? 'Обновить панель управления' : 'Dolandyryş merkezini täzelemek'}
+            aria-busy={loading || refreshing}
+            onClick={manualRefresh}
+          >
+            {(loading || refreshing) ? <Loader2 className="animate-spin" /> : <RefreshCw />} {ru ? 'Обновить' : 'Täzele'}
           </button>
         </div>
       </div>
 
-      {error && <div className="cmd-error">{error}</div>}
+      {/* Stage 35.9 -- a refresh failure while valid data is already on screen is a soft,
+          non-destructive "stale" notice (old data stays visible); a failure with no data yet is
+          the original hard error state. Neither ever fabricates a value. */}
+      {error && data && (
+        <div className="cmd-stale">
+          {ru ? 'Не удалось обновить данные.' : 'Maglumatlary täzeläp bolmady.'}{' '}
+          {lastUpdatedAt ? (ru ? `Показаны данные от ${agoFragment(lastUpdatedAt, true)}.` : `${agoFragment(lastUpdatedAt, false)} maglumatlar görkezilýär.`) : ''}
+        </div>
+      )}
+      {error && !data && <div className="cmd-error">{error}</div>}
       {loading && !data && <div className="cmd-loading"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
 
       {data && (
