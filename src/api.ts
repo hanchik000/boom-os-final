@@ -24,6 +24,14 @@ export function setStoredToken(token: string | null): void {
   }
 }
 
+// Query-string builder shared by the report endpoints: undefined and empty values are dropped so
+// an unset filter is absent rather than sent as an empty string the server would have to ignore.
+function qs(params: Record<string, unknown>): string {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+  return q.toString();
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = {
@@ -238,6 +246,14 @@ export const api = {
   getCreditReportCustomers: (branch_id:string,status?:string) => request<{branch_id:string;status:string|null;customers:any[]}>(`/api/credit/reports/customers?branch_id=${encodeURIComponent(branch_id)}${status?`&status=${encodeURIComponent(status)}`:""}`),
   getCreditReportStaff: (branch_id:string,status?:string) => request<{branch_id:string;status:string|null;staff:any[]}>(`/api/credit/reports/staff?branch_id=${encodeURIComponent(branch_id)}${status?`&status=${encodeURIComponent(status)}`:""}`),
   getCreditReportBranch: () => request<{branches:any[]}>('/api/credit/reports/branch'),
+  // Stage 34.11: Food & Sales analytics. Every figure below is computed by the SERVER from the
+  // Order Core; the client only chooses the period, the sort and the filters.
+  getAnalyticsSales: (p:{branch_id:string;start?:string;end?:string;order_type?:string}) => request<any>(`/api/analytics/sales?${qs(p)}`),
+  getAnalyticsDishes: (p:{branch_id:string;start?:string;end?:string;sort?:string;order?:string;category_id?:string;limit?:number}) => request<any>(`/api/analytics/dishes?${qs(p)}`),
+  getAnalyticsCategories: (p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/categories?${qs(p)}`),
+  getAnalyticsTime: (p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/time?${qs(p)}`),
+  getAnalyticsMatrix: (p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/matrix?${qs(p)}`),
+  getAnalyticsDish: (menuItemId:string,p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/dishes/${menuItemId}?${qs(p)}`),
   getCreditReportCashier: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{branch_id:string;transactions:any[]}>(`/api/credit/reports/cashier?${q.toString()}`); },
   // Manager Command Center (Stage 32): one aggregation endpoint, branch + date-range scoped.
   getManagerDashboard: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/dashboard/manager?${q.toString()}`); },

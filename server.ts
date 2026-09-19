@@ -42,6 +42,7 @@ import creditRouter from './server/routes/credit';
 import dashboardRouter from './server/routes/dashboard';
 import operationsRouter from './server/routes/operations';
 import foodCostRouter from './server/routes/food-cost';
+import analyticsRouter from './server/routes/analytics';
 import { enableAsyncErrorForwarding } from './server/async-errors';
 
 async function startServer() {
@@ -173,6 +174,7 @@ async function startServer() {
   app.use('/api/dashboard', dashboardRouter);
   app.use('/api/operations', operationsRouter);
   app.use('/api/food-cost', foodCostRouter);
+  app.use('/api/analytics', analyticsRouter);
   app.use('/api/franchises', franchisesRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/roles', rolesRouter);
@@ -184,9 +186,10 @@ async function startServer() {
   app.use('/api/system', systemRouter);
 
   // 2. Future Business Modules (Reserved Architectural Endpoints - Not Implemented)
-  // Stage 34.6 activated '/api/boomcard' for real, so it is no longer reserved -- leaving it here
-  // would have shadowed the module with a 501 (or, worse, let its own auth answer 401 first).
-  const futureModules = ['crm', 'analytics'];
+  // Stage 34.6 activated '/api/boomcard' for real, and Stage 34.11 activated '/api/analytics', so
+  // neither is reserved any more -- leaving one here would shadow the module with a 501 (or, worse,
+  // let its own auth answer 401 first).
+  const futureModules = ['crm'];
   for (const mod of futureModules) {
     app.all(`/api/${mod}*`, (req: Request, res: Response) => {
       res.status(501).json({

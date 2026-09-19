@@ -24,6 +24,7 @@ import { CustomerMenuView } from './components/CustomerMenuView';
 import { CashierPOSView } from './components/CashierPOSView';
 import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
+import { AnalyticsView } from './components/AnalyticsView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
 import { LiveOperationsView } from './components/LiveOperationsView';
 import { ServiceChargeView } from './components/ServiceChargeView';
@@ -130,6 +131,8 @@ function MainLayout() {
         return { title: t('nav.boomcard'), subtitle: language === 'ru' ? 'Жизненный цикл карты, льготы и личный кабинет гостя' : 'Kartyň ýaşaýyş sikli, ýeňillikler we myhmanyň şahsy kabineti' };
       case 'serviceCharge':
         return { title: t('nav.serviceCharge'), subtitle: language === 'ru' ? 'Процент обслуживания, распределение по категориям и история версий' : 'Hyzmat göterimi, kategoriýalar boýunça paýlanyş we wersiýa taryhy' };
+      case 'analytics':
+        return { title: t('nav.analytics'), subtitle: language === 'ru' ? 'Продажи, блюда, категории, время и матрица меню за период' : 'Döwür boýunça satuwlar, naharlar, kategoriýalar, wagt we menýu matrisasy' };
       case 'foodCost':
         return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
       case 'inventory':
@@ -197,6 +200,7 @@ function MainLayout() {
           {currentTab === 'commandCenter' && <ManagerCommandCenterView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'foodCost' && <FoodCostView />}
+          {currentTab === 'analytics' && <AnalyticsView />}
           {currentTab === 'serviceCharge' && <ServiceChargeView />}
           {currentTab === 'boomcard' && <BoomcardView />}
           {currentTab === 'customers' && <CustomersView />}
