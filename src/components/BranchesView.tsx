@@ -11,7 +11,10 @@ import {
   Trash2,
   CheckCircle2,
   X,
-  AlertCircle
+  AlertCircle,
+  QrCode,
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api';
@@ -28,6 +31,12 @@ export const BranchesView: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
+  // Stage 35.6 -- QR menu entry. The token/URL is resolved and regenerated server-side; this
+  // screen only displays what the server returns.
+  const [qrBranch, setQrBranch] = useState<Branch | null>(null);
+  const [qrInfo, setQrInfo] = useState<{ qr_token: string | null; qr_url: string | null } | null>(null);
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrCopied, setQrCopied] = useState(false);
 
   // Form
   const [form, setForm] = useState({
@@ -84,6 +93,20 @@ export const BranchesView: React.FC = () => {
       status: b.status
     });
     setFormError(null);
+  };
+
+  const openQr = async (b: Branch) => {
+    setQrBranch(b); setQrInfo(null); setQrCopied(false);
+    try { setQrInfo(await api.getBranchQr(b.id)); } catch { setQrInfo({ qr_token: null, qr_url: null }); }
+  };
+  const regenerateQr = async () => {
+    if (!qrBranch) return;
+    setQrBusy(true);
+    try { setQrInfo(await api.regenerateBranchQr(qrBranch.id)); setQrCopied(false); } finally { setQrBusy(false); }
+  };
+  const copyQrUrl = async () => {
+    if (!qrInfo?.qr_url) return;
+    try { await navigator.clipboard.writeText(qrInfo.qr_url); setQrCopied(true); } catch { /* clipboard may be unavailable */ }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -202,6 +225,15 @@ export const BranchesView: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {hasPermission('branches.update') && (
+                    <button
+                      onClick={() => void openQr(b)}
+                      className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition-colors"
+                      title="QR menu"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {hasPermission('branches.update') && (
                     <button
                       onClick={() => openEdit(b)}
@@ -386,6 +418,47 @@ export const BranchesView: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-lg shadow-rose-500/20"
               >
                 Deactivate Branch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stage 35.6 -- QR menu entry */}
+      {qrBranch && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">QR Menu — {qrBranch.name}</h3>
+                  <p className="text-[11px] text-slate-500">{qrBranch.code}</p>
+                </div>
+              </div>
+              <button onClick={() => setQrBranch(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+            </div>
+            {qrInfo === null ? (
+              <div className="text-xs text-slate-400">Loading…</div>
+            ) : qrInfo.qr_url ? (
+              <div className="space-y-2">
+                <p className="text-[11px] text-slate-500">This link resolves the branch server-side — print or encode it as a QR code. No branch id ever reaches the client from a scan.</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={qrInfo.qr_url} className="flex-1 field text-xs" onFocus={e => e.currentTarget.select()} />
+                  <button onClick={() => void copyQrUrl()} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300" title="Copy"><Copy className="w-3.5 h-3.5" /></button>
+                </div>
+                {qrCopied && <div className="text-[11px] text-emerald-400">Copied.</div>}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">No QR code has been generated for this branch yet.</p>
+            )}
+            <div className="flex items-center justify-end gap-3 pt-1">
+              <button onClick={() => setQrBranch(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">Close</button>
+              <button onClick={() => void regenerateQr()} disabled={qrBusy} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-60">
+                <RefreshCw className={`w-3.5 h-3.5 ${qrBusy ? 'animate-spin' : ''}`} />
+                {qrInfo?.qr_token ? 'Regenerate' : 'Generate'}
               </button>
             </div>
           </div>

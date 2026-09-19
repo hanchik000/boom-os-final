@@ -259,6 +259,43 @@ export const api = {
   // the SERVER; the client only chooses which page and which filters to ask for.
   getBoomcardJournal: (p:{branch_id:string;start?:string;end?:string;source?:string;event_type?:string;status?:string;customer_id?:string;boomcard_id?:string;order_id?:string;operator_id?:string;search?:string;page?:number;page_size?:number}) => request<{branch_id:string;period:{start:string|null;end:string|null};page:number;page_size:number;total:number;total_pages:number;rows:any[]}>(`/api/boomcard/journal?${qs(p)}`),
   getBoomcardJournalSummary: (p:{branch_id:string;start?:string;end?:string}) => request<{branch_id:string;period:{start:string|null;end:string|null};event_types:any[]}>(`/api/boomcard/journal/summary?${qs(p)}`),
+
+  // POS Media Engine — Stage 35.2
+  getPosMedia: (branch_id?: string) => request<{ media: any[] }>(`/api/pos-media${branch_id ? `?branch_id=${encodeURIComponent(branch_id)}` : ''}`),
+  getVisualCatalog: (branch_id: string) => request<{ blocks:any[]; categories:any[]; items:any[] }>(`/api/visual-catalog?branch_id=${encodeURIComponent(branch_id)}`),
+  getMediaAssets: (branch_id?: string) => request<{ assets:any[] }>(`/api/media-assets${branch_id ? `?branch_id=${encodeURIComponent(branch_id)}` : ''}`),
+  createMediaAsset: (data:any) => request<{asset:any}>('/api/media-assets',{method:'POST',body:JSON.stringify(data)}),
+  updateMediaAsset: (id:string,data:any) => request<{asset:any}>(`/api/media-assets/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(data)}),
+  deactivateMediaAsset: (id:string) => request<{success:boolean}>(`/api/media-assets/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  uploadMediaAsset: async (file: File, branchId: string | null) => { const token=getStoredToken(); const headers:Record<string,string>={'Content-Type':file.type,'X-Media-Name':file.name}; if(branchId)headers['X-Branch-Id']=branchId; if(token)headers.Authorization=`Bearer ${token}`; const response=await fetch('/api/media-assets/upload',{method:'POST',headers,body:file}); const data=await response.json().catch(()=>null); if(!response.ok)throw new Error(data?.message||data?.error||`HTTP ${response.status}`); return data as {asset:any}; },
+  getPublicVisualCatalog: (branch_id: string, lang='ru', channel?: string) => request<{ branch:any; channel:string|null; blocks:any[]; categories:any[]; items:any[] }>(`/api/visual-catalog/public?branch_id=${encodeURIComponent(branch_id)}&lang=${lang}${channel?`&channel=${encodeURIComponent(channel)}`:''}`),
+  // Stage 35.6 -- QR menu entry: the branch is resolved server-side from the opaque token, never
+  // supplied by the client.
+  resolveQrBranch: (token: string) => request<{ branch: any }>(`/api/public/qr/${encodeURIComponent(token)}`),
+  getBranchQr: (branchId: string) => request<{ branch_id:string; qr_token:string|null; qr_url:string|null }>(`/api/branches/${encodeURIComponent(branchId)}/qr`),
+  regenerateBranchQr: (branchId: string) => request<{ branch_id:string; qr_token:string; qr_url:string }>(`/api/branches/${encodeURIComponent(branchId)}/qr/regenerate`, { method:'POST' }),
+  // Promotion Engine -- Stage 35.6
+  getPromotions: (branch_id: string) => request<{ branch_id:string; promotions:any[] }>(`/api/promotions?branch_id=${encodeURIComponent(branch_id)}`),
+  createPromotion: (data:any) => request<{promotion:any}>('/api/promotions',{method:'POST',body:JSON.stringify(data)}),
+  updatePromotion: (id:string,data:any) => request<{promotion:any}>(`/api/promotions/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(data)}),
+  deactivatePromotion: (id:string) => request<{success:boolean}>(`/api/promotions/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  createVisualCatalogBlock: (data:any) => request<{block:any}>('/api/visual-catalog',{method:'POST',body:JSON.stringify(data)}),
+  updateVisualCatalogBlock: (id:string,data:any) => request<{block:any}>(`/api/visual-catalog/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
+  deactivateVisualCatalogBlock: (id:string) => request<{success:boolean}>(`/api/visual-catalog/${id}`,{method:'DELETE'}),
+  createPosMedia: (data: any) => request<{ media: any }>('/api/pos-media', { method:'POST', body:JSON.stringify(data) }),
+  updatePosMedia: (id: string, data: any) => request<{ media: any }>(`/api/pos-media/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify(data) }),
+  deactivatePosMedia: (id: string) => request<{ success: boolean }>(`/api/pos-media/${encodeURIComponent(id)}`, { method:'DELETE' }),
+  uploadPosMedia: async (file: File, branchId: string | null) => {
+    const token = getStoredToken();
+    const headers: Record<string,string> = { 'Content-Type': file.type, 'X-Media-Name': file.name };
+    if (branchId) headers['X-Branch-Id'] = branchId;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const response = await fetch('/api/pos-media/upload', { method:'POST', headers, body:file });
+    const data = await response.json().catch(()=>null);
+    if (!response.ok) throw new Error(data?.message || data?.error || `HTTP ${response.status}`);
+    return data as { media:any };
+  },
+  getCurrentWaiterPosMedia: () => waiterRequest<{ media:any[]; primary:any|null }>('/api/pos-media/current'),
   getCreditReportCashier: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{branch_id:string;transactions:any[]}>(`/api/credit/reports/cashier?${q.toString()}`); },
   // Manager Command Center (Stage 32): one aggregation endpoint, branch + date-range scoped.
   getManagerDashboard: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/dashboard/manager?${q.toString()}`); },

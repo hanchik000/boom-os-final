@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { query, queryOne } from '../db';
+import { activePromotionMap } from './promotions';
 
 const router = Router();
 
@@ -213,6 +214,19 @@ router.get('/branches', async (_req, res) => {
   res.json({ branches });
 });
 
+// Stage 35.6 -- QR menu entry. The QR code encodes ONLY this opaque token; the branch it opens is
+// resolved here, server-side, from that token. The client never supplies a branch id for a QR
+// flow, so a scanned code can never be redirected onto another branch's data (no IDOR surface).
+// Only the same public-safe branch fields as /branches are returned -- no recipes, no cost, no
+// stock, no employee or CRM data exists on this path at all.
+router.get('/qr/:token', async (req, res) => {
+  const token = String(req.params.token || '').trim();
+  if (!token) return res.status(400).json({ error:'VALIDATION_ERROR', code:'QR_TOKEN_REQUIRED', message:'A QR token is required.', details:{} });
+  const b = await queryOne<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE qr_token=? AND status='ACTIVE'`, [token]);
+  if (!b) return res.status(404).json({ error:'NOT_FOUND', code:'QR_CODE_NOT_FOUND', message:'This QR code is not recognised.', details:{} });
+  res.json({ branch: b });
+});
+
 router.get('/menu', async (req, res) => {
   const branch = String(req.query.branch_id || '').trim();
   const lang = String(req.query.lang || 'ru').toLowerCase() === 'tk' ? 'tk' : 'ru';
@@ -223,7 +237,10 @@ router.get('/menu', async (req, res) => {
     FROM menu_items mi JOIN menu_categories mc ON mc.id=mi.category_id
     WHERE (mi.branch_id=? OR mi.branch_id IS NULL) AND mi.status='ACTIVE' AND mi.deleted_at IS NULL AND mc.status='ACTIVE' AND mc.deleted_at IS NULL
     ORDER BY mc.sort_order,mi.sort_order,mi.name_ru`, [branch]);
-  const items = rows.map((x:any) => ({ id:x.id, category_id:x.category_id, sku:x.sku, name:lang==='tk'?x.name_tk:x.name_ru, description:lang==='tk'?x.description_tk:x.description_ru, category_name:lang==='tk'?x.category_name_tk:x.category_name_ru, price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru }));
+  // Stage 35.6: the real promotional price, if this item is genuinely inside an active promotion
+  // window right now -- computed by the ONE shared rule (activePromotionMap), never invented here.
+  const promos = await activePromotionMap(branch, new Date().toISOString());
+  const items = rows.map((x:any) => { const promo = promos.get(x.id); return { id:x.id, category_id:x.category_id, sku:x.sku, name:lang==='tk'?x.name_tk:x.name_ru, description:lang==='tk'?x.description_tk:x.description_ru, category_name:lang==='tk'?x.category_name_tk:x.category_name_ru, price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru, promo_price: promo ? promo.promo_price : null, promo_badge: promo ? (lang==='tk'?promo.badge_tk:promo.badge_ru) : null, promo_ends_at: promo ? promo.ends_at : null }; });
   res.json({ branch:b, language:lang, items });
 });
 

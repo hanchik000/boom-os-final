@@ -126,7 +126,7 @@ export async function applyInventoryTreatment(tx: TxClient, closure: any, order:
 export async function refundPaymentFinancials(tx: TxClient, p: any, actorUserId: string, req: any, now: string) {
   await tx.execute(`UPDATE payments SET status='REFUNDED',refunded_at=?,updated_at=? WHERE id=? AND status='PAID'`, [now, now, p.id]);
   if (p.cash_shift_id && p.method === 'CASH') {
-    await tx.execute(`UPDATE cash_shifts SET refunds=refunds+CAST(? AS numeric),expected_cash=opening_cash+cash_sales-(refunds+CAST(? AS numeric))-voids,updated_at=? WHERE id=?`, [p.amount, p.amount, now, p.cash_shift_id]);
+    await tx.execute(`UPDATE cash_shifts SET refunds=refunds+CAST(? AS numeric),expected_cash=opening_cash+cash_sales+credit_repayments-(refunds+CAST(? AS numeric))-voids,updated_at=? WHERE id=?`, [p.amount, p.amount, now, p.cash_shift_id]);
   }
   if (p.method === 'CREDIT') {
     const creditTx = await tx.queryOne<any>(`SELECT * FROM credit_transactions WHERE payment_id=? AND type='CREDIT'`, [p.id]);
@@ -170,7 +170,7 @@ export async function applyApprovedClosure(tx: TxClient, closure: any, actorUser
       refundPaymentId = p.id;
     }
     if (payments.length > 0) {
-      await tx.execute(`UPDATE service_charge_ledger SET status='REVERSED' WHERE order_id=? AND status='EARNED'`, [order.id]);
+      await tx.execute(`UPDATE service_charge_ledger SET status='REVERSED' WHERE order_id=? AND status IN ('EARNED','POOLED','DISTRIBUTED')`, [order.id]);
     }
   }
 

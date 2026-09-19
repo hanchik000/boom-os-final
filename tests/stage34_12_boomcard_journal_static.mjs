@@ -67,7 +67,12 @@ ok('30b. its authentication gate is scoped to \'/journal\' specifically, not rou
 
 // ---------------------------------------------------------------- 8. RBAC: a dedicated, manager-only permission
 ok('31. a dedicated boomcard.journal.view permission exists, separate from boomcard.view/boomcard.manage', /code: 'boomcard\.journal\.view'/.test(seed));
-ok('32. it is granted to the manager roles', /'boomcard\.journal\.view'\]/.test(seed));
+// Membership, parsed rather than positional: later stages (35.2-35.4) legitimately append more
+// codes to the same grant list.
+ok('32. it is granted to the manager roles', (() => {
+  const m = /const stage17RolePerms = \[([^\]]*)\]/.exec(seed);
+  return Boolean(m) && m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).includes('boomcard.journal.view');
+})());
 ok('33. it is NOT granted to the cashier merely because the cashier can execute BOOMCARD operations', (() => {
   const loop = /for \(const code of \[([^\]]*)\]\) \{\s*\n\s*const p = allPerms\.find\(x => x\.code === code\) \|\| stage17Perms\.find\(x => x\.code === code\); if \(!p\) continue;\s*\n\s*await execute\(`INSERT INTO role_permissions \(id, role_id, permission_id, created_at\) VALUES \(\?, \?, \?, \?\) ON CONFLICT DO NOTHING`, \[`rp_csh_/.exec(seed);
   if (!loop) return false;

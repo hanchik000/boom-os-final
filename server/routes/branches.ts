@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'node:crypto';
 import { config } from '../config';
 import { query, queryOne, execute } from '../db';
 import {
@@ -276,6 +277,28 @@ router.delete('/:id', requirePermission('branches.delete'), requireBranchAccess(
   });
 
   res.json({ success: true, message: `Branch ${branch.name} (${branch.code}) deactivated.` });
+});
+
+// ==================================================================================================
+// Stage 35.6 -- QR menu entry. A QR code encodes only this opaque token, never a branch id: the
+// public resolution endpoint (server/routes/public-menu.ts) looks the token up server-side and
+// returns the branch it belongs to. The client can never choose which branch a QR token resolves
+// to, so a scanned code can never be redirected onto another branch's data.
+// ==================================================================================================
+router.get('/:id/qr', requirePermission('branches.update'), requireBranchAccess(req => req.params.id), async (req: Request, res: Response): Promise<void> => {
+  const branch = await queryOne<{ id: string; qr_token: string | null }>('SELECT id, qr_token FROM branches WHERE id = ?', [req.params.id]);
+  if (!branch) { res.status(404).json({ error: 'NOT_FOUND', message: 'Branch not found.' }); return; }
+  res.json({ branch_id: branch.id, qr_token: branch.qr_token, qr_url: branch.qr_token ? `${config.appUrl}/?screen=customer&qr=${branch.qr_token}` : null });
+});
+
+router.post('/:id/qr/regenerate', requirePermission('branches.update'), requireBranchAccess(req => req.params.id), async (req: Request, res: Response): Promise<void> => {
+  const branch = await queryOne<{ id: string; name: string }>('SELECT id, name FROM branches WHERE id = ?', [req.params.id]);
+  if (!branch) { res.status(404).json({ error: 'NOT_FOUND', message: 'Branch not found.' }); return; }
+  const token = crypto.randomBytes(18).toString('base64url');
+  const now = new Date().toISOString();
+  await execute('UPDATE branches SET qr_token = ?, updated_at = ? WHERE id = ?', [token, now, branch.id]);
+  await recordAuditLog({ action: 'BRANCH_QR_REGENERATED', entityType: 'BRANCH', entityId: branch.id, branchId: branch.id, newValues: { qr_token_regenerated: true }, req });
+  res.status(201).json({ branch_id: branch.id, qr_token: token, qr_url: `${config.appUrl}/?screen=customer&qr=${token}` });
 });
 
 export default router;

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
+const read=p=>fs.readFileSync(p,'utf8');
 const schema=fs.readFileSync('prisma/schema.prisma','utf8');
 const migration=fs.readFileSync('prisma/migrations/20260908000700_menu_tables_orders/migration.sql','utf8');
 const seq=fs.readFileSync('prisma/migrations/20260908000800_order_sequence/migration.sql','utf8');
@@ -23,7 +24,7 @@ assert(orders.includes("service"));
 assert(orders.includes("insertAuditLog"));
 assert(orders.includes("FOR UPDATE"), 'table row must be locked inside order transaction');
 assert(orders.includes("IDEMPOTENCY_KEY_REQUIRED"), 'waiter order creation must require idempotency key');
-assert(orders.includes("service=(subtotal*bps+5000n)/10000n"), 'service charge must round exact cents');
+assert(read('server/order-totals.ts').includes('(baseCents * percentH + 5000n) / 10000n'), 'service charge must round exact cents');
 assert(orders.includes("SELECT currency FROM branches"), 'order currency must come from branch settings');
 assert(menu.includes("router.get('/pos'"));
 assert(tables.includes("router.get('/pos'"));

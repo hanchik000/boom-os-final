@@ -28,12 +28,16 @@ import {
   Percent,
   BarChart3,
   ScrollText,
+  MonitorPlay,
+  PanelsTopLeft,
+  Tag,
+  ImagePlus,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'boomcardJournal' | 'serviceCharge' | 'boomcard' | 'customers' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'boomcardJournal' | 'serviceCharge' | 'posMedia' | 'visualCatalog' | 'menuMedia' | 'promotions' | 'boomcard' | 'customers' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -68,6 +72,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
     { id: 'orderApprovals', key: 'nav.orders', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
     { id: 'creditReports', key: 'nav.creditReports', icon: Wallet, permission: 'credit.reports' },
     { id: 'serviceCharge', key: 'nav.serviceCharge', icon: Percent, permission: 'service_charge.view' },
+    { id: 'posMedia', key: 'nav.posMedia', icon: MonitorPlay, permission: 'pos.media.view' },
+    { id: 'visualCatalog', key: 'nav.visualCatalog', icon: PanelsTopLeft, permission: 'visual_catalog.view' },
+    { id: 'promotions', key: 'nav.promotions', icon: Tag, permission: 'promotions.view' },
+    { id: 'menuMedia', key: 'nav.menuMedia', icon: ImagePlus, permission: 'menu.media.view' },
     { id: 'boomcard', key: 'nav.boomcard', icon: CreditCard, permission: 'boomcard.view' },
     { id: 'customers', key: 'nav.customers', icon: Users, permission: 'customers.view' },
     { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },

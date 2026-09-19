@@ -1,0 +1,65 @@
+/* BOOM OS Design System — Stage 35.0 foundation.
+ * Tokens only: existing screens keep their current visual behavior until their
+ * dedicated 35.x redesign stage. New work should consume these variables.
+ */
+:root {
+  --boom-bg: #0b0f17;
+  --boom-surface: #111827;
+  --boom-surface-elevated: #172033;
+  --boom-surface-soft: #1f2937;
+  --boom-border: rgba(255,255,255,.08);
+  --boom-border-strong: rgba(255,255,255,.14);
+  --boom-text: #f8fafc;
+  --boom-text-secondary: #cbd5e1;
+  --boom-text-muted: #94a3b8;
+  --boom-gold: #f59e0b;
+  --boom-gold-soft: rgba(245,158,11,.14);
+  --boom-danger: #ef4444;
+  --boom-success: #22c55e;
+  --boom-radius-sm: .5rem;
+  --boom-radius-md: .75rem;
+  --boom-radius-lg: 1rem;
+  --boom-radius-xl: 1.25rem;
+  --boom-shadow-surface: 0 12px 40px rgba(0,0,0,.24);
+  --boom-focus-ring: 0 0 0 3px rgba(245,158,11,.28);
+  --boom-motion-fast: 140ms;
+  --boom-motion-base: 220ms;
+  --boom-motion-slow: 360ms;
+  --boom-ease: cubic-bezier(.2,.8,.2,1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --boom-motion-fast: 0ms;
+    --boom-motion-base: 0ms;
+    --boom-motion-slow: 0ms;
+  }
+  /* Stage 35.6 -- the customer menu's own Tailwind transition/scale/translate utilities do not
+   * read these CSS variables, so they are neutralized directly here. Motion never gets to block a
+   * click, block scroll, or sit on top of text: it simply does not run. */
+  .boom-motion,
+  .boom-reduced-motion-safe *,
+  .boom-reduced-motion-safe *::before,
+  .boom-reduced-motion-safe *::after {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+  .boom-reduced-motion-safe .group:hover .boom-motion,
+  .boom-reduced-motion-safe *:hover {
+    transform: none !important;
+  }
+}
+
+.boom-focusable:focus-visible {
+  outline: none;
+  box-shadow: var(--boom-focus-ring);
+}
+
+.boom-surface {
+  background: var(--boom-surface);
+  border: 1px solid var(--boom-border);
+  border-radius: var(--boom-radius-lg);
+  box-shadow: var(--boom-shadow-surface);
+}

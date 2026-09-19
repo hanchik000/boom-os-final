@@ -44,6 +44,10 @@ import dashboardRouter from './server/routes/dashboard';
 import operationsRouter from './server/routes/operations';
 import foodCostRouter from './server/routes/food-cost';
 import analyticsRouter from './server/routes/analytics';
+import posMediaRouter from './server/routes/pos-media';
+import visualCatalogRouter from './server/routes/visual-catalog';
+import mediaAssetsRouter from './server/routes/media-assets';
+import promotionsRouter from './server/routes/promotions';
 import { enableAsyncErrorForwarding } from './server/async-errors';
 
 async function startServer() {
@@ -143,6 +147,7 @@ async function startServer() {
     inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, boomcardRouter, boomcardJournalRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
     organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter, analyticsRouter,
+    posMediaRouter, visualCatalogRouter, mediaAssetsRouter, promotionsRouter,
   ].forEach(enableAsyncErrorForwarding);
 
   // OpenAPI 3.0 & Swagger UI Documentation Endpoint
@@ -179,6 +184,12 @@ async function startServer() {
   app.use('/api/operations', operationsRouter);
   app.use('/api/food-cost', foodCostRouter);
   app.use('/api/analytics', analyticsRouter);
+  app.use('/api/pos-media', posMediaRouter);
+  app.use('/api/visual-catalog', visualCatalogRouter);
+  app.use('/api/media-assets', mediaAssetsRouter);
+  app.use('/api/promotions', promotionsRouter);
+  app.use('/uploads/menu-media', express.static(path.join(process.cwd(), 'uploads', 'menu-media'), { maxAge: '1d' }));
+  app.use('/uploads/pos-media', express.static(path.join(process.cwd(), 'uploads', 'pos-media'), { maxAge: '1h' }));
   app.use('/api/franchises', franchisesRouter);
   app.use('/api/branches', branchesRouter);
   app.use('/api/roles', rolesRouter);

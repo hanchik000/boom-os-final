@@ -257,10 +257,22 @@ export async function seedInitialData() {
     // boomcard.view and boomcard.manage -- a cashier or waiter who can look up or execute a
     // BOOMCARD operation does NOT thereby gain the journal, which is a manager/admin reporting
     // surface over every branch's BOOMCARD activity at once.
-    { id: 'perm_boomcard_journal_view', code: 'boomcard.journal.view', name: 'View BOOMCARD Journal', module: 'boomcard', description: 'View the unified BOOMCARD Operations Journal: every BOOMCOIN, BOOMBACK, breakfast, birthday-gift and card lifecycle event' }
+    { id: 'perm_boomcard_journal_view', code: 'boomcard.journal.view', name: 'View BOOMCARD Journal', module: 'boomcard', description: 'View the unified BOOMCARD Operations Journal: every BOOMCOIN, BOOMBACK, breakfast, birthday-gift and card lifecycle event' },
+    // Stage 35.2-35.4: POS media, the Visual Catalog and reusable menu media assets.
+    { id: 'perm_pos_media_view', code: 'pos.media.view', name: 'View POS Media', module: 'pos', description: 'View media configured for POS terminals' },
+    { id: 'perm_pos_media_manage', code: 'pos.media.manage', name: 'Manage POS Media', module: 'pos', description: 'Upload and configure POS terminal media' },
+    { id: 'perm_visual_catalog_view', code: 'visual_catalog.view', name: 'View Visual Catalog', module: 'menu', description: 'View visual catalog composition' },
+    { id: 'perm_visual_catalog_manage', code: 'visual_catalog.manage', name: 'Manage Visual Catalog', module: 'menu', description: 'Configure visual catalog blocks' },
+    { id: 'perm_menu_media_view', code: 'menu.media.view', name: 'View Menu Media', module: 'menu', description: 'View reusable menu media assets' },
+    { id: 'perm_menu_media_manage', code: 'menu.media.manage', name: 'Manage Menu Media', module: 'menu', description: 'Upload and configure reusable menu media assets' },
+    // Stage 35.6: the Promotion Engine. Read is separate from manage, same convention as every
+    // other module -- viewing which promotions are running is not the same permission as creating
+    // or changing one.
+    { id: 'perm_promotions_view', code: 'promotions.view', name: 'View Promotions', module: 'menu', description: 'View promotions attached to real menu items' },
+    { id: 'perm_promotions_manage', code: 'promotions.manage', name: 'Manage Promotions', module: 'menu', description: 'Create, update and end promotions on real menu items' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage','boomcard.view','boomcard.manage','orders.compliment.request','orders.compliment.approve','analytics.view','boomcard.journal.view'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage','boomcard.view','boomcard.manage','orders.compliment.request','orders.compliment.approve','analytics.view','boomcard.journal.view','pos.media.view','pos.media.manage','visual_catalog.view','visual_catalog.manage','menu.media.view','menu.media.manage','promotions.view','promotions.manage'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }

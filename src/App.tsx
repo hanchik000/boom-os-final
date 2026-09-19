@@ -20,7 +20,7 @@ import { InventoryView } from './components/InventoryView';
 import { OrderApprovalsView } from './components/OrderApprovalsView';
 import { MenuEngineView } from './components/MenuEngineView';
 import { OperationsView } from './components/OperationsView';
-import { CustomerMenuView } from './components/CustomerMenuView';
+import { VisualCustomerMenuView } from './components/VisualCustomerMenuView';
 import { CashierPOSView } from './components/CashierPOSView';
 import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
@@ -32,10 +32,14 @@ import { ServiceChargeView } from './components/ServiceChargeView';
 import { BoomcardView } from './components/BoomcardView';
 import { CustomersView } from './components/CustomersView';
 import { FoodCostView } from './components/FoodCostView';
+import { POSMediaView } from './components/POSMediaView';
+import { VisualCatalogView } from './components/VisualCatalogView';
+import { MediaLibraryView } from './components/MediaLibraryView';
+import { PromotionsView } from './components/PromotionsView';
 
 function MainLayout() {
   const publicScreen = new URLSearchParams(window.location.search).get('screen');
-  if (publicScreen === 'customer') return <CustomerMenuView />;
+  if (publicScreen === 'customer') return <VisualCustomerMenuView />;
   if (publicScreen === 'waiter') {
     return <WaiterPOSView />;
   }
@@ -136,6 +140,10 @@ function MainLayout() {
         return { title: t('nav.analytics'), subtitle: language === 'ru' ? 'Продажи, блюда, категории, время и матрица меню за период' : 'Döwür boýunça satuwlar, naharlar, kategoriýalar, wagt we menýu matrisasy' };
       case 'boomcardJournal':
         return { title: t('nav.boomcardJournal'), subtitle: language === 'ru' ? 'Единый журнал операций BOOMCOIN, BOOMBACK, завтраков, подарков и жизненного цикла карты' : 'BOOMCOIN, BOOMBACK, ertirlik, sowgat we kart ömür aýlawynyň ýeke-täk žurnaly' };
+      case 'posMedia': return { title: 'POS Media', subtitle: language === 'ru' ? 'Видео, изображения и анимации для POS-терминалов' : 'POS terminallary üçin wideo, surat we animasiýa' };
+      case 'menuMedia': return { title: t('nav.menuMedia'), subtitle: language === 'ru' ? 'Единая библиотека изображений, GIF и видео для меню' : 'Menýu üçin bitewi surat, GIF we wideo kitaphanasy' };
+      case 'visualCatalog': return { title: t('nav.visualCatalog'), subtitle: language === 'ru' ? 'Композиция премиального каталога без изменения Menu Engine' : 'Menu Engine-i üýtgetmän premium katalog kompozisiýasy' };
+      case 'promotions': return { title: t('nav.promotions'), subtitle: language === 'ru' ? 'Реальные акционные цены на реальные блюда, с автоматическим окончанием' : 'Hakyky naharlar üçin hakyky aksiýa bahalary, awtomatiki tamamlanma bilen' };
       case 'foodCost':
         return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
       case 'inventory':
@@ -205,6 +213,10 @@ function MainLayout() {
           {currentTab === 'foodCost' && <FoodCostView />}
           {currentTab === 'analytics' && <AnalyticsView />}
           {currentTab === 'boomcardJournal' && <BoomcardJournalView />}
+          {currentTab === 'posMedia' && <POSMediaView />}
+          {currentTab === 'visualCatalog' && <VisualCatalogView />}
+          {currentTab === 'menuMedia' && <MediaLibraryView />}
+          {currentTab === 'promotions' && <PromotionsView />}
           {currentTab === 'serviceCharge' && <ServiceChargeView />}
           {currentTab === 'boomcard' && <BoomcardView />}
           {currentTab === 'customers' && <CustomersView />}

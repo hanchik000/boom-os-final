@@ -1,0 +1,32 @@
+CREATE TABLE "visual_catalog_blocks" (
+  "id" TEXT PRIMARY KEY,
+  "branch_id" TEXT,
+  "type" TEXT NOT NULL DEFAULT 'BANNER',
+  "title_ru" TEXT,
+  "title_tk" TEXT,
+  "subtitle_ru" TEXT,
+  "subtitle_tk" TEXT,
+  "media_url" TEXT,
+  "media_kind" TEXT,
+  "link_type" TEXT NOT NULL DEFAULT 'NONE',
+  "link_target" TEXT,
+  "category_id" TEXT,
+  "menu_item_id" TEXT,
+  "external_url" TEXT,
+  "sort_order" INTEGER NOT NULL DEFAULT 0,
+  "priority" INTEGER NOT NULL DEFAULT 0,
+  "active" BOOLEAN NOT NULL DEFAULT TRUE,
+  "schedule_start" TEXT,
+  "schedule_end" TEXT,
+  "created_by" TEXT,
+  "updated_by" TEXT,
+  "created_at" TEXT NOT NULL,
+  "updated_at" TEXT NOT NULL,
+  CONSTRAINT "visual_catalog_blocks_branch_fk" FOREIGN KEY ("branch_id") REFERENCES "branches"("id") ON DELETE RESTRICT,
+  CONSTRAINT "visual_catalog_blocks_category_fk" FOREIGN KEY ("category_id") REFERENCES "menu_categories"("id") ON DELETE SET NULL,
+  CONSTRAINT "visual_catalog_blocks_item_fk" FOREIGN KEY ("menu_item_id") REFERENCES "menu_items"("id") ON DELETE SET NULL,
+  CONSTRAINT "visual_catalog_blocks_creator_fk" FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE SET NULL,
+  CONSTRAINT "visual_catalog_blocks_updater_fk" FOREIGN KEY ("updated_by") REFERENCES "users"("id") ON DELETE SET NULL
+);
+CREATE INDEX "idx_visual_catalog_blocks_branch_order" ON "visual_catalog_blocks"("branch_id", "active", "sort_order", "priority");
+CREATE INDEX "idx_visual_catalog_blocks_schedule" ON "visual_catalog_blocks"("schedule_start", "schedule_end");
