@@ -128,12 +128,18 @@ router.get('/accounts/:id', requirePermission('credit.view'), async (req, res) =
   const a = await queryOne<any>('SELECT * FROM credit_accounts WHERE id=?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'NOT_FOUND', code: 'CREDIT_ACCOUNT_NOT_FOUND', message: 'Credit account not found.', details: {} });
   if (!allowed(req, a.branch_id)) return res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Credit account belongs to an unauthorized branch.', details: {} });
+  // Stage 34.10: an archived employee keeps their account, their debt and their whole history --
+  // the owner lookup deliberately does not filter on deleted_at, and says whether they are archived.
   const owner = a.type === 'CUSTOMER'
-    ? await queryOne<any>('SELECT id,name,phone FROM customers WHERE id=?', [a.customer_id])
-    : await queryOne<any>('SELECT id,full_name AS name,phone FROM users WHERE id=?', [a.employee_id]);
-  const transactions = await query<any>('SELECT * FROM credit_transactions WHERE credit_account_id=? ORDER BY created_at DESC LIMIT 200', [a.id]);
+    ? await queryOne<any>('SELECT id,name,phone,(deleted_at IS NOT NULL) AS archived FROM customers WHERE id=?', [a.customer_id])
+    : await queryOne<any>('SELECT id,full_name AS name,phone,employment_status,(deleted_at IS NOT NULL) AS archived FROM users WHERE id=?', [a.employee_id]);
+  // The drill-down can be scoped to a period, and names the cashier and the approving manager of
+  // every movement so a debt can be explained line by line.
+  const { where, params } = periodFilter(req, 'ct.created_at');
+  const whereSql = ['ct.credit_account_id=?', ...where].join(' AND ');
+  const transactions = await query<any>(`SELECT ct.*,u.full_name AS cashier_name,ap.full_name AS approver_name,o.order_number FROM credit_transactions ct LEFT JOIN users u ON u.id=ct.cashier_user_id LEFT JOIN users ap ON ap.id=ct.approved_by LEFT JOIN orders o ON o.id=ct.order_id WHERE ${whereSql} ORDER BY ct.created_at DESC LIMIT 200`, [a.id, ...params]);
   const available = centsText(moneyCents(a.credit_limit) - moneyCents(a.current_balance));
-  res.json({ account: a, owner, available_credit: available, transactions });
+  res.json({ account: a, owner, available_credit: available, over_limit: moneyCents(a.current_balance) > moneyCents(a.credit_limit), period: { start: req.query.start || null, end: req.query.end || null }, transactions });
 });
 
 router.put('/accounts/:id/limit', requirePermission('credit.manage_limit'), async (req, res) => {
@@ -252,6 +258,22 @@ router.get('/transactions', requirePermission('credit.view'), async (req, res) =
 });
 
 // ---------------------------------------------------------------- Reports
+/**
+ * Stage 34.10: the receivables reports gained a debtor-status filter, so a manager can look at who
+ * actually owes money rather than scrolling every account.
+ *   WITH_DEBT  -- the account currently owes something
+ *   SETTLED    -- it owes nothing
+ *   OVER_LIMIT -- its debt has passed its own individual limit
+ */
+export const CREDIT_DEBTOR_STATUSES = ['WITH_DEBT', 'SETTLED', 'OVER_LIMIT'] as const;
+function debtorStatusFilter(req: Request, alias = 'ca') {
+  const raw = typeof req.query.status === 'string' ? req.query.status.toUpperCase() : '';
+  if (!raw || !(CREDIT_DEBTOR_STATUSES as readonly string[]).includes(raw)) return { sql: '', status: null as string | null };
+  if (raw === 'WITH_DEBT') return { sql: ` AND ${alias}.current_balance > 0`, status: raw };
+  if (raw === 'SETTLED') return { sql: ` AND ${alias}.current_balance <= 0`, status: raw };
+  return { sql: ` AND ${alias}.current_balance > ${alias}.credit_limit`, status: raw };
+}
+
 function periodFilter(req: Request, col = 'created_at') {
   const where: string[] = []; const params: any[] = [];
   if (typeof req.query.start === 'string' && req.query.start) { where.push(`${col}>=?`); params.push(req.query.start); }
@@ -283,23 +305,26 @@ router.get('/reports/customers', requirePermission('credit.reports'), async (req
       COALESCE((SELECT SUM(amount) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type='CREDIT'),0) AS credit_issued,
       COALESCE((SELECT SUM(amount) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type IN ('REPAYMENT','PAYROLL_DEDUCTION')),0) AS repayments,
       (SELECT MAX(created_at) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type IN ('REPAYMENT','PAYROLL_DEDUCTION')) AS last_payment
-    FROM credit_accounts ca JOIN customers c ON c.id=ca.customer_id WHERE ca.branch_id=? AND ca.type='CUSTOMER' ORDER BY ca.current_balance DESC`, [b]);
-  const items = rows.map((r: any) => ({ ...r, available: centsText(moneyCents(r.credit_limit) - moneyCents(r.current_balance)), branch_id: b }));
-  res.json({ branch_id: b, customers: items });
+    FROM credit_accounts ca JOIN customers c ON c.id=ca.customer_id WHERE ca.branch_id=? AND ca.type='CUSTOMER'${debtorStatusFilter(req).sql} ORDER BY ca.current_balance DESC`, [b]);
+  const items = rows.map((r: any) => ({ ...r, available: centsText(moneyCents(r.credit_limit) - moneyCents(r.current_balance)), over_limit: moneyCents(r.current_balance) > moneyCents(r.credit_limit), branch_id: b }));
+  res.json({ branch_id: b, status: debtorStatusFilter(req).status, customers: items });
 });
 
 router.get('/reports/staff', requirePermission('credit.reports'), async (req, res) => {
   const b = String(req.query.branch_id || req.user!.branch_id || ''); if (!b || !allowed(req, b)) return res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: {} });
-  const rows = await query<any>(`SELECT u.id AS employee_id,u.full_name,r.code AS role_code,ca.id AS account_id,ca.credit_limit,ca.current_balance,
+  // An ARCHIVED employee keeps their debt and their history: the join deliberately does not filter
+  // on deleted_at, and the row says plainly that they are archived so the debt is never lost from
+  // sight just because they left.
+  const rows = await query<any>(`SELECT u.id AS employee_id,u.full_name,u.employment_status,(u.deleted_at IS NOT NULL) AS archived,r.code AS role_code,ca.id AS account_id,ca.credit_limit,ca.current_balance,
       COALESCE((SELECT SUM(amount) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type='CREDIT'),0) AS credit_issued,
       COALESCE((SELECT SUM(amount) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type='REPAYMENT'),0) AS repayments,
       COALESCE((SELECT SUM(amount) FROM credit_transactions ct WHERE ct.credit_account_id=ca.id AND ct.type='PAYROLL_DEDUCTION'),0) AS payroll_deductions
     FROM credit_accounts ca JOIN users u ON u.id=ca.employee_id
     LEFT JOIN user_roles ur ON ur.user_id=u.id LEFT JOIN roles r ON r.id=ur.role_id
-    WHERE ca.branch_id=? AND ca.type='EMPLOYEE' ORDER BY ca.current_balance DESC`, [b]);
+    WHERE ca.branch_id=? AND ca.type='EMPLOYEE'${debtorStatusFilter(req).sql} ORDER BY ca.current_balance DESC`, [b]);
   const seen = new Set<string>(); const items: any[] = [];
-  for (const r of rows) { if (seen.has(r.employee_id)) continue; seen.add(r.employee_id); items.push({ ...r, available: centsText(moneyCents(r.credit_limit) - moneyCents(r.current_balance)), branch_id: b }); }
-  res.json({ branch_id: b, staff: items });
+  for (const r of rows) { if (seen.has(r.employee_id)) continue; seen.add(r.employee_id); items.push({ ...r, available: centsText(moneyCents(r.credit_limit) - moneyCents(r.current_balance)), over_limit: moneyCents(r.current_balance) > moneyCents(r.credit_limit), branch_id: b }); }
+  res.json({ branch_id: b, status: debtorStatusFilter(req).status, staff: items });
 });
 
 router.get('/reports/branch', requirePermission('credit.reports'), async (req, res) => {

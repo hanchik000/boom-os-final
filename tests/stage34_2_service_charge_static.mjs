@@ -11,6 +11,7 @@ function ok(label, cond, detail) { checks++; if (!cond) failures.push(`${label}$
 const core = read('server/service-charge.ts');
 const routes = read('server/routes/service-charge.ts');
 const orders = read('server/routes/orders.ts');
+const totals = read('server/order-totals.ts');
 const payments = read('server/routes/payments.ts');
 const seed = read('server/seed.ts');
 const schema = read('prisma/schema.prisma');
@@ -36,7 +37,9 @@ ok('9. a configuration is a version with an effective window', /effective_from/.
 ok('10. publishing archives the previous version instead of updating it in place', /UPDATE service_charge_configs SET status='ARCHIVED',effective_to=/.test(routes) && !/UPDATE service_charge_configs SET percent=/.test(routes));
 ok('11. the effective version is resolved by time, branch first then organisation default', /scope='BRANCH' AND branch_id=\?\) OR scope='ORGANIZATION'/.test(core) && /CASE WHEN scope='BRANCH' THEN 0 ELSE 1 END/.test(core));
 ok('12. the order snapshots which version priced it', /service_charge_config_id/.test(schema) && /service_charge_config_id/.test(orders));
-ok('13. recalculating after an item removal uses the order\'s own creation moment, not today', /serviceChargePercentFor\(tx, order\.branch_id, order\.order_type, order\.created_at\)/.test(orders));
+// Stage 34.3 moved the recalculation into the single order-totals core. The invariant is the
+// same one: the order\'s own creation moment decides which configuration version applies.
+ok('13. recalculating after an item removal uses the order\'s own creation moment, not today', /await recomputeOrderTotals\(tx, order, now\)/.test(orders) && /serviceChargePercentFor\(tx, fresh\.branch_id, fresh\.order_type, fresh\.created_at\)/.test(totals));
 ok('14. recording the ledger prefers the order\'s snapshotted version', /order\.service_charge_config_id \|\| \(await resolveEffectiveConfig/.test(core));
 
 // ---------------------------------------------------------------- 4. allocation can never exceed what was collected

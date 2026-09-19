@@ -18,7 +18,15 @@ let passed = 0;
 function check(label, cond) { assert.ok(cond, `FAILED: ${label}`); passed++; }
 
 // --- one payment path, no second payment/order system
-check('CREDIT is a method on the existing payments.ts POST / route, not a separate sale endpoint', /METHODS=new Set\(\['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT'\]\)/.test(paymentsTs));
+// Membership, not an exact list: later stages legitimately add settlement methods (Stage 34.7
+// added BOOMBACK). What must never change is that CREDIT is one of the methods the SINGLE
+// payments.ts route accepts -- not a sale route of its own.
+check('CREDIT is a method on the existing payments.ts POST / route, not a separate sale endpoint', (() => {
+  const m = /const METHODS=new Set\(\[([^\]]*)\]\)/.exec(paymentsTs);
+  if (!m) return false;
+  const methods = m[1].split(',').map(x => x.trim().replace(/^'|'$/g, ''));
+  return methods.includes('CREDIT') && ['CASH', 'CARD'].every(x => methods.includes(x));
+})());
 check('credit.ts does not define its own order-settlement/sale route', !/router\.post\('\/sale'/.test(creditTs));
 check('payments.ts imports applyCreditSale from credit.ts (single settlement path, reused)', /import \{ applyCreditSale \} from '\.\/credit'/.test(paymentsTs));
 check('applyCreditSale runs inside the same transaction as the payment insert (no second commit)', /await applyCreditSale\(tx,\{branchId:order\.branch_id/.test(paymentsTs));
@@ -67,16 +75,26 @@ check('credit_transactions has a branch+idempotency_key unique constraint', /@@u
 check('every credit mutation is audited via the shared insertAuditLog helper', (creditTs.match(/await insertAuditLog\(/g) || []).length >= 5);
 
 // --- customer identity: minimal, reused, no second CRM system invented
-check('Customer model is minimal identity (name/phone/branch), not a full CRM feature set', /model Customer \{[\s\S]{0,600}@@map\("customers"\)/.test(schema) && !/loyalty|marketing_/i.test(schema.match(/model Customer \{[\s\S]{0,600}@@map\("customers"\)/)[0]));
-check('customer create is get-or-create by branch+phone (no duplicate customer rows)', /const existing = await queryOne<any>\('SELECT \* FROM customers WHERE branch_id=\? AND phone=\? AND deleted_at IS NULL'/.test(creditTs));
+// Stage 34.5-34.9 legitimately grew the guest record (loyalty caches, a birth date). What Stage
+// 31 actually guards is that there is still exactly ONE guest identity -- no second CRM model was
+// invented alongside it, and the one that exists is the credit module's identity too.
+check('there is exactly one Customer model and every surface shares it', (schema.match(/^model Customer \{/gm) || []).length === 1 && /@@map\("customers"\)/.test(/model Customer \{[\s\S]*?\n\}/.exec(schema)[0]) && !/^model (Client|Guest|CrmCustomer|LoyaltyCustomer) \{/m.test(schema));
+// Stage 34.3 moved get-or-create into the one shared routine in customers.ts. The invariant is
+// unchanged and stronger: credit.ts must not insert guests itself, it must go through that routine.
+check('customer create is get-or-create by branch+phone (no duplicate customer rows)', /findOrCreateCustomer/.test(creditTs) && !/INSERT INTO customers/.test(creditTs) && /SELECT \* FROM customers WHERE branch_id=\? AND phone=\? AND deleted_at IS NULL/.test(fs.readFileSync(new URL('../server/routes/customers.ts', import.meta.url), 'utf8')));
 
 // --- soft delete convention (deleted_at) present on Customer
-check('Customer supports soft-delete via deleted_at', /model Customer \{[\s\S]{0,400}deleted_at\s+String\?/.test(schema));
+check('Customer supports soft-delete via deleted_at', /\n\s*deleted_at\s+String\?/.test(/model Customer \{[\s\S]*?\n\}/.exec(schema)[0]));
 
 // --- frontend: Cashier POS integration, not a parallel POS
-check('CashierPOSView adds CREDIT as a payment method on the existing pay dialog', /const PAYMENT_METHODS = \['CASH', 'CARD', 'ONLINE', 'BONUS', 'OTHER', 'CREDIT'\];/.test(cashierView));
+// Membership again: Stage 34.7 added BOOMBACK to the same dialog. CREDIT must stay one option on
+// the ONE pay dialog, never a screen of its own.
+check('CashierPOSView adds CREDIT as a payment method on the existing pay dialog', (() => {
+  const m = /const PAYMENT_METHODS = \[([^\]]*)\];/.exec(cashierView);
+  return Boolean(m) && m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).includes('CREDIT');
+})());
 check('CashierPOSView sends credit_account_id through the existing createPayment() call, not a new endpoint', /credit_account_id: creditAccount\.account\.id/.test(cashierView));
-check('api.ts createPayment extended (not duplicated) with credit_account_id', /createPayment: \(data:\{order_id:string;method:string;amount:string;credit_account_id\?:string\}/.test(apiTs));
+check('api.ts createPayment extended (not duplicated) with credit_account_id', (apiTs.match(/\bcreatePayment: \(data:\{/g) || []).length === 1 && /createPayment: \(data:\{[^}]*credit_account_id\?:string\}/.test(apiTs));
 check('receipt shows credit fields only when payment.method is CREDIT (no leakage into cash/card receipts)', /receiptPayment\?\.method === 'CREDIT' && creditAccount/.test(cashierView));
 
 console.log(`STAGE 31 CREDIT MODE STATIC: PASS (${passed} checks)`);

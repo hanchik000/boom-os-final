@@ -228,13 +228,15 @@ export const api = {
   getCustomers: (params:{branch_id:string;search?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.search) q.set('search',params.search); return request<{customers:any[]}>(`/api/customers?${q.toString()}`); },
   getCreditCustomer: (id:string) => request<{customer:any;account:any;orders:any[];transactions:any[]}>(`/api/credit/customers/${id}`),
   createCreditAccount: (data:{branch_id:string;type:'CUSTOMER'|'EMPLOYEE';customer_id?:string;employee_id?:string}) => request<{account:any;existed:boolean}>('/api/credit/accounts',{method:'POST',body:JSON.stringify(data)}),
-  getCreditAccount: (id:string) => request<{account:any;owner:any;available_credit:string;transactions:any[]}>(`/api/credit/accounts/${id}`),
+  // Stage 34.10: the per-account drill-down is period-scoped and says whether the owner is
+  // archived and whether the account is past its own individual limit.
+  getCreditAccount: (id:string,params?:{start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params||{}).forEach(([k,v])=>{if(v) q.set(k,String(v));}); const qs=q.toString(); return request<{account:any;owner:any;available_credit:string;over_limit:boolean;period:{start:string|null;end:string|null};transactions:any[]}>(`/api/credit/accounts/${id}${qs?`?${qs}`:""}`); },
   setCreditLimit: (id:string,credit_limit:string) => request<{account:any}>(`/api/credit/accounts/${id}/limit`,{method:'PUT',body:JSON.stringify({credit_limit})}),
   recordCreditRepayment: (data:{account_id:string;amount:string;method:string;branch_id:string;note?:string},idempotencyKey:string,posSessionToken?:string) => request<{transaction:any;account:any;replayed?:boolean}>('/api/credit/repay',{method:'POST',headers:{'Idempotency-Key':idempotencyKey,...(posSessionToken?{'X-Pos-Session-Token':posSessionToken}:{})},body:JSON.stringify(data)}),
   getCreditTransactions: (params:{branch_id:string;account_id?:string;type?:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{transactions:any[]}>(`/api/credit/transactions?${q.toString()}`); },
   getCreditReportOverview: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<any>(`/api/credit/reports/overview?${q.toString()}`); },
-  getCreditReportCustomers: (branch_id:string) => request<{branch_id:string;customers:any[]}>(`/api/credit/reports/customers?branch_id=${encodeURIComponent(branch_id)}`),
-  getCreditReportStaff: (branch_id:string) => request<{branch_id:string;staff:any[]}>(`/api/credit/reports/staff?branch_id=${encodeURIComponent(branch_id)}`),
+  getCreditReportCustomers: (branch_id:string,status?:string) => request<{branch_id:string;status:string|null;customers:any[]}>(`/api/credit/reports/customers?branch_id=${encodeURIComponent(branch_id)}${status?`&status=${encodeURIComponent(status)}`:""}`),
+  getCreditReportStaff: (branch_id:string,status?:string) => request<{branch_id:string;status:string|null;staff:any[]}>(`/api/credit/reports/staff?branch_id=${encodeURIComponent(branch_id)}${status?`&status=${encodeURIComponent(status)}`:""}`),
   getCreditReportBranch: () => request<{branches:any[]}>('/api/credit/reports/branch'),
   getCreditReportCashier: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{branch_id:string;transactions:any[]}>(`/api/credit/reports/cashier?${q.toString()}`); },
   // Manager Command Center (Stage 32): one aggregation endpoint, branch + date-range scoped.

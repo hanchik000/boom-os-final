@@ -68,7 +68,16 @@ ok('26. the new terminal status is treated as closed everywhere a table is relea
 ok('27. both new permissions exist and are seeded', /orders\.closure\.request/.test(seed) && /orders\.closure\.approve/.test(seed));
 const rolePerms = seed.match(/const stage17RolePerms = \[([^\]]*)\]/);
 ok('28. the approval permission is granted through the existing manager role list', rolePerms && rolePerms[1].includes("'orders.closure.approve'"), rolePerms?.[1]);
-ok('29. the cashier can request but not approve', /'credit\.repay','orders\.closure\.request'\]/.test(seed) && !/roleCashier[\s\S]{0,900}orders\.closure\.approve/.test(seed));
+// Membership in the cashier grant loop, parsed rather than positional: later stages keep adding
+// permissions to that list, and where a code sits in it was never the point.
+ok('29. the cashier can request but not approve', (() => {
+  const loop = /if \(roleCashier\) \{[\s\S]*?\n  \}/.exec(seed);
+  if (!loop) return false;
+  const list = /for \(const code of \[([^\]]*)\]\)/.exec(loop[0]);
+  if (!list) return false;
+  const codes = list[1].split(',').map(x => x.trim().replace(/^'|'$/g, ''));
+  return codes.includes('orders.closure.request') && !codes.includes('orders.closure.approve');
+})());
 ok('30. every closure route enforces branch authorization with the existing helper', (orders.match(/closure/gi) || []).length > 0 && /allowed\(req, c\.branch_id\)/.test(orders) && /!branchId \|\| !allowed\(req, branchId\)/.test(orders));
 ok('31. a waiter-raised closure is scoped to that waiter\'s own order and branch', /order\.branch_id !== session\.branch_id \|\| order\.waiter_user_id !== session\.user_id/.test(orders));
 ok('32. request, approval and rejection are all audited', /ORDER_CLOSURE_REQUESTED/.test(orders) && /ORDER_CLOSURE_REJECTED/.test(orders) && /ORDER_CLOSURE_APPROVED/.test(closure));

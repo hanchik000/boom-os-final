@@ -57,7 +57,10 @@ ok('16. THE PRIVACY RULE: the cabinet response never selects the gift\'s product
 })());
 ok('17. it reports only availability, quantity and validity', /birthday_benefit: gifts\.length > 0 \? \{ available: true, quantity/.test(routes));
 ok('18. the MANAGER view does resolve the product, because they chose it', /LEFT JOIN menu_items m ON m\.id=g\.menu_item_id/.test(routes));
-ok('19. the cabinet reports no cashback rather than inventing one before the BOOMBACK ledger exists', /cashback_balance: null/.test(routes) && !/boomback_ledger/.test(routes));
+// Stage 34.6 had no BOOMBACK ledger yet, so the cabinet reported null rather than inventing a
+// number. Stage 34.7 built that ledger; the invariant is the same one, now enforceable: the
+// cabinet reads the cashback balance from the authoritative ledger and never computes its own.
+ok('19. the cabinet reports the cashback balance from the authoritative BOOMBACK ledger, never an invented one', /SELECT COALESCE\(SUM\(amount\),0\) AS balance FROM boomback_ledger WHERE customer_id=\?/.test(routes) && /cashback_balance: String\(boomback\?\.balance \?\? '0'\)/.test(routes));
 
 // ---------------------------------------------------------------- 5. RBAC, audit, wiring, schema
 ok('20. both permissions are seeded', ['boomcard.view', 'boomcard.manage'].every(c => seed.includes(`code: '${c}'`)));

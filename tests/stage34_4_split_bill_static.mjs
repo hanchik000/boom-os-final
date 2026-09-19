@@ -35,8 +35,13 @@ ok('6. the order keeps every discount exactly once, whatever scope it was grante
 ok('7. there is still exactly one payment creation route', (payments.match(/router\.post\('\/',requirePermission\('payments\.create'\)/g) || []).length === 1);
 ok('8. a split order must be paid per bill, never as a whole', /BILL_REQUIRED_FOR_SPLIT_ORDER/.test(payments) && /if\(!billIdRaw\)throw Object\.assign\(new Error\('BILL_REQUIRED_FOR_SPLIT_ORDER'\)/.test(payments));
 ok('9. an unsplit order still refuses a bill id', /} else if\(billIdRaw\) throw Object\.assign\(new Error\('ORDER_NOT_SPLIT'\)/.test(payments));
-ok('10. the amount must equal what the SERVER computed for that bill', /cents\(isSplit\?bill\.final_amount:order\.final_amount\)-paid/.test(payments) && /if\(requested!==remaining\)/.test(payments));
-ok('11. consumption and the service charge ledger run ONCE per order, when the last bill closes', /const stillOpen=isSplit\?await tx\.queryOne<any>\(`SELECT id FROM order_bills WHERE order_id=\? AND status='OPEN' LIMIT 1`/.test(payments) && /if\(!stillOpen\)\{[\s\S]{0,200}consumeInventoryForOrder/.test(payments));
+// Stage 34.7 made BOOMBACK the one method that may settle part of a check (it is money the guest
+// holds, not a price change). Every other method must still match the remaining amount exactly,
+// and the remaining amount is still the SERVER's figure for that bill.
+ok('10. the amount must equal what the SERVER computed for that bill', /const total=cents\(isSplit\?bill\.final_amount:order\.final_amount\);const remaining=total-paid;/.test(payments) && /allowPartial \? \(requested>remaining\|\|requested<=0n\) : \(requested!==remaining\)/.test(payments) && /const allowPartial=PARTIAL_METHODS\.has\(method\);/.test(payments));
+// Same gate, now also closed against a partially settled order: a check with BOOMBACK paid and
+// cash still owed has not been settled, so nothing is consumed or completed yet.
+ok('11. consumption and the service charge ledger run ONCE per order, when the last bill closes', /const stillOpen=!fullySettled\?\{id:'partial'\}:\(isSplit\?await tx\.queryOne<any>\(`SELECT id FROM order_bills WHERE order_id=\? AND status='OPEN' LIMIT 1`/.test(payments) && /if\(!stillOpen\)\{[\s\S]{0,200}consumeInventoryForOrder/.test(payments));
 ok('12. a paid bill can never be paid again', /if\(bill\.status==='PAID'\)throw Object\.assign\(new Error\('BILL_ALREADY_PAID'\)/.test(payments));
 
 // ---------------------------------------------------------------- 3. split operations are safe

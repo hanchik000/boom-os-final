@@ -41,8 +41,11 @@ const menu17 = read('server/routes/menu.ts');
 assert17(menu17.includes("router.delete('/items/:id'"), 'Menu item soft-delete endpoint missing');
 assert17(menu17.includes('deleted_at IS NULL'), 'Menu reads must exclude archived menu records');
 const orders17 = read('server/routes/orders.ts');
-// Same invariant, resolved through the Stage 34.2 service-charge core -- and strengthened: the
-// recalculation must use the configuration version in force when the ORDER was created, never the
-// one configured today, so removing an item can never silently re-price an old order.
-assert17(orders17.includes('serviceChargePercentFor(tx, order.branch_id, order.order_type, order.created_at)'), 'Order item removal must use branch Service Charge configuration');
+const totals17 = read('server/order-totals.ts');
+// Same invariant, now resolved through the Stage 34.3 single pricing core: approving a removal
+// does not re-price the order by hand, it asks recomputeOrderTotals -- and that core resolves the
+// service charge from the configuration version in force when the ORDER was created, never the one
+// configured today, so removing an item can never silently re-price an old order.
+assert17(/approvalId[\s\S]*?await recomputeOrderTotals\(tx, order, now\)/.test(orders17), 'Order item removal must re-price through the single order-totals core');
+assert17(totals17.includes('serviceChargePercentFor(tx, fresh.branch_id, fresh.order_type, fresh.created_at)'), 'Order item removal must use branch Service Charge configuration');
 console.log('STAGE 17.1 HARDENING: PASS');

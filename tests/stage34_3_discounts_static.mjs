@@ -45,15 +45,24 @@ ok('10. all discount maths is BigInt hundredths -- no Float', /function percentH
 // ---------------------------------------------------------------- 3. one pricing rule
 ok('11. there is exactly one order-total recomputation routine', (totals.match(/export async function recomputeOrderTotals/g) || []).length === 1);
 ok('12. the item-removal path uses it instead of its own inline maths', /await recomputeOrderTotals\(tx, order, now\)/.test(orders) && !/AS final_amount`,\[subtotal,order\.discount/.test(orders));
-ok('13. a percentage discount follows the subtotal, a fixed amount is capped by it', /d\.percent != null \? applyPercent\(subtotal, percentHundredths\(d\.percent\)\) : cents\(d\.amount\)/.test(totals) && /if \(amount > remaining\)/.test(totals));
-ok('14. the service charge still uses the order\'s own configuration version', /serviceChargePercentFor\(tx, order\.branch_id, order\.order_type, order\.created_at\)/.test(totals));
+// Stage 34.4 renamed the base to scopeBase, because on a split order the base is the BILL's own
+// subtotal rather than the whole order's. The rule itself is unchanged.
+ok('13. a percentage discount follows the discountable base, a fixed amount is capped by it', /d\.percent != null \? applyPercent\(scopeBase, percentHundredths\(d\.percent\)\) : cents\(d\.amount\)/.test(totals) && /const remaining = scopeBase - already;/.test(totals) && /if \(amount > remaining\) amount = remaining > 0n \? remaining : 0n;/.test(totals));
+ok('14. the service charge still uses the order\'s own configuration version', /serviceChargePercentFor\(tx, fresh\.branch_id, fresh\.order_type, fresh\.created_at\)/.test(totals));
 
 // ---------------------------------------------------------------- 4. history never changes
 // Assert the guard itself, not just that the error code exists somewhere in the map -- the code
 // would survive the guard being deleted.
 ok('15. only an open order can be discounted', /DISCOUNTABLE_ORDER_STATUSES = \['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY'\]/.test(orders) && /if \(!DISCOUNTABLE_ORDER_STATUSES\.includes\(order\.status\)\) throw Object\.assign\(new Error\('ORDER_NOT_EDITABLE'\)/.test(orders));
 ok('16. removing a discount is a soft, recorded reversal -- nothing is deleted', /UPDATE order_discounts SET status='REMOVED'/.test(orders) && !/DELETE FROM order_discounts/.test(orders));
-ok('17. the same guard protects customer attachment, so a settled order is never re-tagged', (orders.match(/loadDiscountableOrder\(tx, req/g) || []).length === 3);
+// Every route that re-prices or re-tags a live order loads it through the one guard -- later
+// stages added more of them (compliments in 34.8), so this counts call sites rather than fixing a
+// number, and pins the guard itself to the settled-order refusal.
+ok('17. the same guard protects customer attachment and every re-pricing route, so a settled order is never re-tagged', (() => {
+  const sites = (orders.match(/loadDiscountableOrder\(tx, req/g) || []).length;
+  const guard = /async function loadDiscountableOrder[\s\S]*?\n\}/.exec(orders)[0];
+  return sites >= 3 && /\/:id\/customer', posOrAuth/.test(orders) && /!DISCOUNTABLE_ORDER_STATUSES\.includes\(order\.status\)/.test(guard) && /FOR UPDATE/.test(guard);
+})());
 
 // ---------------------------------------------------------------- 5. one customer core
 ok('18. there is one customers table and one create-or-return routine', (schema.match(/^model Customer \{/m) || []).length === 1 && (customers.match(/export async function findOrCreateCustomer/g) || []).length === 1);
