@@ -244,10 +244,15 @@ export async function seedInitialData() {
     // Stage 34.6: BOOMCARD. Creating a guest's cabinet, approving a card and granting a birthday
     // benefit are all explicit manager decisions -- automation only ever proposes candidates.
     { id: 'perm_boomcard_view', code: 'boomcard.view', name: 'View BOOMCARD', module: 'boomcard', description: 'View BOOMCARD holders, their lifecycle history and granted benefits' },
-    { id: 'perm_boomcard_manage', code: 'boomcard.manage', name: 'Manage BOOMCARD', module: 'boomcard', description: 'Create, activate, renew and deactivate a BOOMCARD and grant its birthday benefit' }
+    { id: 'perm_boomcard_manage', code: 'boomcard.manage', name: 'Manage BOOMCARD', module: 'boomcard', description: 'Create, activate, renew and deactivate a BOOMCARD and grant its birthday benefit' },
+    // Stage 34.8: complimentary items. Requesting is separated from approving on purpose -- a
+    // waiter or cashier may ask, but exactly one authorised manager turns it into a real order line
+    // the guest pays nothing for.
+    { id: 'perm_order_compliment_request', code: 'orders.compliment.request', name: 'Request Compliment', module: 'orders', description: 'Request a complimentary item on an order (requires manager approval)' },
+    { id: 'perm_order_compliment_approve', code: 'orders.compliment.approve', name: 'Approve Compliment', module: 'orders', description: 'Approve or reject a complimentary item and view the give-away report' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage','boomcard.view','boomcard.manage'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage','boomcard.view','boomcard.manage','orders.compliment.request','orders.compliment.approve'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -276,7 +281,7 @@ export async function seedInitialData() {
     // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
     // within their own approved limit; credit.manage_limit (set limits, approve over-limit
     // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage','loyalty.view','boomcard.view']) {
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage','loyalty.view','boomcard.view','orders.compliment.request']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }

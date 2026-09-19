@@ -331,6 +331,14 @@ export const api = {
   evaluateBoomcardLifecycle: (branchId:string, from:string, to:string) => request<any>('/api/boomcard/lifecycle/evaluate', { method:'POST', body: JSON.stringify({ branch_id: branchId, from, to }) }),
   updateCustomer: (id:string, body:{ name?:string; birth_date?:string|null }) => request<{ customer:any }>(`/api/customers/${id}`, { method:'PATCH', body: JSON.stringify(body) }),
   // Stage 34.7 -- BOOMBACK. Money the guest holds, not a discount; every amount is the server's.
+  // Stage 34.8 -- complimentary items. A request only; the manager's approval is what creates the
+  // zero-price order line, and the server decides everything about it.
+  getComplimentReasons: () => request<{ reasons:string[] }>('/api/orders/compliment-reasons'),
+  requestCompliment: (orderId:string, body:{ menu_item_id:string; quantity:number; reason:string; comment?:string|null; bill_id?:string }) => request<{ compliment:any }>(`/api/orders/${orderId}/compliments`, { method:'POST', body: JSON.stringify(body) }),
+  requestWaiterCompliment: (orderId:string, body:{ menu_item_id:string; quantity:number; reason:string; comment?:string|null }) => waiterRequest<{ compliment:any }>(`/api/orders/${orderId}/compliments`, { method:'POST', body: JSON.stringify(body) }),
+  getComplimentRequests: (params:{ branch_id?:string; status?:string; from?:string; to?:string }) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{ if(v) q.set(k,String(v)); }); return request<{ compliments:any[]; totals:any[] }>(`/api/orders/compliment-requests?${q.toString()}`); },
+  approveCompliment: (id:string, reason?:string) => request<{ compliment:any; order:any }>(`/api/orders/compliment-requests/${id}/approve`, { method:'POST', body: JSON.stringify({ reason }) }),
+  rejectCompliment: (id:string, reason?:string) => request<{ compliment:any; order:any }>(`/api/orders/compliment-requests/${id}/reject`, { method:'POST', body: JSON.stringify({ reason }) }),
   getBoombackBalance: (customerId:string) => request<{ customer_id:string; balance:string; cached_balance:string }>(`/api/loyalty/boomback/customers/${customerId}`),
   getBoombackLedger: (params:{ branch_id?:string; customer_id?:string }) => { const q=new URLSearchParams(); if(params.branch_id) q.set('branch_id',params.branch_id); if(params.customer_id) q.set('customer_id',params.customer_id); return request<{ entries:any[]; totals:any[] }>(`/api/loyalty/boomback/ledger?${q.toString()}`); },
   adjustBoomback: (customerId:string, amount:string, reason:string) => request<{ entry:any }>('/api/loyalty/boomback/adjust', { method:'POST', body: JSON.stringify({ customer_id: customerId, amount, reason }) }),

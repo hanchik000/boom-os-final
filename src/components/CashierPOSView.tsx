@@ -59,6 +59,13 @@ function friendlyError(e: any, ru: boolean): string {
   return e?.message || (ru ? 'Произошла ошибка. Попробуйте снова.' : 'Ýalňyşlyk ýüze çykdy. Gaýtadan synanyň.');
 }
 
+// Stage 34.8: the reason set comes from the backend; these are only its human labels.
+const complimentReasonLabelsRu: Record<string, string> = { COMPLIMENT: 'Комплимент', APOLOGY: 'Извинение', GIFT: 'Подарок клиенту', ESTABLISHMENT_ERROR: 'Ошибка заведения', BIRTHDAY: 'День рождения', OTHER: 'Другое' };
+export function complimentReasonLabel(reason: string, ru = true) {
+  const tk: Record<string, string> = { COMPLIMENT: 'Kompliment', APOLOGY: 'Ötünç', GIFT: 'Müşderä sowgat', ESTABLISHMENT_ERROR: 'Kärhananyň ýalňyşy', BIRTHDAY: 'Doglan gün', OTHER: 'Başga' };
+  return (ru ? complimentReasonLabelsRu : tk)[reason] || reason;
+}
+
 export const CashierPOSView: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { language } = useLanguage();
@@ -154,6 +161,18 @@ export const CashierPOSView: React.FC = () => {
   const [boomcoin, setBoomcoin] = useState<any | null>(null);
   const [boombackBalance, setBoombackBalance] = useState<string | null>(null);
   const [boombackAmount, setBoombackAmount] = useState('');
+  // Stage 34.8 -- "ОТ ЗАВЕДЕНИЯ". The cashier may only REQUEST it; a manager's approval is what
+  // creates the zero-price line, and the server decides the value and the cost.
+  const [complimentOpen, setComplimentOpen] = useState(false);
+  const [complimentItem, setComplimentItem] = useState('');
+  const [complimentQty, setComplimentQty] = useState(1);
+  const [complimentReason, setComplimentReason] = useState('');
+  const [complimentComment, setComplimentComment] = useState('');
+  const [complimentReasons, setComplimentReasons] = useState<string[]>([]);
+  const [complimentMenu, setComplimentMenu] = useState<any[]>([]);
+  const [complimentBusy, setComplimentBusy] = useState(false);
+  const [complimentError, setComplimentError] = useState('');
+  const [complimentSent, setComplimentSent] = useState(false);
 
   // Stage 34.1 -- "ЗАКРЫТО ЗАВЕДЕНИЕМ". The cashier may only REQUEST it; a manager approves.
   // The product decision (write off / do not write off) is always picked here explicitly, never
@@ -361,6 +380,19 @@ export const CashierPOSView: React.FC = () => {
   const openClosure = () => { setClosureReason(''); setClosureComment(''); setClosureTreatment(''); setClosureRefund(Boolean(selectedPaid)); setClosureError(''); setClosureSent(false); setClosureOpen(true); };
 
   useEffect(() => { void api.getDiscountOptions().then(r => { setDiscountPresets(r.presets); setDiscountMax(r.max_percent); }).catch(() => undefined); }, []);
+  useEffect(() => { void api.getComplimentReasons().then(r => setComplimentReasons(r.reasons)).catch(() => undefined); }, []);
+  useEffect(() => { if (!branchId) return; void api.getMenu(branchId).then(r => setComplimentMenu(r.items || [])).catch(() => undefined); }, [branchId]);
+
+  const submitCompliment = async () => {
+    if (!detail || complimentBusy || !complimentItem || !complimentReason) return;
+    setComplimentBusy(true); setComplimentError('');
+    try {
+      await api.requestCompliment(detail.id, { menu_item_id: complimentItem, quantity: complimentQty, reason: complimentReason, comment: complimentComment.trim() || null });
+      setComplimentSent(true);
+      await loadOrders(true);
+    } catch (e: any) { setComplimentError(friendlyError(e, ru)); }
+    finally { setComplimentBusy(false); }
+  };
 
   useEffect(() => {
     if (!detail?.customer_id) { setBoomcoin(null); return; }
@@ -681,6 +713,11 @@ export const CashierPOSView: React.FC = () => {
                     {ru ? 'ЗАКРЫТО ЗАВЕДЕНИЕМ' : 'KÄRHANA TARAPYNDAN ÝAPYLDY'}
                   </button>
                 )}
+                {!['CANCELLED', 'REFUNDED', 'CLOSED_BY_ESTABLISHMENT', 'COMPLETED'].includes(detail.status) && (
+                  <button className="btn w-full bg-sky-600/20 border border-sky-500/40 text-sky-200 font-semibold py-2" onClick={() => { setComplimentError(''); setComplimentSent(false); setComplimentItem(''); setComplimentQty(1); setComplimentReason(''); setComplimentComment(''); setComplimentOpen(true); }}>
+                    {ru ? 'ОТ ЗАВЕДЕНИЯ' : 'KÄRHANADAN'}
+                  </button>
+                )}
               </div>
             </div>
           ) : null}
@@ -740,6 +777,55 @@ export const CashierPOSView: React.FC = () => {
         </div>
       )}
       {/* ---- Payment dialog ---- */}
+      {complimentOpen && detail && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !complimentBusy && setComplimentOpen(false)}>
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div>
+              <h2 className="text-white text-lg font-bold">{ru ? 'От заведения' : 'Kärhanadan'} · #{detail.order_number}</h2>
+              <p className="text-slate-400 text-xs mt-1">{ru ? 'Кассир только отправляет запрос — позицию за счёт заведения добавляет менеджер после одобрения.' : 'Kassir diňe haýyş iberýär — kärhananyň hasabyna pozisiýany menejer tassyklandan soň goşýar.'}</p>
+            </div>
+            {complimentSent ? (
+              <>
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-3">{ru ? 'Запрос отправлен менеджеру на подтверждение.' : 'Haýyş menejere tassyklamaga iberildi.'}</div>
+                <div className="flex justify-end"><button className="btn" onClick={() => setComplimentOpen(false)}>{ru ? 'Закрыть' : 'Ýap'}</button></div>
+              </>
+            ) : (
+              <>
+                {complimentError && <div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{complimentError}</div>}
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Позиция' : 'Pozisiýa'}</span>
+                  <select className="field w-full" value={complimentItem} onChange={e => setComplimentItem(e.target.value)}>
+                    <option value="">{ru ? '— выберите —' : '— saýlaň —'}</option>
+                    {complimentMenu.map(m => <option key={m.id} value={m.id}>{m.name_ru} · {m.price}</option>)}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Количество' : 'Mukdar'}</span>
+                  <input className="field w-24" type="number" min={1} value={complimentQty} onChange={e => setComplimentQty(Number(e.target.value))} />
+                </label>
+                <div className="space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Причина (обязательно)' : 'Sebäp (hökmany)'}</span>
+                  <div className="flex flex-wrap gap-2">
+                    {complimentReasons.map(r => (
+                      <button key={r} type="button" className={`px-3 py-1.5 rounded-lg border text-xs ${complimentReason === r ? 'border-sky-400 bg-sky-500/10 text-white' : 'border-slate-700 text-slate-300'}`} onClick={() => setComplimentReason(r)}>{complimentReasonLabel(r)}</button>
+                    ))}
+                  </div>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-xs text-slate-400">{ru ? 'Комментарий' : 'Teswir'}</span>
+                  <input className="field w-full" value={complimentComment} onChange={e => setComplimentComment(e.target.value)} />
+                </label>
+                <p className="text-[11px] text-slate-500">{ru ? 'Гость не платит за позицию, но её реальная себестоимость учитывается заведением.' : 'Myhman pozisiýa üçin tölemeýär, ýöne onuň hakyky özüne düşýän bahasy hasaba alynýar.'}</p>
+                <div className="flex gap-2 justify-end">
+                  <button className="btn" disabled={complimentBusy} onClick={() => setComplimentOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
+                  <button className="btn bg-sky-500 text-slate-950 font-semibold" disabled={complimentBusy || !complimentItem || !complimentReason} onClick={() => void submitCompliment()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {customerOpen && detail && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => !customerBusy && setCustomerOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e => e.stopPropagation()}>

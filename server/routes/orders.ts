@@ -550,6 +550,160 @@ router.get('/:id/discounts', authenticateToken, requirePermission('orders.view')
   res.json({ order_id: req.params.id, discounts });
 });
 
+// ---------------------------------------------------------------------------
+// Stage 34.8 -- COMPLIMENTARY ITEMS ("ОТ ЗАВЕДЕНИЯ").
+//
+// A waiter or cashier may only REQUEST a compliment. Exactly ONE authorised manager approves it,
+// and only then does a real order line appear at a customer price of 0. The guest pays nothing,
+// but the establishment's real cost is still recorded, because the line is an ordinary order item
+// with an ordinary recipe that the EXISTING payment -> consumption path consumes -- there is no
+// second inventory path here.
+//
+// Double approval is impossible: the decision is taken under a row lock and only from PENDING.
+// ---------------------------------------------------------------------------
+
+export const COMPLIMENT_REASONS = ['COMPLIMENT', 'APOLOGY', 'GIFT', 'ESTABLISHMENT_ERROR', 'BIRTHDAY', 'OTHER'] as const;
+const COMPLIMENTABLE_ORDER_STATUSES = ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY'];
+
+const COMPLIMENT_ERRORS: any = {
+  ORDER_NOT_FOUND: [404, 'NOT_FOUND', 'ORDER_NOT_FOUND'],
+  ORDER_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'ORDER_ACCESS_DENIED'],
+  BRANCH_ACCESS_DENIED: [403, 'BRANCH_ACCESS_DENIED', 'BRANCH_ACCESS_DENIED'],
+  ORDER_NOT_EDITABLE: [409, 'INVALID_STATE', 'ORDER_NOT_EDITABLE'],
+  MENU_ITEM_NOT_FOUND: [404, 'NOT_FOUND', 'MENU_ITEM_NOT_FOUND'],
+  MENU_ITEM_BRANCH_MISMATCH: [403, 'BRANCH_ACCESS_DENIED', 'MENU_ITEM_BRANCH_MISMATCH'],
+  COMPLIMENT_NOT_FOUND: [404, 'NOT_FOUND', 'COMPLIMENT_NOT_FOUND'],
+  COMPLIMENT_ALREADY_DECIDED: [409, 'INVALID_STATE', 'COMPLIMENT_ALREADY_DECIDED'],
+  SELF_APPROVAL_FORBIDDEN: [403, 'FORBIDDEN', 'SELF_APPROVAL_FORBIDDEN'],
+  BILL_NOT_FOUND: [404, 'NOT_FOUND', 'BILL_NOT_FOUND'],
+  BILL_ALREADY_PAID: [409, 'INVALID_STATE', 'BILL_ALREADY_PAID'],
+};
+function sendComplimentError(res: any, e: any) {
+  const m = COMPLIMENT_ERRORS[e.message];
+  if (!m) throw e;
+  return res.status(m[0]).json({ error: m[1], code: m[2], message: e.message, details: e.details || {} });
+}
+
+router.get('/compliment-reasons', authenticateToken, requirePermission('orders.view'), async (_req, res) => {
+  res.json({ reasons: COMPLIMENT_REASONS });
+});
+
+router.post('/:id/compliments', posOrAuth('orders.compliment.request', async (req, res, actor) => {
+  const menuItemId = String(req.body?.menu_item_id || '');
+  const quantity = Number(req.body?.quantity ?? 1);
+  const reason = String(req.body?.reason || '').toUpperCase();
+  const comment = req.body?.comment ? String(req.body.comment).trim().slice(0, 500) : null;
+  const billId = req.body?.bill_id ? String(req.body.bill_id) : null;
+  if (!(COMPLIMENT_REASONS as readonly string[]).includes(reason)) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'INVALID_COMPLIMENT_REASON', message: 'A recognised reason is required.', details: { reasons: COMPLIMENT_REASONS } });
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 20) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'INVALID_COMPLIMENT_QUANTITY', message: 'quantity must be a whole number between 1 and 20.', details: {} });
+  const now = new Date().toISOString();
+  const requestId = `cmp_${crypto.randomUUID()}`;
+  try {
+    const result = await transaction(async (tx) => {
+      const order = await loadDiscountableOrder(tx, req, String(req.params.id), actor);
+      const item = await tx.queryOne<any>('SELECT id,branch_id,name_ru,price FROM menu_items WHERE id=?', [menuItemId]);
+      if (!item) throw Object.assign(new Error('MENU_ITEM_NOT_FOUND'), { httpStatus: 404 });
+      if (item.branch_id && item.branch_id !== order.branch_id) throw Object.assign(new Error('MENU_ITEM_BRANCH_MISMATCH'), { httpStatus: 403 });
+      let bill: any = null;
+      if (billId) {
+        bill = await tx.queryOne<any>(`SELECT * FROM order_bills WHERE id=? AND order_id=? AND status<>'VOID' FOR UPDATE`, [billId, order.id]);
+        if (!bill) throw Object.assign(new Error('BILL_NOT_FOUND'), { httpStatus: 404 });
+        if (bill.status === 'PAID') throw Object.assign(new Error('BILL_ALREADY_PAID'), { httpStatus: 409 });
+      }
+      // The normal menu value is snapshotted now, so the give-away can be valued later even if the
+      // menu price changes afterwards.
+      const normalValue = totalsText(orderCents(item.price) * BigInt(quantity));
+      await tx.execute(`INSERT INTO compliment_requests (id,branch_id,order_id,bill_id,customer_id,menu_item_id,quantity,reason,comment,status,normal_value,requester_user_id,requester_role,source,created_at) VALUES (?,?,?,?,?,?,?,?,?, 'PENDING',CAST(? AS numeric),?,?,?,?)`,
+        [requestId, order.branch_id, order.id, bill?.id ?? null, bill?.customer_id ?? order.customer_id ?? null, item.id, quantity, reason, comment, normalValue, actor.userId, actor.role, actor.source, now]);
+      await insertAuditLog(tx.execute, { userId: actor.userId || undefined, branchId: order.branch_id, action: 'COMPLIMENT_REQUESTED', entityType: 'COMPLIMENT_REQUEST', entityId: requestId, newValues: { order_id: order.id, bill_id: bill?.id ?? null, menu_item_id: item.id, menu_item_name: item.name_ru, quantity, reason, comment, normal_value: normalValue, requester_user_id: actor.userId, requester_role: actor.role, source: actor.source }, req });
+      return await tx.queryOne<any>('SELECT * FROM compliment_requests WHERE id=?', [requestId]);
+    });
+    res.status(201).json({ compliment: result });
+  } catch (e: any) { return sendComplimentError(res, e); }
+}));
+
+/**
+ * The manager queue and, with `status=APPROVED`, the give-away report: reason, employee, approver,
+ * customer, order, item, normal value, real cost, branch and date in one place. The cost is the
+ * order line's own historical recipe cost snapshot -- never a recomputation from today's recipe.
+ */
+router.get('/compliment-requests', authenticateToken, requirePermission('orders.compliment.approve'), async (req, res) => {
+  const branchId = typeof req.query.branch_id === 'string' ? req.query.branch_id : (req.user!.branch_id || '');
+  if (!branchId || !allowed(req, branchId)) return res.status(403).json({ error: 'BRANCH_ACCESS_DENIED', code: 'BRANCH_ACCESS_DENIED', message: 'Branch is outside your access scope.', details: {} });
+  const status = typeof req.query.status === 'string' ? String(req.query.status).toUpperCase() : 'PENDING';
+  if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'VALIDATION_ERROR', code: 'INVALID_COMPLIMENT_STATUS', message: 'Invalid status.', details: {} });
+  const from = typeof req.query.from === 'string' ? req.query.from : null;
+  const to = typeof req.query.to === 'string' ? req.query.to : null;
+  const where = ['c.branch_id=?', 'c.status=?'];
+  const params: any[] = [branchId, status];
+  if (from) { where.push('c.created_at>=?'); params.push(from); }
+  if (to) { where.push('c.created_at<?'); params.push(to); }
+  const compliments = await query<any>(
+    `SELECT c.*, o.order_number, m.name_ru AS menu_item_name, cu.name AS customer_name,
+            u.full_name AS requester_name, a.full_name AS approver_name,
+            oi.recipe_cost_snapshot AS cost
+       FROM compliment_requests c
+       JOIN orders o ON o.id=c.order_id
+       JOIN menu_items m ON m.id=c.menu_item_id
+       LEFT JOIN customers cu ON cu.id=c.customer_id
+       LEFT JOIN users u ON u.id=c.requester_user_id
+       LEFT JOIN users a ON a.id=c.approver_user_id
+       LEFT JOIN order_items oi ON oi.id=c.order_item_id
+      WHERE ${where.join(' AND ')} ORDER BY c.created_at DESC LIMIT 300`, params);
+  const totals = await query<any>(
+    `SELECT c.reason, COUNT(*) AS count, COALESCE(SUM(c.normal_value),0) AS normal_value, COALESCE(SUM(oi.recipe_cost_snapshot),0) AS cost
+       FROM compliment_requests c LEFT JOIN order_items oi ON oi.id=c.order_item_id
+      WHERE ${where.join(' AND ')} GROUP BY c.reason ORDER BY c.reason`, params);
+  res.json({ branch_id: branchId, status, compliments, totals });
+});
+
+async function decideCompliment(req: Request, res: any, approve: boolean) {
+  const complimentId = String(req.params.complimentId);
+  const decisionReason = req.body?.reason ? String(req.body.reason).trim().slice(0, 500) : null;
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      // The row lock plus the PENDING guard is what makes a second approval impossible.
+      const c = await tx.queryOne<any>('SELECT * FROM compliment_requests WHERE id=? FOR UPDATE', [complimentId]);
+      if (!c) throw Object.assign(new Error('COMPLIMENT_NOT_FOUND'), { httpStatus: 404 });
+      if (!allowed(req, c.branch_id)) throw Object.assign(new Error('BRANCH_ACCESS_DENIED'), { httpStatus: 403 });
+      if (c.status !== 'PENDING') throw Object.assign(new Error('COMPLIMENT_ALREADY_DECIDED'), { httpStatus: 409 });
+      if (c.requester_user_id && c.requester_user_id === req.user!.id) throw Object.assign(new Error('SELF_APPROVAL_FORBIDDEN'), { httpStatus: 403 });
+
+      if (!approve) {
+        await tx.execute(`UPDATE compliment_requests SET status='REJECTED',approver_user_id=?,decided_at=?,decision_reason=? WHERE id=? AND status='PENDING'`, [req.user!.id, now, decisionReason, complimentId]);
+        await insertAuditLog(tx.execute, { userId: req.user!.id, branchId: c.branch_id, action: 'COMPLIMENT_REJECTED', entityType: 'COMPLIMENT_REQUEST', entityId: complimentId, oldValues: { status: 'PENDING' }, newValues: { status: 'REJECTED', approver_user_id: req.user!.id, decision_reason: decisionReason }, req });
+        return { compliment: await tx.queryOne<any>('SELECT * FROM compliment_requests WHERE id=?', [complimentId]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [c.order_id]) };
+      }
+
+      const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [c.order_id]);
+      if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), { httpStatus: 404 });
+      if (!COMPLIMENTABLE_ORDER_STATUSES.includes(order.status)) throw Object.assign(new Error('ORDER_NOT_EDITABLE'), { httpStatus: 409 });
+      if (c.bill_id) {
+        const bill = await tx.queryOne<any>(`SELECT status FROM order_bills WHERE id=? FOR UPDATE`, [c.bill_id]);
+        if (!bill) throw Object.assign(new Error('BILL_NOT_FOUND'), { httpStatus: 404 });
+        if (bill.status === 'PAID') throw Object.assign(new Error('BILL_ALREADY_PAID'), { httpStatus: 409 });
+      }
+      const item = await tx.queryOne<any>('SELECT id,name_ru FROM menu_items WHERE id=?', [c.menu_item_id]);
+      if (!item) throw Object.assign(new Error('MENU_ITEM_NOT_FOUND'), { httpStatus: 404 });
+
+      // A REAL order line at a customer price of 0. The bill does not grow, and because it is an
+      // ordinary item with an ordinary recipe, the existing payment path consumes its ingredients
+      // and records its real cost.
+      const lineId = `oi_${crypto.randomUUID()}`;
+      await tx.execute(`INSERT INTO order_items (id,order_id,bill_id,menu_item_id,title_snapshot,price_snapshot,quantity,subtotal,comment,status,created_at) VALUES (?,?,?,?,?,0,?,0,?,'ACTIVE',?)`,
+        [lineId, order.id, c.bill_id, item.id, item.name_ru, c.quantity, `ОТ ЗАВЕДЕНИЯ: ${c.reason}`, now]);
+      await tx.execute(`UPDATE compliment_requests SET status='APPROVED',approver_user_id=?,decided_at=?,decision_reason=?,order_item_id=? WHERE id=? AND status='PENDING'`, [req.user!.id, now, decisionReason, lineId, complimentId]);
+      const totals = await recomputeOrderTotals(tx, order, now);
+      await insertAuditLog(tx.execute, { userId: req.user!.id, branchId: c.branch_id, action: 'COMPLIMENT_APPROVED', entityType: 'COMPLIMENT_REQUEST', entityId: complimentId, oldValues: { status: 'PENDING' }, newValues: { status: 'APPROVED', approver_user_id: req.user!.id, order_id: order.id, order_item_id: lineId, menu_item_id: item.id, quantity: c.quantity, reason: c.reason, normal_value: String(c.normal_value), customer_price: '0.00', decision_reason: decisionReason, totals }, req });
+      return { compliment: await tx.queryOne<any>('SELECT * FROM compliment_requests WHERE id=?', [complimentId]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
+    });
+    res.json(result);
+  } catch (e: any) { return sendComplimentError(res, e); }
+}
+router.post('/compliment-requests/:complimentId/approve', authenticateToken, requirePermission('orders.compliment.approve'), async (req, res) => decideCompliment(req, res, true));
+router.post('/compliment-requests/:complimentId/reject', authenticateToken, requirePermission('orders.compliment.approve'), async (req, res) => decideCompliment(req, res, false));
+
 // Order-level notes. `notes` is customer-facing (pre-existing field, set at creation, now also
 // editable); `internal_notes` is staff-only and must never be selected onto a customer receipt.
 router.patch('/:id/notes', authenticateToken, requirePermission('orders.confirm'), async(req,res)=>{
