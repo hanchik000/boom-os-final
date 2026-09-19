@@ -74,7 +74,12 @@ ok('36. every response echoes the period and the timezone it used', (analytics.m
 
 // ---------------------------------------------------------------- 9. RBAC, isolation, wiring
 ok('37. every endpoint is permission-gated with one read-only permission', (analytics.match(/requirePermission\('analytics\.view'\)/g) || []).length === 6 && !/analytics\.manage/.test(analytics));
-ok('38. that permission is seeded and granted to the manager roles', /code: 'analytics\.view'/.test(seed) && /'orders\.compliment\.approve','analytics\.view'\]/.test(seed));
+// Membership, parsed rather than positional: later stages (34.12) legitimately append more codes
+// to the same grant list.
+ok('38. that permission is seeded and granted to the manager roles', /code: 'analytics\.view'/.test(seed) && (() => {
+  const m = /const stage17RolePerms = \[([^\]]*)\]/.exec(seed);
+  return Boolean(m) && m[1].split(',').map(x => x.trim().replace(/^'|'$/g, '')).includes('analytics.view');
+})());
 ok('39. and it is NOT granted to the cashier', (() => {
   const loop = /if \(roleCashier\) \{[\s\S]*?\n  \}/.exec(seed);
   if (!loop) return false;

@@ -254,6 +254,11 @@ export const api = {
   getAnalyticsTime: (p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/time?${qs(p)}`),
   getAnalyticsMatrix: (p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/matrix?${qs(p)}`),
   getAnalyticsDish: (menuItemId:string,p:{branch_id:string;start?:string;end?:string}) => request<any>(`/api/analytics/dishes/${menuItemId}?${qs(p)}`),
+
+  // Stage 34.12: the unified BOOMCARD Operations Journal -- every figure and filter is applied by
+  // the SERVER; the client only chooses which page and which filters to ask for.
+  getBoomcardJournal: (p:{branch_id:string;start?:string;end?:string;source?:string;event_type?:string;status?:string;customer_id?:string;boomcard_id?:string;order_id?:string;operator_id?:string;search?:string;page?:number;page_size?:number}) => request<{branch_id:string;period:{start:string|null;end:string|null};page:number;page_size:number;total:number;total_pages:number;rows:any[]}>(`/api/boomcard/journal?${qs(p)}`),
+  getBoomcardJournalSummary: (p:{branch_id:string;start?:string;end?:string}) => request<{branch_id:string;period:{start:string|null;end:string|null};event_types:any[]}>(`/api/boomcard/journal/summary?${qs(p)}`),
   getCreditReportCashier: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); Object.entries(params).forEach(([k,v])=>{if(v) q.set(k,String(v));}); return request<{branch_id:string;transactions:any[]}>(`/api/credit/reports/cashier?${q.toString()}`); },
   // Manager Command Center (Stage 32): one aggregation endpoint, branch + date-range scoped.
   getManagerDashboard: (params:{branch_id:string;start?:string;end?:string}) => { const q=new URLSearchParams(); q.set('branch_id',params.branch_id); if(params.start) q.set('start',params.start); if(params.end) q.set('end',params.end); return request<any>(`/api/dashboard/manager?${q.toString()}`); },

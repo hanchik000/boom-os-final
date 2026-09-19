@@ -70,7 +70,10 @@ const cashierPerms = seed.match(/for \(const code of \[([^\]]*'credit\.repay'[^\
 ok('22. a cashier may look but not manage', cashierPerms && cashierPerms[1].includes("'boomcard.view'") && !cashierPerms[1].includes("'boomcard.manage'"), cashierPerms?.[1]);
 ok('23. every authenticated route is branch-checked with the existing helper', (routes.match(/allowed\(req, ?(card\.branch_id|customer\.branch_id|b)\)/g) || []).length >= 4);
 ok('24. every transition is audited through the existing audit log', /action: `BOOMCARD_\$\{opts\.type\}`/.test(routes));
-ok('25. the router is mounted once and wired into async error forwarding', (serverTs.match(/app\.use\('\/api\/boomcard'/g) || []).length === 1 && /loyaltyRouter, boomcardRouter/.test(serverTs));
+// Stage 34.12 legitimately mounts a second router (the journal) at the same '/api/boomcard' base
+// path, the same established pattern as order-bills before orders -- so this counts mounts of
+// boomcardRouter itself, not every app.use('/api/boomcard' line.
+ok('25. the router is mounted once and wired into async error forwarding', (serverTs.match(/app\.use\('\/api\/boomcard', boomcardRouter\)/g) || []).length === 1 && /loyaltyRouter, boomcardRouter/.test(serverTs));
 ok('26. the migration is additive: three new tables plus one nullable customer column', (migration.match(/CREATE TABLE "boomcard/g) || []).length === 3 && /ADD COLUMN\s+"birth_date" TEXT/.test(migration) && !/DROP TABLE/.test(migration));
 ok('27. a birth date is recorded on the guest but grants nothing by itself', /INVALID_BIRTH_DATE/.test(customers) && /never a discount and grants nothing by itself/.test(customers));
 

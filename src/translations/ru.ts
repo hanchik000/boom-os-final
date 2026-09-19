@@ -19,6 +19,7 @@ export const ru = {
   "nav.liveOperations": "Живые операции",
   "nav.foodCost": "Себестоимость",
   "nav.analytics": "Аналитика",
+  "nav.boomcardJournal": "Журнал BOOMCARD",
   "nav.serviceCharge": "Сервисный сбор",
   "nav.boomcard": "BOOMCARD",
   "nav.customers": "Клиенты",

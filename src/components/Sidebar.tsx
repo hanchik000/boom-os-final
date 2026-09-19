@@ -27,12 +27,13 @@ import {
   Scale,
   Percent,
   BarChart3,
+  ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'serviceCharge' | 'boomcard' | 'customers' | 'settings' | 'audit';
+export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'boomcardJournal' | 'serviceCharge' | 'boomcard' | 'customers' | 'settings' | 'audit';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -51,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
     { id: 'liveOperations', key: 'nav.liveOperations', icon: Radio, permission: 'operations.view' },
     { id: 'foodCost', key: 'nav.foodCost', icon: Scale, permission: 'food_cost.view' },
     { id: 'analytics', key: 'nav.analytics', icon: BarChart3, permission: 'analytics.view' },
+    { id: 'boomcardJournal', key: 'nav.boomcardJournal', icon: ScrollText, permission: 'boomcard.journal.view' },
     { id: 'organization', key: 'nav.organization', icon: Network, permission: 'franchises.view' },
     { id: 'franchises', key: 'nav.franchises', icon: Building, permission: 'franchises.view' },
     { id: 'branches', key: 'nav.branches', icon: Building2, permission: 'branches.view' },

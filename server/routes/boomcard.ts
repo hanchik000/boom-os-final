@@ -50,15 +50,15 @@ async function boomcardSettings() {
   };
 }
 
-async function recordEvent(tx: TxClient, opts: { branchId: string; cardId: string; customerId: string; type: string; statusBefore?: string | null; statusAfter?: string | null; qualifyingCents?: bigint | null; periodStart?: string | null; periodEnd?: string | null; quantity?: number | null; reason?: string | null; decidedBy: string | null; automatic?: boolean; now: string; req?: any }) {
+async function recordEvent(tx: TxClient, opts: { branchId: string; cardId: string; customerId: string; type: string; statusBefore?: string | null; statusAfter?: string | null; qualifyingCents?: bigint | null; periodStart?: string | null; periodEnd?: string | null; quantity?: number | null; reason?: string | null; decidedBy: string | null; automatic?: boolean; now: string; req?: any; orderId?: string | null; menuItemId?: string | null }) {
   const eventId = id('bce');
   await tx.execute(
-    `INSERT INTO boomcard_events (id,branch_id,boomcard_id,customer_id,type,status_before,status_after,qualifying_spend,period_start,period_end,quantity,reason,decided_by,automatic,created_at)
-     VALUES (?,?,?,?,?,?,?,${opts.qualifyingCents != null ? 'CAST(? AS numeric)' : '?'},?,?,?,?,?,?,?)`,
+    `INSERT INTO boomcard_events (id,branch_id,boomcard_id,customer_id,type,status_before,status_after,qualifying_spend,period_start,period_end,quantity,reason,decided_by,automatic,order_id,menu_item_id,created_at)
+     VALUES (?,?,?,?,?,?,?,${opts.qualifyingCents != null ? 'CAST(? AS numeric)' : '?'},?,?,?,?,?,?,?,?,?)`,
     [eventId, opts.branchId, opts.cardId, opts.customerId, opts.type, opts.statusBefore ?? null, opts.statusAfter ?? null,
      opts.qualifyingCents != null ? centsText(opts.qualifyingCents) : null, opts.periodStart ?? null, opts.periodEnd ?? null,
-     opts.quantity ?? null, opts.reason ?? null, opts.decidedBy, Boolean(opts.automatic), opts.now]);
-  await insertAuditLog(tx.execute, { userId: opts.decidedBy || undefined, branchId: opts.branchId, action: `BOOMCARD_${opts.type}`, entityType: 'BOOMCARD', entityId: opts.cardId, oldValues: opts.statusBefore ? { status: opts.statusBefore } : null, newValues: { type: opts.type, status: opts.statusAfter, customer_id: opts.customerId, reason: opts.reason ?? null, automatic: Boolean(opts.automatic), quantity: opts.quantity ?? null }, req: opts.req });
+     opts.quantity ?? null, opts.reason ?? null, opts.decidedBy, Boolean(opts.automatic), opts.orderId ?? null, opts.menuItemId ?? null, opts.now]);
+  await insertAuditLog(tx.execute, { userId: opts.decidedBy || undefined, branchId: opts.branchId, action: `BOOMCARD_${opts.type}`, entityType: 'BOOMCARD', entityId: opts.cardId, oldValues: opts.statusBefore ? { status: opts.statusBefore } : null, newValues: { type: opts.type, status: opts.statusAfter, customer_id: opts.customerId, reason: opts.reason ?? null, automatic: Boolean(opts.automatic), quantity: opts.quantity ?? null, order_id: opts.orderId ?? null, menu_item_id: opts.menuItemId ?? null }, req: opts.req });
   return eventId;
 }
 
@@ -147,6 +147,9 @@ const CARD_ERRORS: any = {
   ORDER_BRANCH_MISMATCH: [403, 'BRANCH_ACCESS_DENIED', 'ORDER_BRANCH_MISMATCH'],
   ORDER_NOT_EDITABLE: [409, 'INVALID_STATE', 'ORDER_NOT_EDITABLE'],
   ORDER_BELONGS_TO_ANOTHER_GUEST: [409, 'INVALID_STATE', 'ORDER_BELONGS_TO_ANOTHER_GUEST'],
+  BIRTHDAY_GIFT_NOT_FOUND: [404, 'NOT_FOUND', 'BIRTHDAY_GIFT_NOT_FOUND'],
+  BIRTHDAY_GIFT_NOT_AVAILABLE: [409, 'INVALID_STATE', 'BIRTHDAY_GIFT_NOT_AVAILABLE'],
+  BIRTHDAY_GIFT_EXPIRED: [409, 'INVALID_STATE', 'BIRTHDAY_GIFT_EXPIRED'],
 };
 function sendCardError(res: any, e: any) { const m = CARD_ERRORS[e.message]; if (!m) throw e; return res.status(m[0]).json({ error: m[1], code: m[2], message: e.message, details: e.details || {} }); }
 
@@ -209,10 +212,51 @@ router.post('/:id/birthday-gift', requirePermission('boomcard.manage'), async (r
       const giftId = id('bgf');
       await tx.execute(`INSERT INTO boomcard_birthday_gifts (id,branch_id,boomcard_id,customer_id,menu_item_id,quantity,status,valid_from,valid_until,granted_by,granted_at) VALUES (?,?,?,?,?,?,'GRANTED',?,?,?,?)`,
         [giftId, card.branch_id, card.id, card.customer_id, item.id, quantity, validFrom, validUntil, req.user!.id, now]);
-      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BIRTHDAY_GIFT_GRANTED', statusAfter: card.status, quantity, reason: req.body?.reason ? String(req.body.reason).slice(0, 500) : null, decidedBy: req.user!.id, automatic: false, now, req });
+      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BIRTHDAY_GIFT_GRANTED', statusAfter: card.status, quantity, reason: req.body?.reason ? String(req.body.reason).slice(0, 500) : null, decidedBy: req.user!.id, automatic: false, menuItemId: item.id, now, req });
       return await tx.queryOne<any>('SELECT * FROM boomcard_birthday_gifts WHERE id=?', [giftId]);
     });
     res.status(201).json({ gift: result });
+  } catch (e: any) { return sendCardError(res, e); }
+});
+
+/**
+ * Stage 34.12 -- redeeming a birthday gift.
+ *
+ * Exactly the same shape as breakfast redemption, and for the same reason: the gift is a REAL
+ * menu item added to a real open order at a customer price of 0, so the EXISTING payment ->
+ * consumption path consumes its real ingredients and records its real cost. There is no second
+ * inventory path and no discount -- the gift row itself (not a counter) is what is spent, so it
+ * can be redeemed exactly once.
+ */
+router.post('/:id/birthday-gift/:giftId/redeem', requirePermission('boomcard.manage'), async (req, res) => {
+  const orderId = String(req.body?.order_id || '');
+  const now = new Date().toISOString();
+  try {
+    const result = await transaction(async (tx) => {
+      const card = await loadCardForDecision(tx, req, String(req.params.id));
+      if (card.status !== 'ACTIVE') throw Object.assign(new Error('BOOMCARD_NOT_ACTIVE'), { httpStatus: 409 });
+      const gift = await tx.queryOne<any>('SELECT * FROM boomcard_birthday_gifts WHERE id=? AND boomcard_id=? FOR UPDATE', [req.params.giftId, card.id]);
+      if (!gift) throw Object.assign(new Error('BIRTHDAY_GIFT_NOT_FOUND'), { httpStatus: 404 });
+      if (gift.status !== 'GRANTED') throw Object.assign(new Error('BIRTHDAY_GIFT_NOT_AVAILABLE'), { httpStatus: 409, details: { status: gift.status } });
+      if (gift.valid_until < now || gift.valid_from > now) throw Object.assign(new Error('BIRTHDAY_GIFT_EXPIRED'), { httpStatus: 409, details: { valid_from: gift.valid_from, valid_until: gift.valid_until } });
+      const order = await tx.queryOne<any>('SELECT * FROM orders WHERE id=? FOR UPDATE', [orderId]);
+      if (!order) throw Object.assign(new Error('ORDER_NOT_FOUND'), { httpStatus: 404 });
+      if (order.branch_id !== card.branch_id) throw Object.assign(new Error('ORDER_BRANCH_MISMATCH'), { httpStatus: 403 });
+      if (!['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING', 'READY'].includes(order.status)) throw Object.assign(new Error('ORDER_NOT_EDITABLE'), { httpStatus: 409 });
+      if (order.customer_id && order.customer_id !== card.customer_id) throw Object.assign(new Error('ORDER_BELONGS_TO_ANOTHER_GUEST'), { httpStatus: 409 });
+      const item = await tx.queryOne<any>('SELECT id,name_ru FROM menu_items WHERE id=?', [gift.menu_item_id]);
+      if (!item) throw Object.assign(new Error('MENU_ITEM_NOT_FOUND'), { httpStatus: 404 });
+
+      const lineId = id('oi');
+      await tx.execute(`INSERT INTO order_items (id,order_id,menu_item_id,title_snapshot,price_snapshot,quantity,subtotal,comment,status,created_at) VALUES (?,?,?,?,0,?,0,?,'ACTIVE',?)`,
+        [lineId, order.id, item.id, item.name_ru, gift.quantity, 'BOOMCARD birthday gift', now]);
+      await tx.execute(`UPDATE boomcard_birthday_gifts SET status='REDEEMED',redeemed_at=?,redeemed_order_id=? WHERE id=?`, [now, order.id, gift.id]);
+      if (!order.customer_id) await tx.execute('UPDATE orders SET customer_id=?,updated_at=? WHERE id=?', [card.customer_id, now, order.id]);
+      await recomputeOrderTotals(tx, order, now);
+      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BIRTHDAY_GIFT_REDEEMED', statusAfter: card.status, quantity: gift.quantity, reason: `Redeemed on order ${order.order_number}`, decidedBy: req.user!.id, automatic: false, orderId: order.id, menuItemId: item.id, now, req });
+      return { order_item_id: lineId, gift: await tx.queryOne<any>('SELECT * FROM boomcard_birthday_gifts WHERE id=?', [gift.id]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
+    });
+    res.status(201).json(result);
   } catch (e: any) { return sendCardError(res, e); }
 });
 
@@ -255,7 +299,7 @@ router.post('/:id/breakfast/redeem', requirePermission('boomcard.manage'), async
       await tx.execute('UPDATE boomcards SET breakfast_used=breakfast_used+?,updated_at=? WHERE id=?', [quantity, now, card.id]);
       if (!order.customer_id) await tx.execute('UPDATE orders SET customer_id=?,updated_at=? WHERE id=?', [card.customer_id, now, order.id]);
       await recomputeOrderTotals(tx, order, now);
-      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BREAKFAST_REDEEMED', statusAfter: card.status, quantity, reason: `Redeemed on order ${order.order_number}`, decidedBy: req.user!.id, automatic: false, now, req });
+      await recordEvent(tx, { branchId: card.branch_id, cardId: card.id, customerId: card.customer_id, type: 'BREAKFAST_REDEEMED', statusAfter: card.status, quantity, reason: `Redeemed on order ${order.order_number}`, decidedBy: req.user!.id, automatic: false, orderId: order.id, menuItemId: item.id, now, req });
       return { order_item_id: lineId, card: await tx.queryOne<any>('SELECT * FROM boomcards WHERE id=?', [card.id]), order: await tx.queryOne<any>('SELECT * FROM orders WHERE id=?', [order.id]) };
     });
     res.status(201).json(result);

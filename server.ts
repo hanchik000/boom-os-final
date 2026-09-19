@@ -34,6 +34,7 @@ import serviceChargeRouter from './server/routes/service-charge';
 import customersRouter from './server/routes/customers';
 import loyaltyRouter from './server/routes/loyalty';
 import boomcardRouter from './server/routes/boomcard';
+import boomcardJournalRouter from './server/routes/boomcard-journal';
 import kpiRouter from './server/routes/kpi';
 import operatorPosRouter from './server/routes/operator-pos';
 import printRouter from './server/routes/print';
@@ -139,9 +140,9 @@ async function startServer() {
   [
     docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
     menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
-    inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, boomcardRouter, kpiRouter, operatorPosRouter, printRouter,
+    inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, boomcardRouter, boomcardJournalRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
-    organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter,
+    organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter, analyticsRouter,
   ].forEach(enableAsyncErrorForwarding);
 
   // OpenAPI 3.0 & Swagger UI Documentation Endpoint
@@ -166,6 +167,9 @@ async function startServer() {
   app.use('/api/service-charge', serviceChargeRouter);
   app.use('/api/customers', customersRouter);
   app.use('/api/loyalty', loyaltyRouter);
+  // Mounted BEFORE boomcardRouter, same as order-bills before orders: boomcardRouter has a
+  // GET '/:id' route that would otherwise swallow GET /api/boomcard/journal with id="journal".
+  app.use('/api/boomcard', boomcardJournalRouter);
   app.use('/api/boomcard', boomcardRouter);
   app.use('/api/kpi', kpiRouter);
   app.use('/api/operator-pos', operatorPosRouter);

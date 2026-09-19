@@ -21,6 +21,7 @@ export const tk: Record<keyof typeof ru, string> = {
   "nav.liveOperations": "Janly amallar",
   "nav.foodCost": "Tagam bahasy",
   "nav.analytics": "Analitika",
+  "nav.boomcardJournal": "BOOMCARD žurnaly",
   "nav.serviceCharge": "Hyzmat ýygymy",
   "nav.boomcard": "BOOMCARD",
   "nav.customers": "Müşderiler",

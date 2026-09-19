@@ -25,6 +25,7 @@ import { CashierPOSView } from './components/CashierPOSView';
 import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { BoomcardJournalView } from './components/BoomcardJournalView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
 import { LiveOperationsView } from './components/LiveOperationsView';
 import { ServiceChargeView } from './components/ServiceChargeView';
@@ -133,6 +134,8 @@ function MainLayout() {
         return { title: t('nav.serviceCharge'), subtitle: language === 'ru' ? 'Процент обслуживания, распределение по категориям и история версий' : 'Hyzmat göterimi, kategoriýalar boýunça paýlanyş we wersiýa taryhy' };
       case 'analytics':
         return { title: t('nav.analytics'), subtitle: language === 'ru' ? 'Продажи, блюда, категории, время и матрица меню за период' : 'Döwür boýunça satuwlar, naharlar, kategoriýalar, wagt we menýu matrisasy' };
+      case 'boomcardJournal':
+        return { title: t('nav.boomcardJournal'), subtitle: language === 'ru' ? 'Единый журнал операций BOOMCOIN, BOOMBACK, завтраков, подарков и жизненного цикла карты' : 'BOOMCOIN, BOOMBACK, ertirlik, sowgat we kart ömür aýlawynyň ýeke-täk žurnaly' };
       case 'foodCost':
         return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
       case 'inventory':
@@ -201,6 +204,7 @@ function MainLayout() {
           {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'foodCost' && <FoodCostView />}
           {currentTab === 'analytics' && <AnalyticsView />}
+          {currentTab === 'boomcardJournal' && <BoomcardJournalView />}
           {currentTab === 'serviceCharge' && <ServiceChargeView />}
           {currentTab === 'boomcard' && <BoomcardView />}
           {currentTab === 'customers' && <CustomersView />}
