@@ -32,6 +32,7 @@ import kdsRouter from './server/routes/kds';
 import inventoryRouter from './server/routes/inventory';
 import serviceChargeRouter from './server/routes/service-charge';
 import customersRouter from './server/routes/customers';
+import loyaltyRouter from './server/routes/loyalty';
 import kpiRouter from './server/routes/kpi';
 import operatorPosRouter from './server/routes/operator-pos';
 import printRouter from './server/routes/print';
@@ -136,7 +137,7 @@ async function startServer() {
   [
     docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
     menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
-    inventoryRouter, serviceChargeRouter, customersRouter, kpiRouter, operatorPosRouter, printRouter,
+    inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
     organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter,
   ].forEach(enableAsyncErrorForwarding);
@@ -162,6 +163,7 @@ async function startServer() {
   app.use('/api/inventory', inventoryRouter);
   app.use('/api/service-charge', serviceChargeRouter);
   app.use('/api/customers', customersRouter);
+  app.use('/api/loyalty', loyaltyRouter);
   app.use('/api/kpi', kpiRouter);
   app.use('/api/operator-pos', operatorPosRouter);
   app.use('/api/print', printRouter);

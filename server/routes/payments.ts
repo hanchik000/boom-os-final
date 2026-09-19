@@ -6,6 +6,7 @@ import { requireOperatorPosSession } from './operator-pos';
 import { applyCreditSale } from './credit';
 import { refundPaymentFinancials } from '../order-closure';
 import { recordServiceChargeLedger } from '../service-charge';
+import { accrueBoomcoinForSettlement } from '../loyalty';
 const router=Router();
 const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT']);
 function cents(v:unknown){const s=String(v??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(s))throw new Error('INVALID_MONEY');const [a,b='']=s.split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));}
@@ -81,6 +82,9 @@ router.post('/',requirePermission('payments.create'),requireOperatorPosSession,a
       if(bill){
         await tx.execute(`UPDATE order_bills SET status='PAID',closed_at=?,updated_at=? WHERE id=? AND status='OPEN'`,[now,now,bill.id]);
       }
+      // Stage 34.5: BOOMCOIN is earned on what the guest actually settled -- per separate check when
+      // the order is split (each bill has its own guest), otherwise once for the whole order.
+      await accrueBoomcoinForSettlement(tx,{branchId:order.branch_id,customerId:bill?bill.customer_id:order.customer_id,orderId:orderId,billId:bill?bill.id:null,amountCents:requested,actorId:req.user!.id,now,req});
       // Consumption, the service-charge ledger and order completion happen ONCE per order, when the
       // last separate check is settled -- never once per bill, which would consume stock N times.
       const stillOpen=isSplit?await tx.queryOne<any>(`SELECT id FROM order_bills WHERE order_id=? AND status='OPEN' LIMIT 1`,[orderId]):null;

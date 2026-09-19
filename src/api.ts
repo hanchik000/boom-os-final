@@ -312,6 +312,13 @@ export const api = {
   setBillCustomer: (orderId:string, billId:string, customerId:string|null) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/${billId}/customer`, { method:'POST', body: JSON.stringify({ customer_id: customerId }) }),
   voidBill: (orderId:string, billId:string) => request<{ bills:any[] }>(`/api/orders/${orderId}/bills/${billId}`, { method:'DELETE' }),
   mergeOrderBills: (orderId:string) => request<{ split_mode:string; bills:any[] }>(`/api/orders/${orderId}/bills/merge`, { method:'POST', body: '{}' }),
+  // Stage 34.5 -- BOOMCOIN. Every number here is recomputed by the server from the authoritative
+  // ledger; the counter is guidance and never grants anything.
+  getBoomcoinCounter: (customerId:string) => request<any>(`/api/loyalty/boomcoin/customers/${customerId}`),
+  getWaiterBoomcoinCounter: (customerId:string) => waiterRequest<any>(`/api/loyalty/boomcoin/customers/${customerId}`),
+  getBoomcoinSettings: () => request<{ earning_enabled:boolean; counter_ui_enabled:boolean; spend_per_coin:string }>('/api/loyalty/boomcoin/settings'),
+  getBoomcoinLedger: (params:{ branch_id?:string; customer_id?:string }) => { const q=new URLSearchParams(); if(params.branch_id) q.set('branch_id',params.branch_id); if(params.customer_id) q.set('customer_id',params.customer_id); return request<{ entries:any[]; totals:any[] }>(`/api/loyalty/boomcoin/ledger?${q.toString()}`); },
+  adjustBoomcoin: (customerId:string, coins:number, reason:string) => request<{ entry:any }>('/api/loyalty/boomcoin/adjust', { method:'POST', body: JSON.stringify({ customer_id: customerId, coins, reason }) }),
   getWaiterOrderBills: (orderId:string) => waiterRequest<{ order_id:string; split_mode:string; order_final_amount:string; bills:any[]; unassigned_items:any[] }>(`/api/orders/${orderId}/bills`),
   splitWaiterOrderBills: (orderId:string, mode:'ITEMS'|'EQUAL', count:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/split`, { method:'POST', body: JSON.stringify({ mode, count }) }),
   moveWaiterBillItem: (orderId:string, orderItemId:string, billId:string|null, quantity?:number) => waiterRequest<{ bills:any[] }>(`/api/orders/${orderId}/bills/move-item`, { method:'POST', body: JSON.stringify({ order_item_id: orderItemId, bill_id: billId, quantity }) }),

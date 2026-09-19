@@ -236,10 +236,14 @@ export async function seedInitialData() {
     { id: 'perm_order_discount_apply', code: 'orders.discount.apply', name: 'Apply Order Discount', module: 'orders', description: 'Grant or remove a manual discount on an open order' },
     { id: 'perm_order_discount_override', code: 'orders.discount.override', name: 'Exceed Discount Limit', module: 'orders', description: 'Grant a manual discount above the configured maximum percentage' },
     { id: 'perm_customers_view', code: 'customers.view', name: 'View Customers', module: 'customers', description: 'View customer records, their orders and their granted discounts' },
-    { id: 'perm_customers_manage', code: 'customers.manage', name: 'Manage Customers', module: 'customers', description: 'Create and update customer records' }
+    { id: 'perm_customers_manage', code: 'customers.manage', name: 'Manage Customers', module: 'customers', description: 'Create and update customer records' },
+    // Stage 34.5: BOOMCOIN. Viewing a guest's balance and the ledger is separate from changing it:
+    // a manual adjustment always needs loyalty.manage and always needs a reason.
+    { id: 'perm_loyalty_view', code: 'loyalty.view', name: 'View Loyalty', module: 'loyalty', description: 'View BOOMCOIN balances, the progress counter and the loyalty ledger' },
+    { id: 'perm_loyalty_manage', code: 'loyalty.manage', name: 'Manage Loyalty', module: 'loyalty', description: 'Post manual BOOMCOIN adjustments' }
   ];
   for (const p of stage17Perms) await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,[p.id,p.code,p.name,p.module,p.description,now]);
-  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage'];
+  const stage17RolePerms = ['service_charge.view','service_charge.manage','kpi.view','kpi.manage','pos.operator','print.view','print.manage','print.execute','print.reprint','waiters.status.view','waiters.status.manage','waiter_codes.manage','credit.view','credit.issue','credit.repay','credit.manage_limit','credit.reports','dashboard.view','operations.view','food_cost.view','orders.closure.request','orders.closure.approve','orders.discount.apply','orders.discount.override','customers.view','customers.manage','loyalty.view','loyalty.manage'];
   for (const role of [roleOwner, roleSuperAdmin, roleGeneralManager, roleBranchManager]) {
     if (!role) continue;
     for (const code of stage17RolePerms) { const p=allPerms.find(x=>x.code===code) || stage17Perms.find(x=>x.code===code); if(p) await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,[`rp_${role.id}_${code.replace(/[^a-z0-9]/gi,'_')}`,role.id,p.id,now]); }
@@ -268,7 +272,7 @@ export async function seedInitialData() {
     // credit.view/issue/repay let the cashier issue a credit sale and record a repayment
     // within their own approved limit; credit.manage_limit (set limits, approve over-limit
     // sales, post adjustments) and credit.reports stay manager-only, same separation as print.
-    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage']) {
+    for (const code of ['branches.view','orders.view','orders.confirm','payments.view','payments.create','cash_shifts.view','cash_shifts.open','cash_shifts.close','pos.operator','print.view','print.execute','print.reprint','credit.view','credit.issue','credit.repay','orders.closure.request','orders.discount.apply','customers.view','customers.manage','loyalty.view']) {
       const p = allPerms.find(x => x.code === code) || stage17Perms.find(x => x.code === code); if (!p) continue;
       await execute(`INSERT INTO role_permissions (id, role_id, permission_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING`, [`rp_csh_${code.replace(/[^a-z0-9]/gi,'_')}`, roleCashier.id, p.id, now]);
     }
@@ -284,6 +288,11 @@ export async function seedInitialData() {
   // needs orders.discount.override. Both are configurable, never hardcoded in the UI.
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_manual_discount_presets','MANUAL_DISCOUNT_PRESETS','10,15,20,30','string','Comma-separated manual discount percentages offered in the POS.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_max_manual_discount','MAX_MANUAL_DISCOUNT_PERCENT','30','number','Maximum manual discount percentage without the orders.discount.override permission.',now,now]);
+  // Stage 34.5: BOOMCOIN. The rate and both switches are configuration, never numbers in code --
+  // the earning engine and the POS counter can be turned off independently of each other.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_enabled','BOOMCOIN_EARNING_ENABLED','true','boolean','Whether settled orders earn BOOMCOIN for the attached guest.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_counter_ui','BOOMCOIN_COUNTER_UI_ENABLED','true','boolean','Whether the POS and customer menu show the BOOMCOIN progress counter.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_boomcoin_spend_per_coin','BOOMCOIN_SPEND_PER_COIN','200.00','number','Qualifying spend, in currency units, that earns one BOOMCOIN.',now,now]);
   // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.

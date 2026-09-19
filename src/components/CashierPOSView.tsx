@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { UserRound, Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
+import { UserRound, Coins, Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -146,6 +146,9 @@ export const CashierPOSView: React.FC = () => {
   const [discountReason, setDiscountReason] = useState('');
   const [discountBusy, setDiscountBusy] = useState(false);
   const [discountError, setDiscountError] = useState('');
+  // Stage 34.5 -- the BOOMCOIN counter. Pure guidance: it is read from the server and shown only
+  // when the counter switch is on; the POS never computes or grants a coin.
+  const [boomcoin, setBoomcoin] = useState<any | null>(null);
 
   // Stage 34.1 -- "ЗАКРЫТО ЗАВЕДЕНИЕМ". The cashier may only REQUEST it; a manager approves.
   // The product decision (write off / do not write off) is always picked here explicitly, never
@@ -349,6 +352,13 @@ export const CashierPOSView: React.FC = () => {
   const openClosure = () => { setClosureReason(''); setClosureComment(''); setClosureTreatment(''); setClosureRefund(Boolean(selectedPaid)); setClosureError(''); setClosureSent(false); setClosureOpen(true); };
 
   useEffect(() => { void api.getDiscountOptions().then(r => { setDiscountPresets(r.presets); setDiscountMax(r.max_percent); }).catch(() => undefined); }, []);
+
+  useEffect(() => {
+    if (!detail?.customer_id) { setBoomcoin(null); return; }
+    let cancelled = false;
+    void api.getBoomcoinCounter(detail.customer_id).then(r => { if (!cancelled) setBoomcoin(r); }).catch(() => { if (!cancelled) setBoomcoin(null); });
+    return () => { cancelled = true; };
+  }, [detail?.customer_id, detail?.updated_at]);
 
   useEffect(() => {
     if (!detail) { setBills([]); setSplitMode('NONE'); return; }
@@ -562,6 +572,13 @@ export const CashierPOSView: React.FC = () => {
                       : <button className="text-xs px-2 py-1 rounded border border-amber-500/40 text-amber-300" onClick={() => { setDiscountError(''); setDiscountOpen(true); }}>+ {ru ? 'Скидка' : 'Arzanladyş'}</button>}
                   </div>
                   {discountError && <div className="text-[11px] text-red-400">{discountError}</div>}
+                  {boomcoin && boomcoin.counter_ui_enabled && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-amber-300/90 border-t border-slate-800 pt-1.5">
+                      <Coins className="w-3.5 h-3.5" />
+                      <span>{boomcoin.balance} BOOMCOIN</span>
+                      <span className="text-slate-500">· {ru ? `закажите ещё на ${boomcoin.to_next_coin} и получите 1 BOOMCOIN` : `ýene ${boomcoin.to_next_coin} sargyt ediň we 1 BOOMCOIN alyň`}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
