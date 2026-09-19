@@ -164,5 +164,15 @@ here since this stage touches the same file).
   safe mechanism" instruction.
 - The pre-existing Vite >500KB bundle-size warning (documented in `docs/STAGE-35.6-HARDENING.md`)
   is unchanged by this stage.
+- **A genuine pre-existing defect found during mobile verification, not fixed here**: the app's
+  persistent sidebar (`#boom-sidebar` in the shared App shell) has no responsive collapse below
+  roughly 600px width, so at a real mobile viewport (390px) it consumes most of the screen and the
+  page overflows horizontally — on every screen in the application, not specifically the Command
+  Center. Verified this is not something this stage introduced or can fix within its own scope:
+  hiding the sidebar in isolation at 390px showed the Command Center's own content column,
+  including this stage's toolbar (branch/date filters, "last updated", refresh button), lays out
+  and wraps correctly with zero horizontal overflow on its own. Making the sidebar itself
+  responsive is a whole-app-shell change well outside "restyle/harden the Command Center" and was
+  left as a documented, separate, pre-existing item rather than opportunistically redesigned.
 - `Header.tsx`'s dead `onOpenLoginModal` prop (documented in `docs/STAGE-35.7-CASHIER-POS-DESIGN
   .md`) remains unrelated to this stage and unfixed.
