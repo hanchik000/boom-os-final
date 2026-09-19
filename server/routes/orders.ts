@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { query, queryOne, execute, transaction, TxClient } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { getWaiterSession } from './waiters';
+import { serviceChargePercentFor } from '../service-charge';
 import { CLOSURE_TYPES, INVENTORY_TREATMENTS, CLOSABLE_ORDER_STATUSES, CLOSED_ORDER_STATUSES, productionSnapshot, applyApprovedClosure } from '../order-closure';
 
 const router=Router();
@@ -57,7 +58,13 @@ router.post('/', async(req,res)=>{
   const merged=new Map<string,any>(); for(const x of parsedItems){const key=x.menuItemId+'|'+[...x.modifierIds].sort().join(','); const old=merged.get(key); merged.set(key,{...x,quantity:(old?.quantity||0)+x.q,comment:old?.comment||x.comment});}
   let subtotal=0n; const lines:any[]=[];
   for(const line of merged.values()){const m=menuMap.get(line.menuItemId)!; const base=moneyCents(m.price); const selected=line.modifierIds.map((mid:string)=>modMap.get(mid)!); const delta=selected.reduce((sum:any,mod:any)=>sum+moneyCents(mod.price_delta),0n); const unit=base+delta; if(unit<0n){res.status(400).json({error:'VALIDATION_ERROR',code:'NEGATIVE_ITEM_PRICE',message:'Modifier combination cannot make an item price negative.',details:{}});return;} const sub=unit*BigInt(line.quantity); subtotal+=sub; lines.push({id:id(),menu_item_id:line.menuItemId,title_snapshot:m.name_ru,price_snapshot:centsText(unit),quantity:line.quantity,subtotal:centsText(sub),comment:line.comment,modifiers:selected.map((mod:any)=>({id:id(),modifier_id:mod.id,name_snapshot:mod.name_ru,price_delta_snapshot:centsText(moneyCents(mod.price_delta)),quantity:1}))});}
-  let service=0n; if(orderType==='DINE_IN'){const branchConfig=await queryOne<any>(`SELECT percent FROM service_charge_configs WHERE branch_id=? AND status='ACTIVE'`,[branchId]); const setting=branchConfig?.percent ?? (await queryOne<any>(`SELECT value FROM system_settings WHERE key='DINE_IN_SERVICE_CHARGE_PERCENT'`))?.value; const bps=percentToBps(setting||'10'); service=(subtotal*bps+5000n)/10000n;}
+  // Stage 34.2: the percentage comes from the service charge configuration VERSION in force right
+  // now, per order type -- dine-in, takeaway (pickup) and delivery are separate configurable values
+  // and none of them is hardcoded here. The version's id is snapshotted onto the order so a later
+  // configuration change can never re-price it.
+  const scNow=new Date().toISOString();
+  const {percent:scPercent,configId:scConfigId}=await serviceChargePercentFor({queryOne,query},branchId,orderType,scNow);
+  const service=(subtotal*percentToBps(scPercent)+5000n)/10000n;
   const final=subtotal+service;
   const idem=req.headers['idempotency-key']?String(req.headers['idempotency-key']).trim().slice(0,128):null;
   if(!idem){res.status(400).json({error:'VALIDATION_ERROR',code:'IDEMPOTENCY_KEY_REQUIRED',message:'Idempotency-Key is required for waiter order creation.',details:{}});return;}
@@ -78,7 +85,7 @@ router.post('/', async(req,res)=>{
       const currency=String(branch.currency||'TMT');
       const seqRow=await tx.queryOne<{next_value:number}>(`INSERT INTO branch_order_sequences (branch_id,next_value,updated_at) VALUES (?,2,?) ON CONFLICT (branch_id) DO UPDATE SET next_value=branch_order_sequences.next_value+1,updated_at=EXCLUDED.updated_at RETURNING next_value-1 AS next_value`,[branchId,now]);
       const seq=Number(seqRow?.next_value||1); const orderNumber=`${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${String(seq).padStart(4,'0')}`;
-      await tx.execute(`INSERT INTO orders (id,order_number,branch_id,waiter_user_id,table_id,order_type,source,status,currency,subtotal,discount,promotion_amount,service_charge,final_amount,idempotency_key,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'PENDING_CONFIRMATION',?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),?,?,?,?)`,[orderId,orderNumber,branchId,session.user_id,tableId,orderType,source,currency,centsText(subtotal),'0.00','0.00',centsText(service),centsText(final),idem,req.body?.notes?String(req.body.notes).trim():null,now,now]);
+      await tx.execute(`INSERT INTO orders (id,order_number,branch_id,waiter_user_id,table_id,order_type,source,status,currency,subtotal,discount,promotion_amount,service_charge,final_amount,idempotency_key,notes,service_charge_config_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'PENDING_CONFIRMATION',?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),?,?,?,?,?)`,[orderId,orderNumber,branchId,session.user_id,tableId,orderType,source,currency,centsText(subtotal),'0.00','0.00',centsText(service),centsText(final),idem,req.body?.notes?String(req.body.notes).trim():null,scConfigId,now,now]);
       for(const l of lines){ await tx.execute(`INSERT INTO order_items (id,order_id,menu_item_id,title_snapshot,price_snapshot,quantity,subtotal,comment,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,CAST(? AS numeric),?,?)`,[l.id,orderId,l.menu_item_id,l.title_snapshot,l.price_snapshot,l.quantity,l.subtotal,l.comment,now]); for(const mod of l.modifiers) await tx.execute(`INSERT INTO order_item_modifiers (id,order_item_id,modifier_id,name_snapshot,price_delta_snapshot,quantity,created_at) VALUES (?,?,?,?,CAST(? AS numeric),?,?)`,[mod.id,l.id,mod.modifier_id,mod.name_snapshot,mod.price_delta_snapshot,mod.quantity,now]); }
       if(tableId) await tx.execute(`UPDATE dining_tables SET status='OCCUPIED',updated_at=? WHERE id=? AND branch_id=? AND status IN ('AVAILABLE','RESERVED','OCCUPIED')`,[now,tableId,branchId]);
       await insertAuditLog(tx.execute,{userId:session.user_id,branchId,action:'ORDER_CREATED',entityType:'ORDER',entityId:orderId,newValues:{order_type:orderType,source,waiter_user_id:session.user_id,table_id:tableId,final_amount:centsText(final)},req});
@@ -179,10 +186,11 @@ async function decideRemoval(req: Request, res: any, approve: boolean) {
       await tx.execute(`UPDATE order_items SET quantity=CAST(CAST(? AS numeric) AS integer),subtotal=CAST(? AS numeric),status=?,removed_quantity=removed_quantity+CAST(? AS numeric),removed_at=?,removed_by=?,removal_reason=? WHERE id=?`,[String(qtyRow.remaining_qty),fullRemoval?'0.00':String(qtyRow.remaining_subtotal),fullRemoval?'REMOVED':'ACTIVE',reqQty,now,req.user!.id,a.reason,item.id]);
       const subtotalRow = await tx.queryOne<any>(`SELECT COALESCE(SUM(CASE WHEN status='ACTIVE' THEN subtotal ELSE 0 END),0) AS subtotal FROM order_items WHERE order_id=?`,[order.id]);
       const subtotal = String(subtotalRow.subtotal);
-      const branchConfig = await tx.queryOne<any>(`SELECT percent FROM service_charge_configs WHERE branch_id=? AND status='ACTIVE'`,[order.branch_id]);
-      const setting = branchConfig?.percent ?? (await tx.queryOne<any>(`SELECT value FROM system_settings WHERE key='DINE_IN_SERVICE_CHARGE_PERCENT'`))?.value;
-      const bps = percentToBps(setting || '10');
-      const serviceRow = await tx.queryOne<any>(`SELECT CASE WHEN ?='DINE_IN' THEN ROUND((CAST(? AS DECIMAL(12,2))*CAST(? AS DECIMAL(12,2))/10000),2) ELSE 0 END AS service`,[order.order_type,subtotal,bps]);
+      // Recalculating after a removal must use the SAME percentage the order was priced with, not
+      // whatever is configured today -- so it resolves against the order's own creation moment.
+      const {percent: scPct} = await serviceChargePercentFor(tx, order.branch_id, order.order_type, order.created_at);
+      const bps = percentToBps(scPct);
+      const serviceRow = await tx.queryOne<any>(`SELECT ROUND((CAST(? AS DECIMAL(12,2))*CAST(? AS DECIMAL(12,2))/10000),2) AS service`,[subtotal,bps]);
       const service = String(serviceRow.service);
       const totalRow = await tx.queryOne<any>(`SELECT (CAST(? AS DECIMAL(12,2))-CAST(? AS DECIMAL(12,2))-CAST(? AS DECIMAL(12,2))+CAST(? AS DECIMAL(12,2))) AS final_amount`,[subtotal,order.discount,order.promotion_amount,service]);
       const finalAmount = String(totalRow.final_amount);

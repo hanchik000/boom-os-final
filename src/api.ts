@@ -282,6 +282,13 @@ export const api = {
   approveOrderClosure: (closureId:string, reason?:string) => request<{ closure:any; order:any }>(`/api/orders/closure-requests/${closureId}/approve`, { method:'POST', body: JSON.stringify({ reason }) }),
   rejectOrderClosure: (closureId:string, reason?:string) => request<{ closure:any; order:any }>(`/api/orders/closure-requests/${closureId}/reject`, { method:'POST', body: JSON.stringify({ reason }) }),
 
+  // Stage 34.2 -- service charge configuration versions, ledger and pool distribution.
+  getServiceCharge: (branchId:string) => request<{ config:any|null; categories:string[]; modes:string[]; strategies:string[] }>(`/api/service-charge/${branchId}`),
+  getServiceChargeHistory: (branchId:string) => request<{ versions:any[] }>(`/api/service-charge/${branchId}/history`),
+  publishServiceCharge: (branchId:string, body:any) => request<{ config:any }>(`/api/service-charge/${branchId}`, { method:'PUT', body: JSON.stringify(body) }),
+  getServiceChargeLedger: (branchId:string) => request<{ ledger:any[]; totals:any[] }>(`/api/service-charge/${branchId}/ledger`),
+  distributeServiceCharge: (branchId:string, from:string, to:string) => request<{ pools_processed:number; distributed:any[]; skipped:any[] }>(`/api/service-charge/${branchId}/distribute`, { method:'POST', body: JSON.stringify({ from, to }) }),
+
   // Branches
   getBranches: (params?: { status?: string; search?: string }) => {
     const query = new URLSearchParams();

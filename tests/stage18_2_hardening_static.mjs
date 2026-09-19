@@ -6,14 +6,17 @@ const schema=read('prisma/schema.prisma');
 const auth=read('server/auth.ts');
 const waiters=read('server/routes/waiters.ts');
 const payments=read('server/routes/payments.ts');
+const serviceChargeCore=read('server/service-charge.ts');
 const orders=read('server/routes/orders.ts');
 const operator=read('server/routes/operator-pos.ts');
 const checks=[
  ['Branch model has MenuModifierGroup inverse relation',schema.includes('menu_modifier_groups   MenuModifierGroup[]')],
  ['Waiter default status is PROBATION',schema.includes('status       String   @default("PROBATION")')],
  ['Waiter status API accepts PROBATION/PROFESSIONAL',waiters.includes("['PROBATION','PROFESSIONAL']")],
- ['Service charge excludes non-professional waiters',payments.includes("waiter.status!=='PROFESSIONAL'")],
- ['DINE_IN service charge is configurable',orders.includes('service_charge_configs')],
+ // Stage 34.2 moved both invariants into the one service-charge core; they are asserted there, plus
+ // the delegation from the payment and order paths that used to hold their own copies.
+ ['Service charge excludes non-professional waiters',serviceChargeCore.includes("waiter.status === 'PROFESSIONAL'") && payments.includes('recordServiceChargeLedger')],
+ ['DINE_IN service charge is configurable',serviceChargeCore.includes('service_charge_configs') && orders.includes('serviceChargePercentFor')],
  ['TAKEAWAY has no table',orders.includes("orderType==='TAKEAWAY'&&tableId")],
  ['Branch middleware fails closed when branch missing',auth.includes("code: 'BRANCH_REQUIRED'")],
  ['Operator lock endpoint exists',operator.includes("router.post('/lock'")],

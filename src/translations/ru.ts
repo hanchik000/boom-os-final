@@ -18,6 +18,7 @@ export const ru = {
   "nav.commandCenter": "Центр управления",
   "nav.liveOperations": "Живые операции",
   "nav.foodCost": "Себестоимость",
+  "nav.serviceCharge": "Сервисный сбор",
   "nav.tests": "Приемочные тесты",
 
   // Header & User

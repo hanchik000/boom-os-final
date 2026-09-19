@@ -10,7 +10,10 @@ assert.match(pos,/status='LOCKED'/);
 assert.match(pos,/last_seen_at/);
 assert.match(pos,/UPDATE operator_pos_sessions SET status='LOCKED'/);
 assert.match(payments,/requireOperatorPosSession/);
-assert.match(payments,/waiter_profiles wp WHERE wp\.user_id=\?/);
+// Stage 34.2: the professional-waiter check now lives in the one service-charge core the payment
+// path delegates to, so assert it there and assert the delegation.
+assert.match(fs.readFileSync('server/service-charge.ts','utf8'),/FROM waiter_profiles WHERE user_id=\?/);
+assert.match(payments,/recordServiceChargeLedger/);
 assert.match(kpi,/orders o ON o.id=p.order_id/);
 assert.match(kpi,/o\.waiter_user_id=\?/);
 assert.match(kpi,/attribution/);

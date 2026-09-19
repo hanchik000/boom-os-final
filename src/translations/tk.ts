@@ -20,6 +20,7 @@ export const tk: Record<keyof typeof ru, string> = {
   "nav.commandCenter": "Dolandyryş merkezi",
   "nav.liveOperations": "Janly amallar",
   "nav.foodCost": "Tagam bahasy",
+  "nav.serviceCharge": "Hyzmat ýygymy",
   "nav.tests": "Kabul ediş synaglary",
 
   // Header & User

@@ -268,6 +268,11 @@ export async function seedInitialData() {
   }
 
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_dine_service_charge','DINE_IN_SERVICE_CHARGE_PERCENT','10','number','Server-calculated service charge percentage for DINE_IN orders only.',now,now]);
+  // Stage 34.2: takeaway (pickup) and delivery carry their own configurable service charge, never a
+  // hardcoded number and never silently reused from dine-in. A branch's service charge configuration
+  // version overrides these; they are the fallback when no version is in force.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_takeaway_service_charge','TAKEAWAY_SERVICE_CHARGE_PERCENT','0','number','Service charge percentage for TAKEAWAY (pickup) orders.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_delivery_service_charge','DELIVERY_SERVICE_CHARGE_PERCENT','0','number','Service charge percentage for DELIVERY orders.',now,now]);
   // Live Operations (Stage 33) delay detection: a configurable operational threshold, not a
   // number hardcoded in route or UI code. Editable by settings.update (Owner/SuperAdmin) via the
   // existing Settings screen; read server-side by /api/operations/live.

@@ -64,19 +64,29 @@ expect('create branch', branch.status, 201, branch.body);
 const branchId = branch.body.branch.id;
 
 // ------------------------------------------------- service charge configuration
+// Stage 34.2: the flat allocation list was replaced by distribution categories, and publishing now
+// creates a new configuration VERSION (201) instead of editing one in place.
 const scConfig = await request(`/api/service-charge/${branchId}`, {
   method: 'PUT', headers: auth,
-  body: JSON.stringify({ percent: '10.00', allocations: [{ target_type: 'GROUP', department: 'WAITERS', percent: '5.00' }] }),
+  body: JSON.stringify({ percent: '10.00', categories: [{ category: 'WAITERS', percent: '5.00', mode: 'INDIVIDUAL', members: [] }] }),
 });
-expect('configure service charge', scConfig.status, 200, scConfig.body);
+expect('publish service charge version', scConfig.status, 201, scConfig.body);
 
 // Validation errors must be reported as such, not as an opaque 500 (and never hang).
 const badAllocation = await request(`/api/service-charge/${branchId}`, {
   method: 'PUT', headers: auth,
-  body: JSON.stringify({ percent: '10.00', allocations: [{ target_type: 'NOT_A_TARGET', percent: '1.00' }] }),
+  body: JSON.stringify({ percent: '10.00', categories: [{ category: 'NOT_A_CATEGORY', percent: '1.00' }] }),
 });
-expect('invalid allocation target rejected with 400', badAllocation.status, 400, badAllocation.body);
-assert.equal(badAllocation.body.code, 'INVALID_TARGET_TYPE');
+expect('invalid category rejected with 400', badAllocation.status, 400, badAllocation.body);
+assert.equal(badAllocation.body.code, 'INVALID_SERVICE_CHARGE_CATEGORY');
+
+// A caller still sending the removed payload is told so, never silently misconfigured.
+const legacyPayload = await request(`/api/service-charge/${branchId}`, {
+  method: 'PUT', headers: auth,
+  body: JSON.stringify({ percent: '10.00', categories: [{ category: 'WAITERS', percent: '5.00', mode: 'INDIVIDUAL', members: [] }] }),
+});
+expect('legacy allocations payload rejected with 400', legacyPayload.status, 400, legacyPayload.body);
+assert.equal(legacyPayload.body.code, 'ALLOCATIONS_REPLACED_BY_CATEGORIES');
 
 const scRead = await request(`/api/service-charge/${branchId}`, { headers: auth });
 expect('read service charge config', scRead.status, 200, scRead.body);
@@ -278,10 +288,14 @@ const ledger = await request(`/api/service-charge/${branchId}/ledger`, { headers
 expect('service-charge ledger', ledger.status, 200, ledger.body);
 const ledgerRows = ledger.body.ledger || ledger.body.entries || [];
 assert.ok(ledgerRows.length >= 1, 'a DINE_IN payment must produce a service-charge ledger entry');
-const ledgerRow = ledgerRows[0];
-assertMoney('service_charge_ledger.base_amount', String(ledgerRow.base_amount), '91.00');
-assertMoney('service_charge_ledger.percent', String(ledgerRow.percent), '5.00');
-assertMoney('service_charge_ledger.amount', String(ledgerRow.amount), '4.55');
+// The WAITERS category is configured at 5% with no named members, so nobody earns it and the whole
+// 10% service charge falls to the establishment -- money is never invented and never lost.
+const establishmentRow = ledgerRows.find(r => r.target_type === 'ESTABLISHMENT');
+assert.ok(establishmentRow, 'the unallocated service charge must be recorded to the establishment');
+assertMoney('service_charge_ledger.base_amount', String(establishmentRow.base_amount), '91.00');
+assertMoney('service_charge_ledger.amount', String(establishmentRow.amount), '9.10');
+assert.equal(ledgerRows.reduce((s, r) => s + Math.round(parseFloat(r.amount) * 100), 0), 910,
+  'the ledger must reconcile exactly to the service charge the order collected');
 
 // ----------------------------------------------------------- KPI evaluation
 const kpiRule = await request('/api/kpi/rules', {

@@ -26,6 +26,7 @@ import { ReceiptSettingsView } from './components/ReceiptSettingsView';
 import { CreditReportsView } from './components/CreditReportsView';
 import { ManagerCommandCenterView } from './components/ManagerCommandCenterView';
 import { LiveOperationsView } from './components/LiveOperationsView';
+import { ServiceChargeView } from './components/ServiceChargeView';
 import { FoodCostView } from './components/FoodCostView';
 
 function MainLayout() {
@@ -121,6 +122,8 @@ function MainLayout() {
         return { title: t('nav.commandCenter'), subtitle: language === 'ru' ? 'Продажи, касса, кухня, официанты, кассиры, склад и персонал в реальном времени' : 'Hakyky wagtda satuw, kassa, aşhana, ofisiantlar, kassirler, ammar we işgärler' };
       case 'liveOperations':
         return { title: t('nav.liveOperations'), subtitle: language === 'ru' ? 'Активные заказы, кухня, нагрузка официантов и кассиров прямо сейчас' : 'Häzirki wagtda işjeň sargytlar, aşhana, ofisiant we kassir ýüki' };
+      case 'serviceCharge':
+        return { title: t('nav.serviceCharge'), subtitle: language === 'ru' ? 'Процент обслуживания, распределение по категориям и история версий' : 'Hyzmat göterimi, kategoriýalar boýunça paýlanyş we wersiýa taryhy' };
       case 'foodCost':
         return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
       case 'inventory':
@@ -188,6 +191,7 @@ function MainLayout() {
           {currentTab === 'commandCenter' && <ManagerCommandCenterView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'liveOperations' && <LiveOperationsView onNavigate={(tab) => setCurrentTab(tab)} />}
           {currentTab === 'foodCost' && <FoodCostView />}
+          {currentTab === 'serviceCharge' && <ServiceChargeView />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}

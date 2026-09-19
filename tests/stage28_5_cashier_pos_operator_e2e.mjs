@@ -99,8 +99,8 @@ const item = (await request('/api/menu/items', { method: 'POST', headers: MGR_A1
 const invItem = (await request('/api/inventory/items', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, sku: `INV-${stamp}`, name: 'Ingredient', unit: 'kg', reorder_point: '1' }) })).body.item;
 await request('/api/inventory/movements', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, inventory_item_id: invItem.id, type: 'ADJUSTMENT', quantity: '50', reason: 'initial stock' }) });
 await request('/api/inventory/recipes', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, menu_item_id: item.id, name: 'Recipe', yield_qty: '1', ingredients: [{ inventory_item_id: invItem.id, quantity: '2' }] }) });
-const scR = await request(`/api/service-charge/${A1.id}`, { method: 'PUT', headers: MGR_A1.headers, body: JSON.stringify({ percent: '10.00', allocations: [] }) });
-expect('service charge config', scR.status, 200, scR.body);
+const scR = await request(`/api/service-charge/${A1.id}`, { method: 'PUT', headers: MGR_A1.headers, body: JSON.stringify({ percent: '10.00', categories: [] }) });
+expect('publish service charge version', scR.status, 201, scR.body); // Stage 34.2: publishing creates a new version
 
 const waiterUser = await makeUser('waitA1', A1.id, [A1.id], ['WAITER']);
 const codeR = await request(`/api/waiters/${waiterUser.id}/code`, { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ code: '7070' }) });
@@ -165,10 +165,16 @@ dbCheck('6. cash_shifts.cash_sales incremented by exactly the payment amount', m
 const invAfter = (await request(`/api/inventory/items?branch_id=${A1.id}`, { headers: MGR_A1.headers })).body.items.find(i => i.id === invItem.id);
 dbCheck('7. inventory deducted exactly once (2 units)', moneyEq(String(Number(invBefore.current_stock) - Number(invAfter.current_stock)), '2'), { before: invBefore.current_stock, after: invAfter.current_stock });
 
-// 8. Service-charge ledger remains correct (no allocations configured -> no ledger rows, and
-// no error/crash -- the recompute path is unaffected by this fix).
+// 8. Service-charge ledger remains correct and no error/crash -- the recompute path is unaffected
+// by this fix. Stage 34.2 changed what "no distribution configured" means: the money is no longer
+// silently unrecorded, it is booked to the establishment, so the ledger reconciles to the service
+// charge the order actually collected instead of vanishing.
 const ledgerAfter = (await request(`/api/service-charge/${A1.id}/ledger`, { headers: MGR_A1.headers })).body.ledger.filter(l => l.order_id === order.id);
-dbCheck('8. service-charge ledger unaffected (0 allocations configured -> 0 rows, no crash)', ledgerAfter.length === 0, ledgerAfter);
+const orderForLedger = (await request(`/api/orders/${order.id}`, { headers: MGR_A1.headers })).body.order;
+dbCheck('8. service-charge ledger unaffected (no distribution configured -> the whole service charge is booked to the establishment, no crash)',
+  ledgerAfter.length === 1 && ledgerAfter[0].target_type === 'ESTABLISHMENT' && !ledgerAfter[0].user_id
+  && Math.round(parseFloat(ledgerAfter[0].amount) * 100) === Math.round(parseFloat(orderForLedger.service_charge) * 100),
+  { ledgerAfter, service_charge: orderForLedger.service_charge });
 
 // 9. Audit row created exactly once.
 const auditRows = (await request(`/api/audit?entity_type=PAYMENT&action=PAYMENT_CREATED&limit=200`, { headers: MGR_A1.headers })).body.logs.filter(l => l.entity_id === payment.id);

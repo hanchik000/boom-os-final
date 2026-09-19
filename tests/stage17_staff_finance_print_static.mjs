@@ -17,8 +17,13 @@ const checks=[
  ['kpi route mounted',read('server.ts').includes("app.use('/api/kpi', kpiRouter)")],
  ['operator route mounted',read('server.ts').includes("app.use('/api/operator-pos', operatorPosRouter)")],
  ['print route mounted',read('server.ts').includes("app.use('/api/print', printRouter)")],
- ['branch service charge calculation',read('server/routes/orders.ts').includes('service_charge_configs')],
- ['trial excluded from waiter allocation',read('server/routes/payments.ts').includes("waiter.status!=='PROFESSIONAL'")],
+ // Stage 34.2 moved both of these into the one service-charge core (server/service-charge.ts) so
+ // the order-pricing path and the ledger path cannot diverge. The invariants are unchanged -- the
+ // branch's own configuration still drives the percentage, and a non-PROFESSIONAL waiter still does
+ // not share in the service charge -- so they are asserted where they now live, plus the fact that
+ // the routes really delegate to that core.
+ ['branch service charge calculation',read('server/service-charge.ts').includes('service_charge_configs') && read('server/routes/orders.ts').includes('serviceChargePercentFor')],
+ ['trial excluded from waiter allocation',read('server/service-charge.ts').includes("waiter.status === 'PROFESSIONAL'") && read('server/routes/payments.ts').includes('recordServiceChargeLedger')],
  ['kpi strict threshold',read('server/routes/kpi.ts').includes("valueCents>thresholdCents")],
  ['print reprint audit',read('server/routes/print.ts').includes('PRINT_REPRINT_REQUESTED')],
  ['operator password verification',read('server/routes/operator-pos.ts').includes('verifyPassword')],
@@ -36,5 +41,8 @@ const menu17 = read('server/routes/menu.ts');
 assert17(menu17.includes("router.delete('/items/:id'"), 'Menu item soft-delete endpoint missing');
 assert17(menu17.includes('deleted_at IS NULL'), 'Menu reads must exclude archived menu records');
 const orders17 = read('server/routes/orders.ts');
-assert17(orders17.includes("SELECT percent FROM service_charge_configs WHERE branch_id=? AND status='ACTIVE'"), 'Order item removal must use branch Service Charge configuration');
+// Same invariant, resolved through the Stage 34.2 service-charge core -- and strengthened: the
+// recalculation must use the configuration version in force when the ORDER was created, never the
+// one configured today, so removing an item can never silently re-price an old order.
+assert17(orders17.includes('serviceChargePercentFor(tx, order.branch_id, order.order_type, order.created_at)'), 'Order item removal must use branch Service Charge configuration');
 console.log('STAGE 17.1 HARDENING: PASS');

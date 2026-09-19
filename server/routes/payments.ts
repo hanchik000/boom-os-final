@@ -5,31 +5,12 @@ import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { requireOperatorPosSession } from './operator-pos';
 import { applyCreditSale } from './credit';
 import { refundPaymentFinancials } from '../order-closure';
+import { recordServiceChargeLedger } from '../service-charge';
 const router=Router();
 const METHODS=new Set(['CASH','CARD','ONLINE','BONUS','OTHER','CREDIT']);
 function cents(v:unknown){const s=String(v??'').trim();if(!/^\d+(?:\.\d{1,2})?$/.test(s))throw new Error('INVALID_MONEY');const [a,b='']=s.split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));}
 function text(c:bigint){return `${c/100n}.${(c%100n).toString().padStart(2,'0')}`;}
 function allowed(req:Request,b:string){return Boolean(req.user?.isSuperUser||req.user?.allowedBranchIds.includes(b));}
-async function recordServiceChargeLedger(tx:TxClient, order:any, actorId:string, now:string){
-  if(order.order_type!=='DINE_IN' || String(order.service_charge||'0')==='0.00') return;
-  const cfg=await tx.queryOne<any>('SELECT id,percent FROM service_charge_configs WHERE branch_id=? AND status=\'ACTIVE\'',[order.branch_id]);
-  if(!cfg) return;
-  const allocations=await tx.query<any>('SELECT * FROM service_charge_allocations WHERE config_id=? AND active=true',[cfg.id]);
-  for(const a of allocations){
-    let userId=a.user_id||null;
-    if(String(a.target_type).toUpperCase()==='INDIVIDUAL' && userId!==order.waiter_user_id) continue;
-    if(String(a.department||'').toUpperCase() === 'WAITERS'){
-      if(!order.waiter_user_id) continue;
-      userId=order.waiter_user_id;
-      const waiter=await tx.queryOne<any>('SELECT wp.status FROM waiter_profiles wp WHERE wp.user_id=?',[userId]);
-      if(waiter && waiter.status!=='PROFESSIONAL') continue;
-    }
-    const base=String(order.subtotal||'0');
-    const baseCents=cents(base); const pctHundredths=cents(String(a.percent)); const amountCents=(baseCents*pctHundredths)/10000n; const amount=text(amountCents);
-    await tx.execute('INSERT INTO service_charge_ledger (id,branch_id,order_id,user_id,target_type,department,base_amount,percent,amount,status,created_at) VALUES (?,?,?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),\'EARNED\',?) ON CONFLICT (order_id,user_id,target_type,department) DO NOTHING',[`scl_${crypto.randomUUID()}`,order.branch_id,order.id,userId,a.target_type,a.department,base,a.percent,amount,now]);
-  }
-}
-
 async function releaseTableIfNoActiveOrders(tx:TxClient, tableId:string, branchId:string, now:string) {
   const active=await tx.queryOne<any>(`SELECT id FROM orders WHERE table_id=? AND branch_id=? AND status NOT IN ('COMPLETED','REFUNDED','CANCELLED','CLOSED_BY_ESTABLISHMENT') LIMIT 1`,[tableId,branchId]);
   if(!active) await tx.execute(`UPDATE dining_tables SET status='AVAILABLE',updated_at=? WHERE id=? AND branch_id=? AND status='OCCUPIED'`,[now,tableId,branchId]);

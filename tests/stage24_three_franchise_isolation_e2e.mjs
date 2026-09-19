@@ -180,7 +180,7 @@ async function makeBranch(tag, n, franchiseId) {
   expect(`kpi rule ${tag}`, kpiRule.status, 201, kpiRule.body);
   await request(`/api/service-charge/${id}`, {
     method: 'PUT', headers: OWNER,
-    body: JSON.stringify({ percent: '10.00', allocations: [{ target_type: 'GROUP', department: 'WAITERS', percent: '5.00' }] }),
+    body: JSON.stringify({ percent: '10.00', categories: [{ category: 'WAITERS', percent: '5.00', mode: 'INDIVIDUAL', members: [] }] }),
   });
 
   const area = await request('/api/tables/areas', { method: 'POST', headers: OWNER, body: JSON.stringify({ branch_id: id, name: `Зал ${tag}` }) });
@@ -380,7 +380,7 @@ for (const [S, why] of pairs) {
   // object-level writes not already covered
   await mustDeny(`U updates ${S.tag} branch metadata`, U, 'PUT', `/api/branches/${S.id}`, { name: 'Захвачено' }, 'I2');
   await mustDeny(`U deletes ${S.tag} branch`, U, 'DELETE', `/api/branches/${S.id}`, undefined, 'I2');
-  await mustDeny(`U reconfigures ${S.tag} service charge`, U, 'PUT', `/api/service-charge/${S.id}`, { percent: '99.00', allocations: [] }, 'I2');
+  await mustDeny(`U reconfigures ${S.tag} service charge`, U, 'PUT', `/api/service-charge/${S.id}`, { percent: '99.00', categories: [] }, 'I2');
   await mustDeny(`U widens ${S.tag} staff scope`, U, 'PUT', `/api/users/${S.staffId}/branch-access`, { allowed_branch_ids: [S.id] }, 'I1');
 }
 

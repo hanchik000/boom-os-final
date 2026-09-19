@@ -92,8 +92,10 @@ const item = (await request('/api/menu/items', { method: 'POST', headers: MGR_A1
 const invItem = (await request('/api/inventory/items', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, sku: `INV-${stamp}`, name: 'Bun', unit: 'pcs', reorder_point: '1' }) })).body.item;
 await request('/api/inventory/movements', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, inventory_item_id: invItem.id, type: 'ADJUSTMENT', quantity: '100', reason: 'initial stock' }) });
 await request('/api/inventory/recipes', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, menu_item_id: item.id, name: 'Recipe', yield_qty: '1', ingredients: [{ inventory_item_id: invItem.id, quantity: '3' }] }) });
-const scR = await request(`/api/service-charge/${A1.id}`, { method: 'PUT', headers: MGR_A1.headers, body: JSON.stringify({ percent: '10.00', allocations: [] }) });
-expect('service charge config', scR.status, 200, scR.body);
+// Stage 34.2: publishing a service charge configuration creates a new VERSION (201) and the flat
+// allocation list was replaced by distribution categories.
+const scR = await request(`/api/service-charge/${A1.id}`, { method: 'PUT', headers: MGR_A1.headers, body: JSON.stringify({ percent: '10.00', categories: [] }) });
+expect('publish service charge version', scR.status, 201, scR.body);
 const areaR = await request('/api/tables/areas', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, name: 'Hall', sort_order: 0 }) });
 const tableR = await request('/api/tables', { method: 'POST', headers: MGR_A1.headers, body: JSON.stringify({ branch_id: A1.id, area_id: areaR.body.area.id, code: `T-${stamp % 10000}`, seats: 4 }) });
 const waiterUser = await makeUser('waitA1', A1.id, [A1.id], ['WAITER']);

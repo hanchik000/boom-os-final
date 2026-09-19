@@ -253,7 +253,7 @@ await mustDeny('A+B user moves C stock (body branch_id)', uAB, 'POST', '/api/inv
 });
 await mustDeny('A+B user opens shift in C', uAB, 'POST', '/api/cash-shifts', { branch_id: B1.id, opening_cash: '1.00' });
 await mustDeny('A+B user locks POS in C', uAB, 'POST', '/api/operator-pos/lock', { branch_id: B1.id });
-await mustDeny('A+B user reconfigures C service charge', uAB, 'PUT', `/api/service-charge/${B1.id}`, { percent: '99.00', allocations: [] });
+await mustDeny('A+B user reconfigures C service charge', uAB, 'PUT', `/api/service-charge/${B1.id}`, { percent: '99.00', categories: [] });
 // object-level write against C
 await mustDeny('A+B user edits C menu item', uAB, 'PATCH', `/api/menu/items/${B1.menuItemId}`, { name_ru: 'Изменено' });
 await mustDeny('A+B user deletes C menu item', uAB, 'DELETE', `/api/menu/items/${B1.menuItemId}`);

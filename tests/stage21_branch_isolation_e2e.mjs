@@ -96,9 +96,9 @@ async function makeBranch(tag, suffix) {
 
   const sc = await request(`/api/service-charge/${id}`, {
     method: 'PUT', headers: OWNER,
-    body: JSON.stringify({ percent: '10.00', allocations: [{ target_type: 'GROUP', department: 'WAITERS', percent: '5.00' }] }),
+    body: JSON.stringify({ percent: '10.00', categories: [{ category: 'WAITERS', percent: '5.00', mode: 'INDIVIDUAL', members: [] }] }),
   });
-  expect(`configure service charge ${tag}`, sc.status, 200, sc.body);
+  expect(`publish service charge version ${tag}`, sc.status, 201, sc.body);
 
   const kpiRule = await request('/api/kpi/rules', {
     method: 'POST', headers: OWNER,
@@ -306,7 +306,7 @@ await mustDeny('refund foreign payment', A, 'POST', `/api/payments/${B.paymentId
   { reason: 'cross-branch refund' });
 await mustDeny('open shift in foreign branch', A, 'POST', '/api/cash-shifts', { branch_id: B.id, opening_cash: '1.00' });
 await mustDeny('close foreign shift (Z-report)', A, 'POST', `/api/cash-shifts/${B.shiftId}/z-report`, { actual_cash: '1.00' });
-await mustDeny('reconfigure foreign service charge', A, 'PUT', `/api/service-charge/${B.id}`, { percent: '99.00', allocations: [] });
+await mustDeny('reconfigure foreign service charge', A, 'PUT', `/api/service-charge/${B.id}`, { percent: '99.00', categories: [] });
 await mustDeny('create KPI rule in foreign branch', A, 'POST', '/api/kpi/rules', {
   branch_id: B.id, name: 'Hack', metric: 'SALES', threshold: '1.00',
   threshold_mode: 'GREATER_OR_EQUAL', reward_type: 'FIXED', reward_value: '999.00',

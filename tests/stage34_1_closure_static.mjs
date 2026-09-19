@@ -22,7 +22,13 @@ const migration = read('prisma/migrations/20260918210000_stage34_1_order_closure
 
 // ---------------------------------------------------------------- 1. the core rule
 ok('1. the unconditional restore-on-refund helper is gone from payments.ts', !/async function restoreInventoryForOrder\s*\(/.test(payments), payments.match(/restoreInventoryForOrder[^\n]*/)?.[0]);
-ok('2. the refund route no longer calls any inventory restore', !/refund[\s\S]{0,2600}restoreInventoryForOrder/.test(payments));
+// Slice the actual refund route rather than measuring character distance: the route body itself
+// must contain no inventory mutation and no call to a restore helper.
+ok('2. the refund route body touches no inventory at all', (() => {
+  const start = payments.indexOf("router.post('/:id/refund'");
+  const body = start < 0 ? '' : payments.slice(start);
+  return start >= 0 && !/restoreInventoryForOrder\s*\(/.test(body) && !/UPDATE inventory_items/.test(body) && !/stock_movements/.test(body);
+})());
 ok('3. RESTORE_STOCK is refused once production has started', /INVENTORY_RESTORE_FORBIDDEN_AFTER_PRODUCTION/.test(closure) && /inventory_treatment === 'RESTORE_STOCK' && prod\.started/.test(closure));
 ok('4. the same rule is enforced at request time, not only at approval', /RESTORE_STOCK' && prod\.started/.test(orders));
 ok('5. a write-off of already-consumed stock never moves stock a second time', /if \(sales\.length > 0\)[\s\S]{0,320}return fromScaled4\(lossScaled4\);/.test(closure));
