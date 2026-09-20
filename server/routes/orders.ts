@@ -45,8 +45,15 @@ router.post('/', async(req,res)=>{
   if(menu.length!==ids.length){res.status(400).json({error:'VALIDATION_ERROR',code:'MENU_ITEM_UNAVAILABLE',message:'One or more menu items are unavailable in this branch.',details:{}});return;}
   const menuMap=new Map(menu.map((m:any)=>[m.id,m]));
   const modifierIds=[...new Set(parsedItems.flatMap(x=>x.modifierIds))];
-  const modifiers=modifierIds.length?await query<any>(`SELECT mm.id,mm.group_id,mm.name_ru,mm.name_tk,mm.price_delta,mg.menu_item_id,mg.min_select,mg.max_select,mg.required FROM menu_modifiers mm JOIN menu_modifier_groups mg ON mg.id=mm.group_id WHERE mm.id IN (${modifierIds.map(()=>'?').join(',')}) AND mm.status='ACTIVE' AND mg.status='ACTIVE' AND mg.branch_id=?`,[...modifierIds,branchId]):[];
+  const modifiers=modifierIds.length?await query<any>(`SELECT mm.id,mm.group_id,mm.name_ru,mm.name_tk,mm.price_delta,mm.source_menu_item_id,src.status AS source_status,src.deleted_at AS source_deleted_at,src.branch_id AS source_branch_id,mg.menu_item_id,mg.min_select,mg.max_select,mg.required FROM menu_modifiers mm JOIN menu_modifier_groups mg ON mg.id=mm.group_id LEFT JOIN menu_items src ON src.id=mm.source_menu_item_id WHERE mm.id IN (${modifierIds.map(()=>'?').join(',')}) AND mm.status='ACTIVE' AND mg.status='ACTIVE' AND mg.branch_id=?`,[...modifierIds,branchId]):[];
   if(modifiers.length!==modifierIds.length){res.status(400).json({error:'VALIDATION_ERROR',code:'MODIFIER_UNAVAILABLE',message:'One or more modifiers are unavailable in this branch.',details:{}});return;}
+  // Stage 38: a component backed by a real dish (Stage 37's source_menu_item_id) is only
+  // orderable while that dish is itself orderable. Archiving the source must not silently keep
+  // generating new inventory consumption against a withdrawn item -- and it must never reach
+  // another branch's menu. Historical orders are untouched: they hold their own name and price
+  // snapshots, and the FK is ON DELETE SET NULL precisely so archiving can never break them.
+  const unavailableSource=modifiers.find((m:any)=>m.source_menu_item_id&&(m.source_status!=='ACTIVE'||m.source_deleted_at||(m.source_branch_id&&m.source_branch_id!==branchId)));
+  if(unavailableSource){res.status(400).json({error:'VALIDATION_ERROR',code:'MODIFIER_SOURCE_UNAVAILABLE',message:'A selected component is no longer available.',details:{modifier_id:unavailableSource.id}});return;}
   const relevantItemIds=ids;
   const groups=await query<any>(`SELECT id,menu_item_id,min_select,max_select,required FROM menu_modifier_groups WHERE menu_item_id IN (${relevantItemIds.map(()=>'?').join(',')}) AND branch_id=? AND status='ACTIVE'`,[...relevantItemIds,branchId]);
   const modMap=new Map(modifiers.map((m:any)=>[m.id,m])); const groupsByItem=new Map<string,any[]>();

@@ -54,7 +54,9 @@ check('food_cost_percent is null (not a divide-by-zero crash or a fabricated val
 check('consumption still happens inside the existing payments.ts POST / transaction (no new "sale consumption" endpoint)', (paymentsTs.match(/async function consumeInventoryForOrder/g) || []).length === 1);
 check('consumption still correctly multiplies recipe ingredient quantity by order item quantity, scaled by yield_qty (unchanged core formula)', /ingredient\.quantity\*.*orderItem\.quantity\*.*recipe\.yield_qty|CAST\(\? AS DECIMAL\(14,4\)\)\*CAST\(\? AS DECIMAL\(14,4\)\)\/NULLIF\(CAST\(\? AS DECIMAL\(14,4\)\),0\)/.test(paymentsTs));
 check('each order_item records its own recipe_version_snapshot and recipe_cost_snapshot at the moment of consumption', /UPDATE order_items SET recipe_version_snapshot=\?,recipe_cost_snapshot=CAST\(\? AS numeric\) WHERE id=\?/.test(paymentsTs));
-check('SALE stock movements now also carry a unit_cost, consistent with PURCHASE movements', /INSERT INTO stock_movements \(id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at\)[\s\S]{0,300}stock\.id,'SALE',required,String\(stock\.average_cost/.test(paymentsTs));
+// Stage 38 reformatted this INSERT (aggregated consumption), so match the INTENT -- a SALE
+// movement carrying the ingredient's weighted-average cost -- rather than the exact spacing.
+check('SALE stock movements now also carry a unit_cost, consistent with PURCHASE movements', /INSERT INTO stock_movements \(id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at\)[\s\S]{0,400}'SALE',\s*required,\s*String\(stock\.average_cost/.test(paymentsTs));
 
 // --- refund / closure: any reversal still uses the literal historical ledger rows, never today's recipe
 // Stage 34.1 replaced the unconditional restore-on-refund with an explicitly approved inventory

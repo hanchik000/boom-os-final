@@ -121,8 +121,12 @@ router.get('/pos', async (req,res)=>{
   const groupRows = items.length ? await query<any>(`SELECT id,menu_item_id,name_ru,name_tk,name_en,min_select,max_select,required,sort_order
       FROM menu_modifier_groups WHERE branch_id=? AND status='ACTIVE' AND menu_item_id IN (${items.map(()=>'?').join(',')}) ORDER BY sort_order,name_ru`,
       [session.branch_id, ...items.map((i:any)=>i.id)]) : [];
-  const modRows = groupRows.length ? await query<any>(`SELECT id,group_id,name_ru,name_tk,name_en,price_delta,sort_order,source_menu_item_id
-      FROM menu_modifiers WHERE status='ACTIVE' AND group_id IN (${groupRows.map(()=>'?').join(',')}) ORDER BY sort_order,name_ru`,
+  // Stage 38: same rule on the waiter device -- an option whose source dish is archived is not
+  // offered, because Order Core would refuse it (MODIFIER_SOURCE_UNAVAILABLE).
+  const modRows = groupRows.length ? await query<any>(`SELECT mm.id,mm.group_id,mm.name_ru,mm.name_tk,mm.name_en,mm.price_delta,mm.sort_order,mm.source_menu_item_id
+      FROM menu_modifiers mm
+      LEFT JOIN menu_items src ON src.id=mm.source_menu_item_id
+        WHERE mm.status='ACTIVE' AND (mm.source_menu_item_id IS NULL OR (src.status='ACTIVE' AND src.deleted_at IS NULL)) AND mm.group_id IN (${groupRows.map(()=>'?').join(',')}) ORDER BY mm.sort_order,mm.name_ru`,
       groupRows.map((g:any)=>g.id)) : [];
   const modsByGroup = new Map<string, any[]>();
   for (const m of modRows) { if(!modsByGroup.has(m.group_id)) modsByGroup.set(m.group_id, []); modsByGroup.get(m.group_id)!.push(m); }

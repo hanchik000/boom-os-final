@@ -41,28 +41,135 @@ function scaled4(v: unknown): bigint {
 }
 function fromScaled4(c: bigint): string { const neg = c < 0n; const abs = neg ? -c : c; return `${neg ? '-' : ''}${abs / 10000n}.${(abs % 10000n).toString().padStart(4, '0')}`; }
 
+// -----------------------------------------------------------------------------------------------
+// Stage 38 -- recipe consumption for a paid order, base dish AND chosen components.
+//
+// This is the SAME single consumption pipeline that has always run here. What changed:
+//
+// 1. A chosen modifier is resolved through Stage 37's `source_menu_item_id` into the EXISTING
+//    Recipe Engine. There is no modifier inventory table, no modifier consumption ledger and no
+//    hardcoded deduction anywhere: a component consumes whatever its own dish's recipe says.
+//
+// 2. Requirements are now AGGREGATED per inventory item before anything is written. The
+//    stock_movements ledger is keyed `(branch_id, reference_type, reference_id, inventory_item_id,
+//    type)`, so one order can only ever hold ONE SALE movement per ingredient. The previous
+//    per-line loop decremented `current_stock` once per line but let the second INSERT fall into
+//    `ON CONFLICT DO NOTHING`, so two lines sharing an ingredient moved stock twice while the
+//    ledger recorded it once. That was latent before Stage 38 and would have become the normal
+//    case the moment a cheese modifier shared cheddar with its burger. Aggregating first makes
+//    the decrement and the single ledger row agree by construction, and keeps the ON CONFLICT
+//    clause doing only what it was meant to do: absorb a retry.
+//
+// 3. Each ingredient is locked once, in a deterministic (sorted) order, which also removes the
+//    lock-ordering deadlock two interleaved orders could hit when they shared ingredients.
+//
+// MISSING RECIPE -- the explicit rule, unchanged from what BOOM OS has always done for a dish:
+// a menu item with no active recipe consumes nothing and leaves its cost snapshot NULL. It is not
+// silent -- Stage 34's food-cost and analytics reports already count those units separately
+// (`units_without_recipe_cost` / `units_without_cost`). A component follows exactly the same rule,
+// and `recipe_cost_snapshot` on its order_item_modifiers row stays NULL so the gap is visible in
+// the same place. No new fallback was invented.
+// -----------------------------------------------------------------------------------------------
+
+interface ConsumptionNeed { inventoryItemId: string; qtyScaled4: bigint }
+
+/** Resolve one recipe into scaled-4 ingredient requirements for `multiplier` portions. */
+async function recipeRequirements(tx: TxClient, recipeId: string, yieldQty: unknown, multiplier: number): Promise<ConsumptionNeed[]> {
+  const ingredients = await tx.query<any>('SELECT inventory_item_id,quantity FROM recipe_ingredients WHERE recipe_id=?', [recipeId]);
+  const out: ConsumptionNeed[] = [];
+  for (const ingredient of ingredients) {
+    // The scaling stays in the database's DECIMAL(14,4) arithmetic, exactly as before -- no Float.
+    const row = await tx.queryOne<any>(
+      'SELECT (CAST(? AS DECIMAL(14,4))*CAST(? AS DECIMAL(14,4))/NULLIF(CAST(? AS DECIMAL(14,4)),0)) AS required_qty',
+      [ingredient.quantity, String(multiplier), yieldQty],
+    );
+    out.push({ inventoryItemId: ingredient.inventory_item_id, qtyScaled4: scaled4(row.required_qty) });
+  }
+  return out;
+}
+
+const activeRecipe = (tx: TxClient, branchId: string, menuItemId: string) =>
+  tx.queryOne<any>('SELECT id,version,yield_qty FROM recipes WHERE branch_id=? AND menu_item_id=? AND active=true', [branchId, menuItemId]);
+
 async function consumeInventoryForOrder(tx:TxClient, orderId:string, branchId:string, userId:string, now:string) {
-  const items=await tx.query<any>('SELECT id,menu_item_id,quantity FROM order_items WHERE order_id=?',[orderId]);
-  for(const orderItem of items){
-    if(!orderItem.menu_item_id) continue;
-    const recipe=await tx.queryOne<any>('SELECT id,version,yield_qty FROM recipes WHERE branch_id=? AND menu_item_id=? AND active=true',[branchId,orderItem.menu_item_id]);
-    if(!recipe) continue;
-    const ingredients=await tx.query<any>('SELECT inventory_item_id,quantity FROM recipe_ingredients WHERE recipe_id=?',[recipe.id]);
-    let lineCostScaled4 = 0n;
-    for(const ingredient of ingredients){
-      const requiredRow=await tx.queryOne<any>(`SELECT (CAST(? AS DECIMAL(14,4))*CAST(? AS DECIMAL(14,4))/NULLIF(CAST(? AS DECIMAL(14,4)),0)) AS required_qty`,[ingredient.quantity,orderItem.quantity,recipe.yield_qty]);
-      const required=String(requiredRow.required_qty);
-      const stock=await tx.queryOne<any>('SELECT id,current_stock,average_cost FROM inventory_items WHERE id=? AND branch_id=? AND active=true FOR UPDATE',[ingredient.inventory_item_id,branchId]);
-      if(!stock) throw Object.assign(new Error('INVENTORY_ITEM_NOT_FOUND'),{httpStatus:409});
-      const check=await tx.queryOne<any>('SELECT (CAST(current_stock AS DECIMAL(14,4))-CAST(? AS DECIMAL(14,4))) AS remaining FROM inventory_items WHERE id=? FOR UPDATE',[required,stock.id]);
-      if(Number(check.remaining)<0) throw Object.assign(new Error('INSUFFICIENT_STOCK'),{httpStatus:409,details:{inventory_item_id:stock.id,required_quantity:required,current_stock:String(stock.current_stock)}});
-      await tx.execute(`UPDATE inventory_items SET current_stock=current_stock-CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?`,[required,now,stock.id,branchId]);
-      await tx.execute(`INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,[`mov_${crypto.randomUUID()}`,branchId,stock.id,'SALE',required,String(stock.average_cost||'0'),'ORDER',orderId,'Consumed by paid order',userId,now]);
-      lineCostScaled4 += (scaled4(required) * scaled4(stock.average_cost)) / 10000n;
+  const items = await tx.query<any>('SELECT id,menu_item_id,quantity FROM order_items WHERE order_id=?', [orderId]);
+
+  // ---- pass 1: resolve every requirement, WITHOUT touching stock ----
+  const totals = new Map<string, bigint>();               // inventory_item_id -> scaled4 total
+  const lineNeeds: Array<{ orderItemId: string; version: number | null; needs: ConsumptionNeed[] }> = [];
+  const modifierNeeds: Array<{ modifierRowId: string; version: number | null; needs: ConsumptionNeed[] }> = [];
+  const add = (needs: ConsumptionNeed[]) => { for (const n of needs) totals.set(n.inventoryItemId, (totals.get(n.inventoryItemId) ?? 0n) + n.qtyScaled4); };
+
+  for (const orderItem of items) {
+    if (orderItem.menu_item_id) {
+      const recipe = await activeRecipe(tx, branchId, orderItem.menu_item_id);
+      if (recipe) {
+        const needs = await recipeRequirements(tx, recipe.id, recipe.yield_qty, Number(orderItem.quantity));
+        lineNeeds.push({ orderItemId: orderItem.id, version: recipe.version, needs });
+        add(needs);
+      }
     }
-    // The historical snapshot: this order_item's exact recipe version and its total ingredient
-    // cost at the moment of consumption. A later recipe or cost change never touches this row.
-    await tx.execute('UPDATE order_items SET recipe_version_snapshot=?,recipe_cost_snapshot=CAST(? AS numeric) WHERE id=?',[recipe.version, fromScaled4(lineCostScaled4), orderItem.id]);
+    // The chosen components of this line. `modifier_id` is ON DELETE SET NULL, so a component
+    // whose option was later deleted outright keeps its historical row and simply resolves to
+    // nothing here -- it can never consume against a dangling reference.
+    const chosen = await tx.query<any>(
+      `SELECT oim.id, oim.quantity, mm.source_menu_item_id
+         FROM order_item_modifiers oim
+         JOIN menu_modifiers mm ON mm.id=oim.modifier_id
+        WHERE oim.order_item_id=?`, [orderItem.id]);
+    for (const mod of chosen) {
+      if (!mod.source_menu_item_id) continue;                       // a plain option ("no onion") consumes nothing
+      // Branch scope is enforced here too: a component only ever resolves a recipe belonging to
+      // THIS order's branch, so a cross-branch source item can never reach this branch's stock.
+      const recipe = await activeRecipe(tx, branchId, mod.source_menu_item_id);
+      if (!recipe) continue;                                        // the documented missing-recipe rule
+      const multiplier = Number(orderItem.quantity) * Math.max(1, Number(mod.quantity) || 1);
+      const needs = await recipeRequirements(tx, recipe.id, recipe.yield_qty, multiplier);
+      modifierNeeds.push({ modifierRowId: mod.id, version: recipe.version, needs });
+      add(needs);
+    }
+  }
+
+  // ---- pass 2: lock, verify and move stock ONCE per ingredient ----
+  const unitCosts = new Map<string, bigint>();
+  for (const inventoryItemId of [...totals.keys()].sort()) {        // sorted => deterministic lock order
+    const requiredScaled4 = totals.get(inventoryItemId)!;
+    if (requiredScaled4 <= 0n) continue;
+    const required = fromScaled4(requiredScaled4);
+    const stock = await tx.queryOne<any>('SELECT id,current_stock,average_cost FROM inventory_items WHERE id=? AND branch_id=? AND active=true FOR UPDATE', [inventoryItemId, branchId]);
+    if (!stock) throw Object.assign(new Error('INVENTORY_ITEM_NOT_FOUND'), { httpStatus: 409 });
+    const check = await tx.queryOne<any>('SELECT (CAST(current_stock AS DECIMAL(14,4))-CAST(? AS DECIMAL(14,4))) AS remaining FROM inventory_items WHERE id=? FOR UPDATE', [required, stock.id]);
+    if (Number(check.remaining) < 0) throw Object.assign(new Error('INSUFFICIENT_STOCK'), { httpStatus: 409, details: { inventory_item_id: stock.id, required_quantity: required, current_stock: String(stock.current_stock) } });
+    unitCosts.set(inventoryItemId, scaled4(stock.average_cost));
+    await tx.execute('UPDATE inventory_items SET current_stock=current_stock-CAST(? AS numeric),updated_at=? WHERE id=? AND branch_id=?', [required, now, stock.id, branchId]);
+    // IDEMPOTENCY: one SALE movement per (order, ingredient). A replayed payment hits the unique
+    // constraint and changes nothing -- and because the quantity is now the aggregate, this single
+    // row is the whole truth about what this order took off the shelf.
+    await tx.execute(
+      `INSERT INTO stock_movements (id,branch_id,inventory_item_id,type,quantity,unit_cost,reference_type,reference_id,reason,created_by,created_at) VALUES (?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),?,?,?,?,?) ON CONFLICT (branch_id,reference_type,reference_id,inventory_item_id,type) DO NOTHING`,
+      [`mov_${crypto.randomUUID()}`, branchId, stock.id, 'SALE', required, String(stock.average_cost || '0'), 'ORDER', orderId, 'Consumed by paid order', userId, now]);
+  }
+
+  // ---- pass 3: the historical snapshots, priced at the cost we just consumed at ----
+  const costOf = (needs: ConsumptionNeed[]) => needs.reduce((sum, n) => sum + (n.qtyScaled4 * (unitCosts.get(n.inventoryItemId) ?? 0n)) / 10000n, 0n);
+  const lineExtra = new Map<string, bigint>();                      // order_item_id -> modifier cost
+
+  for (const m of modifierNeeds) {
+    const cost = costOf(m.needs);
+    await tx.execute('UPDATE order_item_modifiers SET recipe_version_snapshot=?,recipe_cost_snapshot=CAST(? AS numeric) WHERE id=?', [m.version, fromScaled4(cost), m.modifierRowId]);
+    const owner = await tx.queryOne<any>('SELECT order_item_id FROM order_item_modifiers WHERE id=?', [m.modifierRowId]);
+    if (owner) lineExtra.set(owner.order_item_id, (lineExtra.get(owner.order_item_id) ?? 0n) + cost);
+  }
+
+  // order_items.recipe_cost_snapshot remains the line's TOTAL internal cost, so every Stage 34
+  // food-cost and analytics query keeps working untouched -- it simply now includes the components.
+  const lineById = new Map(lineNeeds.map(l => [l.orderItemId, l]));
+  for (const orderItem of items) {
+    const base = lineById.get(orderItem.id);
+    const extra = lineExtra.get(orderItem.id) ?? 0n;
+    if (!base && extra === 0n) continue;                            // nothing consumed: snapshot stays NULL
+    const total = (base ? costOf(base.needs) : 0n) + extra;
+    await tx.execute('UPDATE order_items SET recipe_version_snapshot=?,recipe_cost_snapshot=CAST(? AS numeric) WHERE id=?', [base ? base.version : null, fromScaled4(total), orderItem.id]);
   }
 }
 router.use(authenticateToken);

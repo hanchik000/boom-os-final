@@ -939,6 +939,17 @@ model OrderItemModifier {
   name_snapshot         String
   price_delta_snapshot  Decimal  @db.Decimal(12,2)
   quantity              Int      @default(1)
+  // Stage 38: the INTERNAL cost half of a chosen component, mirroring exactly what
+  // order_items already carries for the base dish. When a modifier option is backed by a real
+  // menu item (Stage 37's source_menu_item_id) and that item has an active recipe, these record
+  // the recipe version and the ingredient cost AT THE MOMENT OF CONSUMPTION, so a later recipe
+  // or ingredient-cost change never rewrites this line's economics. Null when the option has no
+  // source item, no active recipe, or was never consumed (the order was never paid).
+  //
+  // price_delta_snapshot above is the SELLING price and stays exactly as it was -- these two are
+  // never shown on a customer, QR or POS surface.
+  recipe_version_snapshot Int?
+  recipe_cost_snapshot    Decimal? @db.Decimal(14,4)
   created_at            String
 
   order_item OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, map: "order_item_modifiers_item_fkey")

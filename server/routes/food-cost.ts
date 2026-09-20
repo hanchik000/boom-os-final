@@ -201,7 +201,13 @@ router.get('/profitability', requirePermission('food_cost.view'), async (req, re
     GROUP BY oi.menu_item_id, m.name_ru, m.name_tk ORDER BY revenue DESC`, [branchId, start, end]);
   const results = rows.map((r: any) => {
     const revenueCents = moneyCents(r.revenue);
-    const costCents = moneyCents(r.theoretical_cost);
+    // Stage 38 fix: theoretical_cost is SUM() over order_items.recipe_cost_snapshot, a
+    // DECIMAL(14,4) column, so Postgres returns it with FOUR decimals ("196.2240"). moneyCents
+    // only accepts two and silently returns 0 for anything else, so this report had been showing
+    // a theoretical cost of 0.00 -- and therefore a 100% gross margin -- for every branch whose
+    // summed cost was not exactly whole cents. Folded down through the same 4-decimal path
+    // analytics.ts already uses (scaled4 -> cents, truncating), so both reports agree.
+    const costCents = scaled4ToCents(scaled4(r.theoretical_cost));
     const marginCents = revenueCents - costCents;
     return {
       menu_item_id: r.menu_item_id, name_ru: r.name_ru, name_tk: r.name_tk, units_sold: r.units_sold,

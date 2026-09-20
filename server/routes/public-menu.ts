@@ -54,8 +54,12 @@ export async function publicMenuExtras(branch: string, itemIds: string[], lang: 
   const groupRows = await query<any>(`SELECT id,menu_item_id,name_ru,name_tk,name_en,min_select,max_select,required,sort_order
     FROM menu_modifier_groups WHERE branch_id=? AND status='ACTIVE' AND menu_item_id IN (${ph}) ORDER BY sort_order,name_ru`, [branch, ...itemIds]);
   const modRows = groupRows.length
-    ? await query<any>(`SELECT id,group_id,name_ru,name_tk,name_en,price_delta,sort_order FROM menu_modifiers
-        WHERE status='ACTIVE' AND group_id IN (${groupRows.map(() => '?').join(',')}) ORDER BY sort_order,name_ru`, groupRows.map((g: any) => g.id))
+    // Stage 38: a component whose source dish has been archived is no longer offered. The order
+    // route refuses it anyway (MODIFIER_SOURCE_UNAVAILABLE); this simply stops the guest being
+    // shown something that would then be rejected.
+    ? await query<any>(`SELECT mm.id,mm.group_id,mm.name_ru,mm.name_tk,mm.name_en,mm.price_delta,mm.sort_order FROM menu_modifiers mm
+        LEFT JOIN menu_items src ON src.id=mm.source_menu_item_id
+        WHERE mm.status='ACTIVE' AND (mm.source_menu_item_id IS NULL OR (src.status='ACTIVE' AND src.deleted_at IS NULL)) AND mm.group_id IN (${groupRows.map(() => '?').join(',')}) ORDER BY mm.sort_order,mm.name_ru`, groupRows.map((g: any) => g.id))
     : [];
 
   const modsByGroup = groupByItem(modRows, 'group_id');

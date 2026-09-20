@@ -83,8 +83,10 @@ const checks = [
   ['EN falls back to RU so a missing translation can never blank a dish out',
     publicMenu.includes('export function loc(') && /fallback = row\?\.\[`\$\{field\}_ru`\]/.test(publicMenu)],
   ['the public modifier read is restricted to ACTIVE rows in the requested branch',
+    // Stage 38 aliased this query and added the archived-source filter; the ACTIVE restriction
+    // and the branch scope are what this guard is actually for.
     /FROM menu_modifier_groups WHERE branch_id=\? AND status='ACTIVE'/.test(publicMenu) &&
-    /FROM menu_modifiers\s*\n\s*WHERE status='ACTIVE'/.test(publicMenu)],
+    /FROM menu_modifiers mm[\s\S]{0,200}WHERE mm\.status='ACTIVE'/.test(publicMenu)],
 
   // ------------------------------------------------- E. public data vs internal recipe data
   ['the public payload carries customer-facing ingredients, which are a different field from the recipe',
