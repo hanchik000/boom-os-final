@@ -1,3 +1,4 @@
+import { humanError } from './humanErrors';
 import { User, Branch, Role, Permission, SystemSetting, AuditLog, SystemTelemetry } from './types';
 
 const TOKEN_KEY = 'boom_os_auth_token';
@@ -32,6 +33,13 @@ function qs(params: Record<string, unknown>): string {
   return q.toString();
 }
 
+// Stage 40: the API client formats its own errors, so every screen gets a human sentence without
+// each one having to remember to translate. The language is read from where LanguageContext
+// already persists it -- no new state, and a safe default if storage is unavailable.
+function currentLang(): 'ru' | 'tk' {
+  try { return localStorage.getItem('boom_os_language') === 'tk' ? 'tk' : 'ru'; } catch { return 'ru'; }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers: Record<string, string> = {
@@ -51,10 +59,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const data = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const errorMsg = data?.message || data?.error || `HTTP ${response.status}`;
-    const err = new Error(errorMsg) as Error & { status: number; code?: string };
+    // Stage 40: the operator reads a sentence, not a code. The original code and status stay on
+    // the error object, so tests and the screens that branch on a code are unaffected.
+    const err = new Error('') as Error & { status: number; code?: string; serverMessage?: string };
     err.status = response.status;
-    err.code = data?.error;
+    err.code = data?.code || data?.error;
+    err.serverMessage = data?.message || data?.error || undefined;
+    err.message = humanError({ code: err.code, status: err.status, message: err.serverMessage }, currentLang());
     throw err;
   }
 

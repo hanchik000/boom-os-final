@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -60,59 +60,99 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
   // rendered `nav.orders`, so two different destinations appeared under the same name twice in
   // the sidebar. Each entry now has its own key. No route, permission or component changed --
   // only the grouping and the labels.
-  const navGroups: Array<{ id: string; key: TranslationKey; items: Array<{ id: NavTab; key: TranslationKey; icon: any; permission?: string }> }> = [
-    { id: 'overview', key: 'nav.group.overview', items: [
+  // ---------------------------------------------------------------------------------------------
+  // Stage 40 -- POWERFUL INSIDE, SIMPLE OUTSIDE.
+  //
+  // Before this the sidebar showed 31 destinations at once, in nine always-expanded groups. Every
+  // route, permission and component is unchanged; what changed is how many of them a person has
+  // to read before finding the one they need.
+  //
+  //  * Nine everyday sections, shown as nine rows. A section opens on click and the one holding
+  //    the current screen opens by itself, so the list stays short instead of growing to 31.
+  //  * A section with a single screen navigates straight there -- no pointless second click.
+  //  * Everything that CONFIGURES the system, rather than running it, moved into "Advanced
+  //    settings" at the bottom, collapsed. Daily work never lives there: prices stay in Menu,
+  //    payment stays in Sales, goods receipt stays in Stock.
+  //  * Labels are what a new employee would call these things, not what the code calls them.
+  //
+  // Role relevance needs no new mechanism: each entry already declares the permission it needs,
+  // and a section with nothing visible in it is not rendered at all. A waiter therefore never
+  // sees Advanced settings, because every entry inside it is permission-gated.
+  // ---------------------------------------------------------------------------------------------
+  type NavEntry = { id: NavTab; key: TranslationKey; icon: any; permission?: string };
+  type NavSection = { id: string; key: TranslationKey; icon: any; items: NavEntry[] };
+
+  const navSections: NavSection[] = [
+    { id: 'home', key: 'nav.group.home', icon: LayoutDashboard, items: [
       { id: 'dashboard', key: 'nav.dashboard', icon: LayoutDashboard },
-      { id: 'commandCenter', key: 'nav.commandCenter', icon: Gauge, permission: 'dashboard.view' },
-      { id: 'liveOperations', key: 'nav.liveOperations', icon: Radio, permission: 'operations.view' },
     ] },
-    { id: 'operations', key: 'nav.group.operations', items: [
-      { id: 'operations', key: 'nav.operations', icon: MonitorCog, permission: 'orders.view' },
-      { id: 'orderApprovals', key: 'nav.orderApprovals', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
+    { id: 'sales', key: 'nav.group.sales', icon: CreditCard, items: [
       { id: 'cashierPos', key: 'nav.cashierPos', icon: CreditCard, permission: 'payments.create' },
+      { id: 'commandCenter', key: 'nav.commandCenter', icon: Gauge, permission: 'dashboard.view' },
     ] },
-    { id: 'menu', key: 'nav.group.menu', items: [
+    { id: 'orders', key: 'nav.group.orders', icon: ClipboardCheck, items: [
+      { id: 'operations', key: 'nav.operations', icon: MonitorCog, permission: 'orders.view' },
+      { id: 'liveOperations', key: 'nav.liveOperations', icon: Radio, permission: 'operations.view' },
+      { id: 'orderApprovals', key: 'nav.orderApprovals', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
+    ] },
+    { id: 'menu', key: 'nav.group.menu', icon: UtensilsCrossed, items: [
       { id: 'menu', key: 'nav.menu', icon: UtensilsCrossed, permission: 'menu.view' },
-      { id: 'menuMedia', key: 'nav.menuMedia', icon: ImagePlus, permission: 'menu.media.view' },
-      { id: 'visualCatalog', key: 'nav.visualCatalog', icon: PanelsTopLeft, permission: 'visual_catalog.view' },
-      { id: 'promotions', key: 'nav.promotions', icon: Tag, permission: 'promotions.view' },
       { id: 'menuPreview', key: 'nav.menuPreview', icon: MonitorSmartphone, permission: 'menu.view' },
+      { id: 'visualCatalog', key: 'nav.visualCatalog', icon: PanelsTopLeft, permission: 'visual_catalog.view' },
+      { id: 'menuMedia', key: 'nav.menuMedia', icon: ImagePlus, permission: 'menu.media.view' },
     ] },
-    { id: 'kitchen', key: 'nav.group.kitchen', items: [
-      { id: 'foodCost', key: 'nav.foodCost', icon: Scale, permission: 'food_cost.view' },
+    { id: 'stock', key: 'nav.group.stock', icon: Boxes, items: [
       { id: 'inventory', key: 'nav.inventory', icon: Boxes, permission: 'inventory.view' },
+      { id: 'foodCost', key: 'nav.foodCost', icon: Scale, permission: 'food_cost.view' },
     ] },
-    // Stage 36: everything that CONFIGURES a POS terminal lives in one group. The POS screens
-    // themselves stay in Operations -- this group is settings, not operations.
-    { id: 'pos', key: 'nav.group.pos', items: [
-      { id: 'posMedia', key: 'nav.posMedia', icon: MonitorPlay, permission: 'pos.media.view' },
-      { id: 'receiptSettings', key: 'nav.receiptSettings', icon: Printer, permission: 'print.manage' },
-      { id: 'serviceCharge', key: 'nav.serviceCharge', icon: Percent, permission: 'service_charge.view' },
-    ] },
-    { id: 'customers', key: 'nav.group.customers', items: [
-      { id: 'customers', key: 'nav.customers', icon: Users, permission: 'customers.view' },
-      { id: 'boomcard', key: 'nav.boomcard', icon: CreditCard, permission: 'boomcard.view' },
-      { id: 'boomcardJournal', key: 'nav.boomcardJournal', icon: ScrollText, permission: 'boomcard.journal.view' },
-      { id: 'creditReports', key: 'nav.creditReports', icon: Wallet, permission: 'credit.reports' },
-    ] },
-    { id: 'staff', key: 'nav.group.staff', items: [
+    { id: 'staff', key: 'nav.group.staff', icon: BriefcaseBusiness, items: [
       { id: 'employees', key: 'nav.employees', icon: BriefcaseBusiness, permission: 'employees.view' },
       { id: 'users', key: 'nav.users', icon: Users, permission: 'users.view' },
-      { id: 'roles', key: 'nav.roles', icon: ShieldCheck, permission: 'roles.view' },
-      { id: 'rbac', key: 'nav.rbacTest', icon: KeyRound, permission: 'rbac.test' },
     ] },
-    { id: 'reports', key: 'nav.group.reports', items: [
+    { id: 'guests', key: 'nav.group.guests', icon: Users, items: [
+      { id: 'customers', key: 'nav.customers', icon: Users, permission: 'customers.view' },
+      { id: 'creditReports', key: 'nav.creditReports', icon: Wallet, permission: 'credit.reports' },
+    ] },
+    { id: 'marketing', key: 'nav.group.marketing', icon: Tag, items: [
+      { id: 'promotions', key: 'nav.promotions', icon: Tag, permission: 'promotions.view' },
+      { id: 'boomcard', key: 'nav.boomcard', icon: CreditCard, permission: 'boomcard.view' },
+      { id: 'boomcardJournal', key: 'nav.boomcardJournal', icon: ScrollText, permission: 'boomcard.journal.view' },
+    ] },
+    { id: 'reports', key: 'nav.group.reports', icon: BarChart3, items: [
       { id: 'analytics', key: 'nav.analytics', icon: BarChart3, permission: 'analytics.view' },
     ] },
-    { id: 'settings', key: 'nav.group.settings', items: [
-      { id: 'organization', key: 'nav.organization', icon: Network, permission: 'franchises.view' },
-      { id: 'franchises', key: 'nav.franchises', icon: Building, permission: 'franchises.view' },
-      { id: 'branches', key: 'nav.branches', icon: Building2, permission: 'branches.view' },
-      { id: 'branding', key: 'nav.branding', icon: Palette, permission: 'settings.view' },
-      { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },
-      { id: 'audit', key: 'nav.audit', icon: History, permission: 'audit.view' },
-    ] },
   ];
+
+  // Configuration, not daily work. Collapsed by default and opened on demand.
+  const advancedSection: NavSection = { id: 'advanced', key: 'nav.group.advanced', icon: Sliders, items: [
+    { id: 'organization', key: 'nav.organization', icon: Network, permission: 'franchises.view' },
+    { id: 'franchises', key: 'nav.franchises', icon: Building, permission: 'franchises.view' },
+    { id: 'branches', key: 'nav.branches', icon: Building2, permission: 'branches.view' },
+    { id: 'roles', key: 'nav.roles', icon: ShieldCheck, permission: 'roles.view' },
+    { id: 'rbac', key: 'nav.rbacTest', icon: KeyRound, permission: 'rbac.test' },
+    { id: 'branding', key: 'nav.branding', icon: Palette, permission: 'settings.view' },
+    { id: 'receiptSettings', key: 'nav.receiptSettings', icon: Printer, permission: 'print.manage' },
+    { id: 'serviceCharge', key: 'nav.serviceCharge', icon: Percent, permission: 'service_charge.view' },
+    { id: 'posMedia', key: 'nav.posMedia', icon: MonitorPlay, permission: 'pos.media.view' },
+    { id: 'settings', key: 'nav.settings', icon: Sliders, permission: 'settings.view' },
+    { id: 'audit', key: 'nav.audit', icon: History, permission: 'audit.view' },
+  ] };
+
+  const visibleOf = (section: NavSection) => section.items.filter(i => !i.permission || hasPermission(i.permission));
+  const sections = navSections.map(s => ({ ...s, visible: visibleOf(s) })).filter(s => s.visible.length > 0);
+  // Stage 40 defect fix: a CASHIER holds `branches.view` -- a read they legitimately need -- which
+  // was enough to put "Advanced settings" in front of them. Reading a branch list is not
+  // configuring the system, so the section now appears only for someone who actually holds a
+  // configuration-grade permission. This is presentation only: no permission is granted, none is
+  // removed, and the server still authorises every request exactly as before.
+  const CONFIGURATION_PERMISSIONS = ['settings.view', 'roles.view', 'audit.view', 'franchises.view', 'rbac.test', 'print.manage', 'service_charge.view', 'pos.media.view'];
+  const configures = CONFIGURATION_PERMISSIONS.some(p => hasPermission(p));
+  const advanced = { ...advancedSection, visible: configures ? visibleOf(advancedSection) : [] };
+
+  // The section holding the current screen is open; the operator can open another by hand.
+  const sectionOf = (tab: NavTab) => [...sections, advanced].find(s => s.visible.some(i => i.id === tab))?.id || 'home';
+  const [openSection, setOpenSection] = useState<string>(() => sectionOf(currentTab));
+  useEffect(() => { setOpenSection(sectionOf(currentTab)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentTab]);
 
   const futureModules = [
     { name: 'Boomcard & Coin' },
@@ -147,42 +187,97 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
           </div>
         </div>
 
-        {/* Primary Admin Navigation -- Stage 36: grouped IA, each entry with its own label. */}
-        <div className="p-3 space-y-3">
-          {navGroups.map((group) => {
-            const visible = group.items.filter((item) => !item.permission || hasPermission(item.permission));
-            if (!visible.length) return null;
+        {/* Stage 40: nine everyday sections, then Advanced settings. A section opens on click;
+            the one holding the current screen opens by itself. One-screen sections go straight
+            there. Nothing was removed -- only the number of rows a person reads at once. */}
+        <div className="p-3 space-y-1">
+          {sections.map((section) => {
+            const SectionIcon = section.icon;
+            const single = section.visible.length === 1;
+            const holdsCurrent = section.visible.some(i => i.id === currentTab);
+            const isOpen = !single && openSection === section.id;
+            // A one-screen section IS its destination, so its row carries the tab it opens --
+            // useful for deep links and automation, and it costs nothing.
             return (
-              <div key={group.id}>
-                <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  {t(group.key)}
-                </div>
-                <nav className="space-y-1">
-                  {visible.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        id={`nav-${item.id}`}
-                        onClick={() => onSelectTab(item.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                          isActive
-                            ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30'
-                            : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-                        }`}
-                      >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
-                        <span className="flex-1 text-left">{t(item.key)}</span>
-                        {isActive && <ChevronRight className="w-3.5 h-3.5 text-amber-400" />}
-                      </button>
-                    );
-                  })}
-                </nav>
+              <div key={section.id}>
+                <button
+                  id={`nav-section-${section.id}`}
+                  onClick={() => (single ? onSelectTab(section.visible[0].id) : setOpenSection(isOpen ? '' : section.id))}
+                  aria-expanded={single ? undefined : isOpen}
+                  data-tab={single ? section.visible[0].id : undefined}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                    holdsCurrent
+                      ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30'
+                      : 'text-slate-300 font-medium hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <SectionIcon className={`w-4 h-4 ${holdsCurrent ? 'text-amber-400' : 'text-slate-400'}`} />
+                  <span className="flex-1 text-left">{t(section.key)}</span>
+                  {!single && <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-90' : ''} ${holdsCurrent ? 'text-amber-400' : 'text-slate-500'}`} />}
+                </button>
+
+                {isOpen && (
+                  <nav className="mt-1 mb-1 ml-4 pl-3 border-l border-slate-800 space-y-0.5">
+                    {section.visible.map((item) => {
+                      const isActive = currentTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          id={`nav-${item.id}`}
+                          onClick={() => onSelectTab(item.id)}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${
+                            isActive ? 'text-amber-300 font-semibold bg-amber-500/10' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <span className="flex-1 text-left">{t(item.key)}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                )}
               </div>
             );
           })}
         </div>
+
+        {/* Configuration, not daily work. Collapsed until asked for, and absent entirely for a
+            role that may not configure anything -- every entry inside is permission-gated. */}
+        {advanced.visible.length > 0 && (
+          <div className="px-3 pb-2">
+            <div className="border-t border-slate-800/80 pt-3">
+              <button
+                id="nav-section-advanced"
+                onClick={() => setOpenSection(openSection === 'advanced' ? '' : 'advanced')}
+                aria-expanded={openSection === 'advanced'}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                  advanced.visible.some(i => i.id === currentTab)
+                    ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30'
+                    : 'text-slate-400 font-medium hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Sliders className="w-4 h-4 text-slate-500" />
+                <span className="flex-1 text-left">{t('nav.group.advanced')}</span>
+                <ChevronRight className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openSection === 'advanced' ? 'rotate-90' : ''}`} />
+              </button>
+              {openSection === 'advanced' && (
+                <nav className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-0.5">
+                  {advanced.visible.map((item) => (
+                    <button
+                      key={item.id}
+                      id={`nav-${item.id}`}
+                      onClick={() => onSelectTab(item.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${
+                        currentTab === item.id ? 'text-amber-300 font-semibold bg-amber-500/10' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                      }`}
+                    >
+                      <span className="flex-1 text-left">{t(item.key)}</span>
+                    </button>
+                  ))}
+                </nav>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Future Modules Section (Architectural readiness, strict phase 1 boundary) */}
         <div className="px-3 pt-2">

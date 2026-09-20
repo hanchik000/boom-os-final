@@ -17,18 +17,32 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
     selectedBranchFilter, 
     setSelectedBranchFilter,
     selectedFranchiseFilter,
-    setSelectedFranchiseFilter
+    setSelectedFranchiseFilter,
+    hasPermission
   } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [franchises, setFranchises] = useState<Franchise[]>([]);
 
+  // Stage 40 defect fix: the branch and franchise lists were fetched for EVERY role on every page
+  // load. A waiter has no branches.view and a cashier no franchises.view, so their first screen
+  // always fired requests the server correctly refused -- silent in the UI (the catch swallowed
+  // them) but a 403 on every load and a console error for anyone looking. Each request is now
+  // only made by someone who may actually see the result; the server-side permissions are
+  // unchanged and still authoritative.
   useEffect(() => {
-    if (user) {
+    if (!user) return;
+    if (hasPermission('branches.view')) {
       api.getBranches().then(res => setBranches(res.branches || [])).catch(() => {});
-      api.getFranchises().then(res => setFranchises(res.franchises || [])).catch(() => {});
+    } else {
+      setBranches([]);
     }
-  }, [user]);
+    if (hasPermission('franchises.view')) {
+      api.getFranchises().then(res => setFranchises(res.franchises || [])).catch(() => {});
+    } else {
+      setFranchises([]);
+    }
+  }, [user, hasPermission]);
 
   // Filter branches if a specific franchise is selected
   const visibleBranches = selectedFranchiseFilter === 'ALL'
@@ -74,8 +88,9 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
           </button>
         </div>
 
-        {/* Franchise Scope Selector */}
-        {user && (
+        {/* Franchise Scope Selector -- Stage 40: hidden when there is nothing to choose between,
+            so no one is shown a control that cannot do anything. */}
+        {user && franchises.length > 0 && (
           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
             <Landmark className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-slate-400 font-medium">{t('header.franchiseFilter')}:</span>
@@ -103,8 +118,8 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
           </div>
         )}
 
-        {/* Multi-Branch Selector */}
-        {user && (
+        {/* Multi-Branch Selector -- Stage 40: hidden when there is nothing to choose between. */}
+        {user && visibleBranches.length > 0 && (
           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
             <Building2 className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-slate-400 font-medium">{t('header.branchFilter')}:</span>

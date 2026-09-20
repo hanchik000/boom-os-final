@@ -383,7 +383,13 @@ export const CashierPOSView: React.FC = () => {
 
   useEffect(() => { void api.getDiscountOptions().then(r => { setDiscountPresets(r.presets); setDiscountMax(r.max_percent); }).catch(() => undefined); }, []);
   useEffect(() => { void api.getComplimentReasons().then(r => setComplimentReasons(r.reasons)).catch(() => undefined); }, []);
-  useEffect(() => { if (!branchId) return; void api.getMenu(branchId).then(r => setComplimentMenu(r.items || [])).catch(() => undefined); }, [branchId]);
+  // Stage 40 defect fix: the compliment dialog's dish list was loaded with api.getMenu(), which is
+  // the WAITER DEVICE endpoint (/api/menu/pos, X-Waiter-Session). A cashier terminal has no device
+  // session, so the request always returned 401, the catch swallowed it and the "Позиция" dropdown
+  // was permanently empty -- the cashier could never actually send a compliment. It now reads the
+  // branch's real dish list from the server catalogue the cashier may read without holding
+  // menu.view (no permission is granted, no route is added, prices still come from the server).
+  useEffect(() => { if (!branchId) return; void api.getPublicMenu(branchId, ru ? 'ru' : 'tk').then(r => setComplimentMenu(r.items || [])).catch(() => undefined); }, [branchId, ru]);
 
   const submitCompliment = async () => {
     if (!detail || complimentBusy || !complimentItem || !complimentReason) return;
@@ -799,7 +805,7 @@ export const CashierPOSView: React.FC = () => {
                   <span className="text-xs text-slate-400">{ru ? 'Позиция' : 'Pozisiýa'}</span>
                   <select className="field w-full" value={complimentItem} onChange={e => setComplimentItem(e.target.value)}>
                     <option value="">{ru ? '— выберите —' : '— saýlaň —'}</option>
-                    {complimentMenu.map(m => <option key={m.id} value={m.id}>{m.name_ru} · {m.price}</option>)}
+                    {complimentMenu.map(m => <option key={m.id} value={m.id}>{m.name} · {m.price}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-1">

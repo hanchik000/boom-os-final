@@ -158,7 +158,11 @@ const checks = [
     !customerMenu.includes('>BOOMBURGER<') && !waiterPos.includes('<strong>BOOM OS</strong>')],
 
   // ---------------------------------------------------------------- H. Unified ADMIN navigation
-  ['navigation is grouped rather than one flat list', sidebar.includes('const navGroups:')],
+  // Stage 40 renamed the structure (navGroups -> navSections + a separate advancedSection) when it
+  // shortened the sidebar. The requirement this check exists for is unchanged: navigation is
+  // GROUPED, never one flat list of every screen.
+  ['navigation is grouped rather than one flat list',
+    sidebar.includes('const navSections: NavSection[]') && sidebar.includes('const advancedSection: NavSection') && !sidebar.includes('const navGroups:')],
   ['every nav entry has its own label -- no two destinations share a translation key',
     (() => {
       const keys = [...sidebar.matchAll(/\{ id: '\w+', key: '((?!nav\.group\.)[\w.]+)'/g)].map(m => m[1]);
@@ -170,7 +174,7 @@ const checks = [
      'nav.menu', 'nav.inventory', 'nav.operations', 'nav.orderApprovals', 'nav.branding', 'nav.menuPreview']
       .every(k => ru.includes(`"${k}"`) && tk.includes(`"${k}"`))],
   ['each nav entry is still filtered by its own permission -- grouping granted nobody anything',
-    sidebar.includes('group.items.filter((item) => !item.permission || hasPermission(item.permission))')],
+    sidebar.includes('section.items.filter(i => !i.permission || hasPermission(i.permission))')],
   ['there is exactly ONE inventory destination and ONE inventory backend (the duplication was a label defect)',
     (sidebar.match(/id: 'inventory'/g) || []).length === 1 && !fs.existsSync('server/routes/warehouse.ts')],
   ['every nav tab in the sidebar is actually routed in App.tsx (no button that goes nowhere)',
@@ -179,7 +183,15 @@ const checks = [
       const ids = [...sidebar.matchAll(/\{ id: '(\w+)', key: '(?!nav\.group\.)[\w.]+'/g)].map(m => m[1]);
       return ids.length > 0 && ids.every(id => app.includes(`currentTab === '${id}'`));
     })()],
-  ['POS configuration surfaces are consolidated into one group', sidebar.includes("{ id: 'pos', key: 'nav.group.pos'")],
+  // Stage 40 moved the POS configuration screens into "Расширенные настройки" together with the
+  // rest of the system settings. They are still consolidated -- in ONE section, not scattered
+  // across the sidebar -- which is what this check was always about.
+  ['POS configuration surfaces are consolidated into one group',
+    (() => {
+      const section = src => (sidebar.split(/const (?:navSections: NavSection\[\]|advancedSection: NavSection)/).findIndex(part => part.includes(src)));
+      return ['posMedia', 'receiptSettings', 'serviceCharge'].every(id => sidebar.includes(`id: '${id}'`)) &&
+        new Set(['posMedia', 'receiptSettings', 'serviceCharge'].map(id => section(`id: '${id}'`))).size === 1;
+    })()],
 
   // ---------------------------------------------------------------- I. Menu preview == the real guest screen
   ['the menu preview embeds the REAL guest entry point instead of re-implementing the menu',

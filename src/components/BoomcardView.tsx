@@ -32,12 +32,16 @@ export const BoomcardView: React.FC = () => {
       const [s, list, menu] = await Promise.all([
         api.getBoomcardSettings(),
         api.getBoomcards({ branch_id: branchId, status: status || undefined }),
-        api.getMenu(branchId).catch(() => ({ items: [] as any[] })),
+        // Stage 40 defect fix: this list used api.getMenu(), the WAITER DEVICE endpoint
+        // (/api/menu/pos). No admin browser session can satisfy it, so the birthday-gift dish
+        // selector was empty for every role. It now reads the branch's real dish catalogue from
+        // the server; the gift itself is still validated and priced server-side.
+        api.getPublicMenu(branchId, ru ? 'ru' : 'tk').catch(() => ({ items: [] as any[] })),
       ]);
       setSettings(s); setCards(list.cards || []); setMenuItems((menu as any).items || []);
     } catch (e: any) { setError(e?.message || 'Failed to load'); }
     finally { setLoading(false); }
-  }, [branchId, status]);
+  }, [branchId, status, ru]);
   useEffect(() => { void load(); }, [load]);
 
   const openCard = async (id: string) => {
@@ -150,7 +154,7 @@ export const BoomcardView: React.FC = () => {
                   <div className="flex flex-wrap gap-2 items-end">
                     <select className="field flex-1" value={giftItem} onChange={e => setGiftItem(e.target.value)}>
                       <option value="">{ru ? '— блюдо —' : '— tagam —'}</option>
-                      {menuItems.map(m => <option key={m.id} value={m.id}>{m.name_ru}</option>)}
+                      {menuItems.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <input className="field w-20" type="number" min={1} value={giftQty} onChange={e => setGiftQty(Number(e.target.value))} />
                     <button className="btn bg-amber-500 text-slate-950 font-semibold text-sm" disabled={busy || !giftItem} onClick={() => void act(() => api.grantBirthdayGift(selected.card.id, giftItem, giftQty), ru ? 'Подарок назначен.' : 'Sowgat bellendi.')}>{ru ? 'Назначить' : 'Bellemek'}</button>

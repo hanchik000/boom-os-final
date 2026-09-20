@@ -186,7 +186,11 @@ function MainLayout() {
   const { title, subtitle } = getTabTitle(currentTab);
 
   return (
-    <div className="min-h-screen flex bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
+    // Stage 40 defect fix: the admin shell never carried `boom-reduced-motion-safe`, so its
+    // Tailwind transitions kept animating for someone who asked the OS for reduced motion -- the
+    // customer menu honoured the setting and the working interface did not. Reuses the existing
+    // convention from tokens.css rather than inventing a second one.
+    <div className="boom-reduced-motion-safe min-h-screen flex bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
       {/* Sidebar */}
       <Sidebar
         currentTab={currentTab}
