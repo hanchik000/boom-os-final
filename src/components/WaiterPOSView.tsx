@@ -57,16 +57,39 @@ export const WaiterPOSView: React.FC = () => {
   const visibleItems=useMemo(()=>items.filter(x=>x.category_id===category),[items,category]);
   const cents=(v:string)=>{const [a,b='']=String(v).split('.');return BigInt(a)*100n+BigInt((b+'00').slice(0,2));};
   const money=(v:bigint)=>`${v/100n}.${(v%100n).toString().padStart(2,'0')}`;
+  // Display-only padding for a server-sent decimal string ("10" -> "10.00"). No arithmetic: the
+  // number shown is exactly the number the server sent.
+  const dec=(v:any)=>{const n=Number(v);return Number.isFinite(n)?n.toFixed(2):String(v??'0.00')};
   const subtotal=cart.reduce((sum,x)=>sum+cents(x.price)*BigInt(x.quantity),0n);
   const addLine=(item:any,modifierIds:string[]=[],modifierNames:string[]=[] ,modifierDelta='0')=>{setSent(false);const key=item.id+'|'+[...modifierIds].sort().join(',');setCart(c=>{const e=c.find(x=>x.id+'|'+[...x.modifierIds].sort().join(',')===key);return e?c.map(x=>x.id+'|'+[...x.modifierIds].sort().join(',')===key?{...x,quantity:x.quantity+1}:x):[...c,{id:item.id,name:item.name_ru,price:(Number(item.price)+Number(modifierDelta)).toFixed(2),quantity:1,modifierIds,modifierNames}]})};
-  const add=async(item:any)=>{try{const r=await api.getMenuModifiers(item.id,waiter?.branch_id);const groups=r.groups||[];if(!groups.length){addLine(item);return;}setModifierPicker({item,groups});setSelectedModifiers([]);}catch{addLine(item)}};
+  // Stage 37: the constructor groups now arrive WITH the device menu (/api/menu/pos). The old code
+  // called api.getMenuModifiers(), a JWT route a waiter device can never satisfy, so the request
+  // always failed, the catch swallowed it, and the burger was added with no components at all.
+  const add=(item:any)=>{const groups=item.modifier_groups||[];if(!groups.length){addLine(item);return;}setModifierPicker({item,groups});setSelectedModifiers([]);};
   const runSmartSearch=async()=>{if(!waiter||!smartQuery.trim())return;setSmartLoading(true);setSmartError('');try{const r=await api.smartSearch(waiter.branch_id,smartQuery,'ru');setSmartItems(r.items);setSmartRecs(r.recommendations||[]);setSmartParsed(r.parsed);setSmartOpen(true);}catch(e:any){setSmartError(e?.message||'Не удалось выполнить поиск.')}finally{setSmartLoading(false)}};
   const closeSmartSearch=()=>{setSmartOpen(false);setSmartItems([]);setSmartRecs([]);setSmartParsed(null);setSmartQuery('')};
   // Every line of a recommendation is added from the REAL, already-loaded branch menu (by id),
   // never from the search response's own price text -- addLine() is the single cart-mutation
   // path already used by manual selection, so this can never diverge from it.
   const addCombination=(opt:any)=>{for(const line of opt.items){const real=items.find(i=>i.id===line.id); if(!real)continue; for(let i=0;i<line.quantity;i++) addLine(real);} closeSmartSearch();};
-  const confirmModifiers=()=>{if(!modifierPicker)return;const item=modifierPicker.item;const selected=selectedModifiers.map(id=>modifierPicker.groups.flatMap((g:any)=>g.modifiers||[]).find((m:any)=>m.id===id)).filter(Boolean);const delta=selected.reduce((n:any,m:any)=>n+Number(m.price_delta||0),0);addLine(item,selectedModifiers,selected.map((m:any)=>m.name_ru),delta.toFixed(2));setModifierPicker(null);setSelectedModifiers([])};
+  // The SERVER is the authority on whether a selection is valid -- Order Core re-checks every
+  // group's min/max/required rule when the order is created. This mirrors those rules in the UI
+  // only so the waiter is not walked into a guaranteed rejection, and so the Add button says why.
+  const groupIssue=(g:any)=>{const n=(g.modifiers||[]).filter((m:any)=>selectedModifiers.includes(m.id)).length;
+    if(g.required&&n<Math.max(1,Number(g.min_select||0)))return `${g.name_ru}: выберите минимум ${Math.max(1,Number(g.min_select||0))}`;
+    if(n<Number(g.min_select||0))return `${g.name_ru}: выберите минимум ${g.min_select}`;
+    if(n>Number(g.max_select||0))return `${g.name_ru}: не более ${g.max_select}`;
+    return '';};
+  const pickerIssue=modifierPicker?(modifierPicker.groups.map(groupIssue).find(Boolean)||''):'';
+  const toggleModifier=(g:any,id:string)=>setSelectedModifiers(v=>{
+    if(v.includes(id))return v.filter(x=>x!==id);
+    const inGroup=(g.modifiers||[]).filter((m:any)=>v.includes(m.id)).map((m:any)=>m.id);
+    // A single-choice group swaps rather than blocking -- the usual POS behaviour for a bun.
+    if(Number(g.max_select)===1)return [...v.filter(x=>!inGroup.includes(x)),id];
+    if(inGroup.length>=Number(g.max_select||0))return v;
+    return [...v,id];
+  });
+  const confirmModifiers=()=>{if(!modifierPicker||pickerIssue)return;const item=modifierPicker.item;const selected=selectedModifiers.map(id=>modifierPicker.groups.flatMap((g:any)=>g.modifiers||[]).find((m:any)=>m.id===id)).filter(Boolean);const delta=selected.reduce((n:any,m:any)=>n+Number(m.price_delta||0),0);addLine(item,selectedModifiers,selected.map((m:any)=>m.name_ru),delta.toFixed(2));setModifierPicker(null);setSelectedModifiers([])};
   const removeOne=(id:string,modifierIds:string[]=[] )=>setCart(c=>c.flatMap(x=>x.id===id&&JSON.stringify([...x.modifierIds].sort())===JSON.stringify([...modifierIds].sort())?(x.quantity>1?[{...x,quantity:x.quantity-1}]:[]):[x]));
   const press=(d:string)=>{setAuthError('');if(code.length<4)setCode(v=>v+d)};
   const authorize=async()=>{if(code.length!==4||authLoading)return;setAuthLoading(true);try{const r=await api.authenticateWaiterCode(code,deviceId);setStoredWaiterSession(r.session.token);setWaiter(r.waiter);setAuthorized(true);setCode('');setIdle(false);await loadOperationalData(r.waiter.branch_id)}catch(e:any){setAuthError(e?.message||'Неверный код официанта');setCode('')}finally{setAuthLoading(false)}};
@@ -185,5 +208,5 @@ export const WaiterPOSView: React.FC = () => {
           <div className="flex gap-2 justify-end"><button className="btn" disabled={refusalBusy} onClick={()=>setRefusal(null)}>Назад</button><button className="btn bg-red-500 text-slate-950 font-semibold" disabled={refusalBusy||!refusalReason.trim()||!refusalTreatment} onClick={()=>void submitRefusal()}>Отправить запрос</button></div>
         </>}
       </>}
-    </div></div>}{modifierPicker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4"><div><h2 className="text-white text-xl font-bold">{modifierPicker.item.name_ru}</h2><p className="text-slate-400 text-sm">Выберите дополнительные параметры</p></div>{modifierPicker.groups.map((g:any)=><div key={g.id} className="space-y-2"><div className="flex justify-between text-sm"><strong className="text-white">{g.name_ru}</strong><span className="text-slate-400">{g.required?'обязательно':'необязательно'} · {g.min_select}–{g.max_select}</span></div><div className="grid grid-cols-2 gap-2">{(g.modifiers||[]).map((m:any)=><button key={m.id} className={`p-3 rounded-lg border text-left ${selectedModifiers.includes(m.id)?'border-amber-400 bg-amber-500/10 text-white':'border-slate-700 text-slate-300'}`} onClick={()=>setSelectedModifiers(v=>v.includes(m.id)?v.filter(x=>x!==m.id):[...v,m.id])}><div>{m.name_ru}</div><small>{m.price_delta} TMT</small></button>)}</div></div>)}<div className="flex gap-2 justify-end"><button className="btn" onClick={()=>setModifierPicker(null)}>Отмена</button><button className="btn bg-amber-500 text-slate-950" onClick={confirmModifiers}>Добавить</button></div></div></div>}</div>;
+    </div></div>}{modifierPicker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4"><div><h2 className="text-white text-xl font-bold">{modifierPicker.item.name_ru}</h2><p className="text-slate-400 text-sm">Выберите дополнительные параметры</p></div>{modifierPicker.groups.map((g:any)=><div key={g.id} className="space-y-2"><div className="flex justify-between text-sm"><strong className="text-white">{g.name_ru}</strong><span className="text-slate-400">{g.required?'обязательно':'необязательно'} · {g.min_select}–{g.max_select}</span></div><div className="grid grid-cols-2 gap-2">{(g.modifiers||[]).map((m:any)=><button key={m.id} aria-pressed={selectedModifiers.includes(m.id)} className={`p-3 rounded-lg border text-left ${selectedModifiers.includes(m.id)?'border-amber-400 bg-amber-500/10 text-white':'border-slate-700 text-slate-300'}`} onClick={()=>toggleModifier(g,m.id)}><div>{m.name_ru}</div><small>{Number(m.price_delta)>0?`+${dec(m.price_delta)}`:dec(m.price_delta)} TMT</small></button>)}</div></div>)}{pickerIssue&&<div className="text-[12px] text-amber-300">{pickerIssue}</div>}<p className="text-[11px] text-slate-500">Итоговую цену рассчитывает сервер при создании заказа.</p><div className="flex gap-2 justify-end"><button className="btn" onClick={()=>setModifierPicker(null)}>Отмена</button><button className="btn bg-amber-500 text-slate-950 disabled:opacity-50" disabled={Boolean(pickerIssue)} onClick={confirmModifiers}>Добавить</button></div></div></div>}</div>;
 };

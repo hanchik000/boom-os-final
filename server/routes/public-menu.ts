@@ -4,6 +4,74 @@ import { activePromotionMap } from './promotions';
 
 const router = Router();
 
+// -----------------------------------------------------------------------------------------------
+// Stage 37 -- shared PUBLIC menu helpers.
+//
+// Everything here is deliberately read-only and public-safe. There is no path from these helpers
+// to recipes, ingredient quantities, food cost, margin, stock, suppliers or employees: they read
+// menu_items, menu_categories, menu_modifier*, media_assets and allergens, and nothing else.
+// -----------------------------------------------------------------------------------------------
+
+export type PublicLang = 'ru' | 'tk' | 'en';
+
+export function pickLang(raw: unknown): PublicLang {
+  const l = String(raw || 'ru').toLowerCase();
+  return l === 'tk' ? 'tk' : l === 'en' ? 'en' : 'ru';
+}
+
+// Localized field with a RU fallback: a branch that has not written EN yet still shows a dish
+// rather than a blank. RU is the operational source language for this deployment.
+export function loc(row: any, field: string, lang: PublicLang): string | null {
+  const wanted = row?.[`${field}_${lang}`];
+  if (wanted !== null && wanted !== undefined && String(wanted).trim() !== '') return String(wanted);
+  const fallback = row?.[`${field}_ru`];
+  return fallback === null || fallback === undefined ? null : String(fallback);
+}
+
+function groupByItem<T extends Record<string, any>>(rows: T[], key: string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const r of rows) { const k = String(r[key]); if (!map.has(k)) map.set(k, []); map.get(k)!.push(r); }
+  return map;
+}
+
+/**
+ * Allergens, gallery media and modifier groups for a set of public dishes, in four queries.
+ * Modifier groups are the Burger Constructor as a guest sees it: the real menu_modifier_groups /
+ * menu_modifiers rows Order Core will validate the selection against, so the guest screen and the
+ * order can never disagree about what is selectable or what a component costs.
+ */
+export async function publicMenuExtras(branch: string, itemIds: string[], lang: PublicLang) {
+  const empty = { allergens: new Map<string, any[]>(), gallery: new Map<string, any[]>(), groups: new Map<string, any[]>() };
+  if (!itemIds.length) return empty;
+  const ph = itemIds.map(() => '?').join(',');
+
+  const allergenRows = await query<any>(`SELECT mia.menu_item_id,a.code,a.label_ru,a.label_tk,a.label_en,a.sort_order
+    FROM menu_item_allergens mia JOIN allergens a ON a.id=mia.allergen_id AND a.active=true
+    WHERE mia.menu_item_id IN (${ph}) ORDER BY a.sort_order`, itemIds);
+  const galleryRows = await query<any>(`SELECT mim.menu_item_id,m.id,m.url,m.kind,m.poster_url,m.alt_ru,m.alt_tk,m.focal_x,m.focal_y,mim.sort_order
+    FROM menu_item_media mim JOIN media_assets m ON m.id=mim.media_asset_id AND m.active=true
+    WHERE mim.menu_item_id IN (${ph}) ORDER BY mim.sort_order`, itemIds);
+  const groupRows = await query<any>(`SELECT id,menu_item_id,name_ru,name_tk,name_en,min_select,max_select,required,sort_order
+    FROM menu_modifier_groups WHERE branch_id=? AND status='ACTIVE' AND menu_item_id IN (${ph}) ORDER BY sort_order,name_ru`, [branch, ...itemIds]);
+  const modRows = groupRows.length
+    ? await query<any>(`SELECT id,group_id,name_ru,name_tk,name_en,price_delta,sort_order FROM menu_modifiers
+        WHERE status='ACTIVE' AND group_id IN (${groupRows.map(() => '?').join(',')}) ORDER BY sort_order,name_ru`, groupRows.map((g: any) => g.id))
+    : [];
+
+  const modsByGroup = groupByItem(modRows, 'group_id');
+  const groups = groupByItem(groupRows.map((g: any) => ({
+    ...g,
+    name: loc(g, 'name', lang),
+    modifiers: (modsByGroup.get(g.id) || []).map((m: any) => ({ id: m.id, name: loc(m, 'name', lang), price_delta: String(m.price_delta), sort_order: m.sort_order })),
+  })), 'menu_item_id');
+
+  return {
+    allergens: groupByItem(allergenRows.map((a: any) => ({ menu_item_id: a.menu_item_id, code: a.code, label: loc(a, 'label', lang) })), 'menu_item_id'),
+    gallery: groupByItem(galleryRows.map((g: any) => ({ menu_item_id: g.menu_item_id, id: g.id, url: g.url, kind: g.kind, poster_url: g.poster_url, alt: lang === 'tk' ? g.alt_tk : g.alt_ru, focal_x: g.focal_x, focal_y: g.focal_y })), 'menu_item_id'),
+    groups,
+  };
+}
+
 function normalize(value: unknown): string {
   return String(value ?? '')
     .toLowerCase()
@@ -249,14 +317,16 @@ router.get('/qr/:token', async (req, res) => {
 
 router.get('/menu', async (req, res) => {
   const branch = String(req.query.branch_id || '').trim();
-  const lang = String(req.query.lang || 'ru').toLowerCase() === 'tk' ? 'tk' : 'ru';
+  // Stage 37: EN joins the existing RU/TK pair. RU stays the fallback for any field a branch has
+  // not translated yet, so switching to EN can never blank a dish out.
+  const lang = pickLang(req.query.lang);
   if (!branch) return res.status(400).json({ error:'VALIDATION_ERROR', code:'BRANCH_REQUIRED', message:'branch_id is required.', details:{} });
   const b = await queryOne<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE id=? AND status='ACTIVE'`, [branch]);
   if (!b) return res.status(404).json({ error:'NOT_FOUND', code:'BRANCH_NOT_FOUND', message:'Branch not found.', details:{} });
   // Stage 36: the guest sees the SAME dish photo the manager attached in ADMIN -- one media asset,
   // joined here read-only. Only public-safe media columns are selected; no cost/stock/recipe data
   // exists on this path, exactly as before.
-  const rows = await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.description_ru,mi.description_tk,mi.price,mi.smart_tags_ru,mi.smart_tags_tk,mc.name_ru AS category_name_ru,mc.name_tk AS category_name_tk,
+  const rows = await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.name_en,mi.description_ru,mi.description_tk,mi.description_en,mi.ingredients_ru,mi.ingredients_tk,mi.ingredients_en,mi.weight_value,mi.weight_unit,mi.price,mi.smart_tags_ru,mi.smart_tags_tk,mc.name_ru AS category_name_ru,mc.name_tk AS category_name_tk,mc.name_en AS category_name_en,
       md.url AS media_url,md.kind AS media_kind,md.poster_url AS media_poster_url,md.alt_ru AS media_alt_ru,md.alt_tk AS media_alt_tk,md.focal_x AS media_focal_x,md.focal_y AS media_focal_y
     FROM menu_items mi JOIN menu_categories mc ON mc.id=mi.category_id
     LEFT JOIN media_assets md ON md.id=mi.media_asset_id AND md.active=true
@@ -265,7 +335,18 @@ router.get('/menu', async (req, res) => {
   // Stage 35.6: the real promotional price, if this item is genuinely inside an active promotion
   // window right now -- computed by the ONE shared rule (activePromotionMap), never invented here.
   const promos = await activePromotionMap(branch, new Date().toISOString());
-  const items = rows.map((x:any) => { const promo = promos.get(x.id); return { id:x.id, category_id:x.category_id, sku:x.sku, name:lang==='tk'?x.name_tk:x.name_ru, description:lang==='tk'?x.description_tk:x.description_ru, category_name:lang==='tk'?x.category_name_tk:x.category_name_ru, price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru, promo_price: promo ? promo.promo_price : null, promo_badge: promo ? (lang==='tk'?promo.badge_tk:promo.badge_ru) : null, promo_ends_at: promo ? promo.ends_at : null, media_url: x.media_url || null, media_kind: x.media_kind || null, media_poster_url: x.media_poster_url || null, media_alt: (lang==='tk'?x.media_alt_tk:x.media_alt_ru) || null, media_focal_x: x.media_focal_x ?? 50, media_focal_y: x.media_focal_y ?? 50 }; });
+  const extra = await publicMenuExtras(branch, rows.map((x:any)=>x.id), lang);
+  const items = rows.map((x:any) => { const promo = promos.get(x.id); return { id:x.id, category_id:x.category_id, sku:x.sku, name:loc(x,'name',lang), description:loc(x,'description',lang), category_name:loc(x,'category_name',lang), price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru, promo_price: promo ? promo.promo_price : null, promo_badge: promo ? (lang==='tk'?promo.badge_tk:promo.badge_ru) : null, promo_ends_at: promo ? promo.ends_at : null, media_url: x.media_url || null, media_kind: x.media_kind || null, media_poster_url: x.media_poster_url || null, media_alt: (lang==='tk'?x.media_alt_tk:x.media_alt_ru) || null, media_focal_x: x.media_focal_x ?? 50, media_focal_y: x.media_focal_y ?? 50,
+    // Stage 37 public dish information. Weight stays structured (value + unit) so the client
+    // formats it rather than parsing a string. Ingredients are the CUSTOMER-FACING list, never
+    // the recipe -- recipes, quantities, cost, suppliers and stock are not on this path at all.
+    ingredients: loc(x,'ingredients',lang), weight_value: x.weight_value === null ? null : String(x.weight_value), weight_unit: x.weight_unit || null,
+    allergens: extra.allergens.get(x.id) || [], gallery: extra.gallery.get(x.id) || [],
+    // Stage 37: the Burger Constructor, as the GUEST sees it. Before this the public menu returned
+    // no modifiers at all, so a configurable dish looked like a plain one. These are read-only
+    // descriptions of the same rows Order Core validates against -- the guest's selection is
+    // re-checked and re-priced server-side when the order is actually created.
+    modifier_groups: extra.groups.get(x.id) || [] }; });
   res.json({ branch:b, language:lang, items });
 });
 

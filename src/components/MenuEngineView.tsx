@@ -6,6 +6,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api';
+import { MenuDishEditor, toDishDraft, DishDraft } from './MenuDishEditor';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 36 -- ADMIN Menu Builder.
@@ -52,13 +53,15 @@ export const MenuEngineView: React.FC = () => {
   // ---- draft state for creation forms
   const [cat, setCat] = useState({ name_ru: '', name_tk: '', sort_order: '0' });
   const [item, setItem] = useState({ category_id: '', sku: '', name_ru: '', name_tk: '', description_ru: '', description_tk: '', price: '', sort_order: '0' });
-  const [group, setGroup] = useState({ name_ru: '', name_tk: '', min_select: '0', max_select: '1', required: false, sort_order: '0' });
-  const [mod, setMod] = useState({ name_ru: '', name_tk: '', price_delta: '0', sort_order: '0' });
+  const [group, setGroup] = useState({ name_ru: '', name_tk: '', name_en: '', min_select: '0', max_select: '1', required: false, sort_order: '0' });
+  const [mod, setMod] = useState({ name_ru: '', name_tk: '', name_en: '', source_menu_item_id: '', price_delta: '0', sort_order: '0' });
   const [modGroupId, setModGroupId] = useState('');
 
   // ---- inline edit state (id of the row being edited + its draft)
   const [editCat, setEditCat] = useState<any>(null);
-  const [editItem, setEditItem] = useState<any>(null);
+  // Stage 37: the dish is edited in the full editor (RU/TK/EN, weight, ingredients,
+  // allergens, media), not in a four-field inline row.
+  const [editItem, setEditItem] = useState<DishDraft | null>(null);
   const [editGroup, setEditGroup] = useState<any>(null);
   const [editMod, setEditMod] = useState<any>(null);
   const [mediaFor, setMediaFor] = useState<any>(null);
@@ -207,25 +210,7 @@ export const MenuEngineView: React.FC = () => {
                   </div>
                   {itemsOf(c.id).map((i: any) => (
                     <div key={i.id} className={`mb-dish ${selected?.id === i.id ? 'selected' : ''} ${isArchived(i) ? 'archived' : ''}`}>
-                      {editItem?.id === i.id ? (
-                        <div className="mb-form-grid grow">
-                          <input className="mb-input" value={editItem.name_ru} onChange={e => setEditItem({ ...editItem, name_ru: e.target.value })} placeholder="RU" />
-                          <input className="mb-input" value={editItem.name_tk} onChange={e => setEditItem({ ...editItem, name_tk: e.target.value })} placeholder="TK" />
-                          <input className="mb-input" value={editItem.price} onChange={e => setEditItem({ ...editItem, price: e.target.value })} placeholder={t('Цена', 'Baha')} inputMode="decimal" />
-                          <input className="mb-input" value={String(editItem.sort_order)} onChange={e => setEditItem({ ...editItem, sort_order: e.target.value })} placeholder="#" />
-                          <input className="mb-input mb-span2" value={editItem.description_ru || ''} onChange={e => setEditItem({ ...editItem, description_ru: e.target.value })} placeholder={t('Описание RU', 'Beýany RU')} />
-                          <input className="mb-input mb-span2" value={editItem.description_tk || ''} onChange={e => setEditItem({ ...editItem, description_tk: e.target.value })} placeholder={t('Описание TK', 'Beýany TK')} />
-                          <select className="mb-input" value={editItem.status} onChange={e => setEditItem({ ...editItem, status: e.target.value })}>
-                            <option value="ACTIVE">{t('В продаже', 'Satuwda')}</option>
-                            <option value="INACTIVE">{t('Снято', 'Aýryldy')}</option>
-                          </select>
-                          <div className="mb-form-row mb-span2">
-                            <button className="mb-btn gold boom-focusable" disabled={saving === `i${i.id}`} onClick={() => void run(`i${i.id}`, () => api.updateMenuItem(i.id, { name_ru: editItem.name_ru, name_tk: editItem.name_tk, price: editItem.price, sort_order: editItem.sort_order, status: editItem.status, description_ru: editItem.description_ru, description_tk: editItem.description_tk }), () => setEditItem(null))}><Check className="w-3 h-3" /> {t('Сохранить', 'Ýatda sakla')}</button>
-                            <button className="mb-btn boom-focusable" onClick={() => setEditItem(null)}><X className="w-3 h-3" /> {t('Отмена', 'Goý bolsun')}</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
+                      <>
                           <button className="mb-dish-main boom-focusable" onClick={() => setSelected(i)}>
                             <span className="mb-thumb">
                               {i.media_url
@@ -244,13 +229,12 @@ export const MenuEngineView: React.FC = () => {
                           {canManage && (
                             <span className="mb-actions">
                               {canMedia && <button className="mb-icon boom-focusable" title={t('Фото блюда', 'Nahar suraty')} aria-label={t('Изменить фото блюда', 'Nahar suratyny üýtget')} onClick={() => setMediaFor(i)}><ImagePlus className="w-3.5 h-3.5" /></button>}
-                              <button className="mb-icon boom-focusable" title={t('Изменить', 'Üýtget')} aria-label={t('Изменить блюдо', 'Nahary üýtget')} onClick={() => setEditItem({ id: i.id, name_ru: i.name_ru, name_tk: i.name_tk, price: String(i.price), sort_order: String(i.sort_order), status: i.status, description_ru: i.description_ru, description_tk: i.description_tk })}><Pencil className="w-3.5 h-3.5" /></button>
+                              <button className="mb-icon boom-focusable" title={t('Изменить', 'Üýtget')} aria-label={t('Изменить блюдо', 'Nahary üýtget')} onClick={() => setEditItem(toDishDraft(i))}><Pencil className="w-3.5 h-3.5" /></button>
                               {!isArchived(i) && <button className="mb-icon danger boom-focusable" title={t('В архив', 'Arhiwe')} aria-label={t('Архивировать блюдо', 'Nahary arhiwle')} disabled={saving === `ia${i.id}`} onClick={() => void run(`ia${i.id}`, () => api.archiveMenuItem(i.id))}><Archive className="w-3.5 h-3.5" /></button>}
                               {isArchived(i) && <button className="mb-icon boom-focusable" title={t('Вернуть в продажу', 'Satuwa gaýtar')} disabled={saving === `ir${i.id}`} onClick={() => void run(`ir${i.id}`, () => api.updateMenuItem(i.id, { status: 'ACTIVE' }))}><RefreshCw className="w-3.5 h-3.5" /></button>}
                             </span>
                           )}
-                        </>
-                      )}
+                      </>
                     </div>
                   ))}
                   {!itemsOf(c.id).length && <div className="mb-empty">{t('Нет блюд в категории', 'Kategoriýada nahar ýok')}</div>}
@@ -269,11 +253,12 @@ export const MenuEngineView: React.FC = () => {
                   <div className="mb-form-grid mb-boxed">
                     <input className="mb-input mb-span2" value={group.name_ru} onChange={e => setGroup({ ...group, name_ru: e.target.value })} placeholder={t('Группа RU (напр. Соус)', 'Topar RU')} />
                     <input className="mb-input mb-span2" value={group.name_tk} onChange={e => setGroup({ ...group, name_tk: e.target.value })} placeholder={t('Группа TK', 'Topar TK')} />
+                    <input className="mb-input mb-span2" value={group.name_en} onChange={e => setGroup({ ...group, name_en: e.target.value })} placeholder={t('Группа EN (необязательно)', 'Topar EN (hökman däl)')} />
                     <input className="mb-input" value={group.min_select} onChange={e => setGroup({ ...group, min_select: e.target.value })} placeholder="min" />
                     <input className="mb-input" value={group.max_select} onChange={e => setGroup({ ...group, max_select: e.target.value })} placeholder="max" />
                     <label className="mb-cb mb-span2"><input type="checkbox" checked={group.required} onChange={e => setGroup({ ...group, required: e.target.checked })} /> {t('Обязательная группа', 'Hökmany topar')}</label>
                     <button className="mb-btn gold mb-span2 boom-focusable" disabled={!group.name_ru.trim() || !group.name_tk.trim() || saving === 'grp'}
-                      onClick={() => void run('grp', () => api.createModifierGroup(selectedItem.id, { ...group, branch_id: branchId }), async () => { setGroup({ name_ru: '', name_tk: '', min_select: '0', max_select: '1', required: false, sort_order: '0' }); await loadModifiers(selectedItem.id); })}>
+                      onClick={() => void run('grp', () => api.createModifierGroup(selectedItem.id, { ...group, branch_id: branchId }), async () => { setGroup({ name_ru: '', name_tk: '', name_en: '', min_select: '0', max_select: '1', required: false, sort_order: '0' }); await loadModifiers(selectedItem.id); })}>
                       {saving === 'grp' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Создать группу', 'Topar döret')}
                     </button>
                   </div>
@@ -285,6 +270,7 @@ export const MenuEngineView: React.FC = () => {
                       <div className="mb-form-grid">
                         <input className="mb-input mb-span2" value={editGroup.name_ru} onChange={e => setEditGroup({ ...editGroup, name_ru: e.target.value })} />
                         <input className="mb-input mb-span2" value={editGroup.name_tk} onChange={e => setEditGroup({ ...editGroup, name_tk: e.target.value })} />
+                        <input className="mb-input mb-span2" value={editGroup.name_en || ''} onChange={e => setEditGroup({ ...editGroup, name_en: e.target.value })} placeholder="EN" />
                         <input className="mb-input" value={String(editGroup.min_select)} onChange={e => setEditGroup({ ...editGroup, min_select: e.target.value })} placeholder="min" />
                         <input className="mb-input" value={String(editGroup.max_select)} onChange={e => setEditGroup({ ...editGroup, max_select: e.target.value })} placeholder="max" />
                         <label className="mb-cb mb-span2"><input type="checkbox" checked={editGroup.required} onChange={e => setEditGroup({ ...editGroup, required: e.target.checked })} /> {t('Обязательная', 'Hökmany')}</label>
@@ -299,7 +285,7 @@ export const MenuEngineView: React.FC = () => {
                         {g.status === 'INACTIVE' && <span className="mb-chip archived">{t('архив', 'arhiw')}</span>}
                         {canManage && (
                           <span className="mb-actions">
-                            <button className="mb-icon boom-focusable" aria-label={t('Изменить группу', 'Topary üýtget')} onClick={() => setEditGroup({ id: g.id, name_ru: g.name_ru, name_tk: g.name_tk, min_select: String(g.min_select), max_select: String(g.max_select), required: Boolean(g.required), status: g.status })}><Pencil className="w-3.5 h-3.5" /></button>
+                            <button className="mb-icon boom-focusable" aria-label={t('Изменить группу', 'Topary üýtget')} onClick={() => setEditGroup({ id: g.id, name_ru: g.name_ru, name_tk: g.name_tk, name_en: g.name_en || '', min_select: String(g.min_select), max_select: String(g.max_select), required: Boolean(g.required), status: g.status })}><Pencil className="w-3.5 h-3.5" /></button>
                             {g.status !== 'INACTIVE'
                               ? <button className="mb-icon danger boom-focusable" aria-label={t('Архивировать группу', 'Topary arhiwle')} disabled={saving === `ga${g.id}`} onClick={() => void run(`ga${g.id}`, () => api.archiveModifierGroup(g.id), () => loadModifiers(selectedItem.id))}><Archive className="w-3.5 h-3.5" /></button>
                               : <button className="mb-icon boom-focusable" aria-label={t('Восстановить группу', 'Topary dikeld')} disabled={saving === `gr${g.id}`} onClick={() => void run(`gr${g.id}`, () => api.updateModifierGroup(g.id, { status: 'ACTIVE' }), () => loadModifiers(selectedItem.id))}><RefreshCw className="w-3.5 h-3.5" /></button>}
@@ -314,17 +300,26 @@ export const MenuEngineView: React.FC = () => {
                           <div className="mb-form-row grow">
                             <input className="mb-input" value={editMod.name_ru} onChange={e => setEditMod({ ...editMod, name_ru: e.target.value })} />
                             <input className="mb-input" value={editMod.name_tk} onChange={e => setEditMod({ ...editMod, name_tk: e.target.value })} />
+                            <input className="mb-input" value={editMod.name_en || ''} onChange={e => setEditMod({ ...editMod, name_en: e.target.value })} placeholder="EN" />
                             <input className="mb-input mb-input-sm" value={String(editMod.price_delta)} onChange={e => setEditMod({ ...editMod, price_delta: e.target.value })} inputMode="decimal" />
+                            {/* Stage 37: an option may be backed by a REAL dish, which is what gives
+                                the Recipe Engine something to consume for this component. */}
+                            <select className="mb-input" value={editMod.source_menu_item_id || ''} onChange={e => setEditMod({ ...editMod, source_menu_item_id: e.target.value })} aria-label={t('Блюдо-источник', 'Çeşme nahar')}>
+                              <option value="">{t('— без блюда-источника —', '— çeşme naharsyz —')}</option>
+                              {visibleItems.filter((x: any) => !isArchived(x) && x.id !== selectedItem.id).map((x: any) => <option key={x.id} value={x.id}>{x.name_ru} · {x.sku}</option>)}
+                            </select>
                             <button className="mb-btn gold boom-focusable" disabled={saving === `m${m.id}`} onClick={() => void run(`m${m.id}`, () => api.updateModifier(m.id, editMod), () => loadModifiers(selectedItem.id).then(() => setEditMod(null)))}><Check className="w-3 h-3" /></button>
                             <button className="mb-btn boom-focusable" onClick={() => setEditMod(null)}><X className="w-3 h-3" /></button>
                           </div>
                         ) : (
                           <>
-                            <span>{m.name_ru} <span className="mb-muted">/ {m.name_tk}</span></span>
+                            <span>{m.name_ru} <span className="mb-muted">/ {m.name_tk}{m.name_en ? ` / ${m.name_en}` : ''}</span>
+                              {m.source_name_ru && <span className="mb-chip" title={t('Опция связана с реальным блюдом — Recipe Engine знает, что она расходует', 'Warýant hakyky nahar bilen baglanyşykly')}>⇢ {m.source_name_ru}</span>}
+                            </span>
                             <span className="mb-mod-price">{money(m.price_delta)}</span>
                             {canManage && (
                               <span className="mb-actions">
-                                <button className="mb-icon boom-focusable" aria-label={t('Изменить модификатор', 'Modifikatory üýtget')} onClick={() => setEditMod({ id: m.id, name_ru: m.name_ru, name_tk: m.name_tk, price_delta: money(m.price_delta), status: m.status })}><Pencil className="w-3 h-3" /></button>
+                                <button className="mb-icon boom-focusable" aria-label={t('Изменить модификатор', 'Modifikatory üýtget')} onClick={() => setEditMod({ id: m.id, name_ru: m.name_ru, name_tk: m.name_tk, name_en: m.name_en || '', source_menu_item_id: m.source_menu_item_id || '', price_delta: money(m.price_delta), status: m.status })}><Pencil className="w-3 h-3" /></button>
                                 {m.status !== 'INACTIVE'
                                   ? <button className="mb-icon danger boom-focusable" aria-label={t('Архивировать модификатор', 'Modifikatory arhiwle')} disabled={saving === `ma${m.id}`} onClick={() => void run(`ma${m.id}`, () => api.archiveModifier(m.id), () => loadModifiers(selectedItem.id))}><Archive className="w-3 h-3" /></button>
                                   : <button className="mb-icon boom-focusable" aria-label={t('Восстановить модификатор', 'Modifikatory dikeld')} disabled={saving === `mr${m.id}`} onClick={() => void run(`mr${m.id}`, () => api.updateModifier(m.id, { status: 'ACTIVE' }), () => loadModifiers(selectedItem.id))}><RefreshCw className="w-3 h-3" /></button>}
@@ -339,9 +334,14 @@ export const MenuEngineView: React.FC = () => {
                       <div className="mb-form-row mb-boxed">
                         <input className="mb-input" value={mod.name_ru} onChange={e => setMod({ ...mod, name_ru: e.target.value })} placeholder={t('Опция RU', 'Warýant RU')} />
                         <input className="mb-input" value={mod.name_tk} onChange={e => setMod({ ...mod, name_tk: e.target.value })} placeholder={t('Опция TK', 'Warýant TK')} />
+                        <input className="mb-input" value={mod.name_en} onChange={e => setMod({ ...mod, name_en: e.target.value })} placeholder="EN" />
                         <input className="mb-input mb-input-sm" value={mod.price_delta} onChange={e => setMod({ ...mod, price_delta: e.target.value })} placeholder="+0.00" inputMode="decimal" />
+                        <select className="mb-input" value={mod.source_menu_item_id} onChange={e => setMod({ ...mod, source_menu_item_id: e.target.value })} aria-label={t('Блюдо-источник', 'Çeşme nahar')}>
+                          <option value="">{t('— без блюда-источника —', '— çeşme naharsyz —')}</option>
+                          {visibleItems.filter((x: any) => !isArchived(x) && x.id !== selectedItem.id).map((x: any) => <option key={x.id} value={x.id}>{x.name_ru} · {x.sku}</option>)}
+                        </select>
                         <button className="mb-btn gold boom-focusable" disabled={!mod.name_ru.trim() || !mod.name_tk.trim() || saving === `nm${g.id}`}
-                          onClick={() => void run(`nm${g.id}`, () => api.createModifier(g.id, mod), async () => { setMod({ name_ru: '', name_tk: '', price_delta: '0', sort_order: '0' }); setModGroupId(''); await loadModifiers(selectedItem.id); })}><Check className="w-3 h-3" /></button>
+                          onClick={() => void run(`nm${g.id}`, () => api.createModifier(g.id, mod), async () => { setMod({ name_ru: '', name_tk: '', name_en: '', source_menu_item_id: '', price_delta: '0', sort_order: '0' }); setModGroupId(''); await loadModifiers(selectedItem.id); })}><Check className="w-3 h-3" /></button>
                         <button className="mb-btn boom-focusable" onClick={() => setModGroupId('')}><X className="w-3 h-3" /></button>
                       </div>
                     ) : <button className="mb-add boom-focusable" onClick={() => setModGroupId(g.id)}>+ {t('Добавить опцию', 'Warýant goş')}</button>)}
@@ -427,6 +427,17 @@ export const MenuEngineView: React.FC = () => {
             {!assets.length && <div className="mb-empty"><Tag className="inline w-4 h-4 mr-1" />{t('Медиа-библиотека пуста — загрузите файл в разделе «Медиа-библиотека».', 'Media kitaphanasy boş — «Media kitaphanasy» bölüminde ýükläň.')}</div>}
           </div>
         </div>
+      )}
+
+      {/* Stage 37: the full dish editor -- RU/TK/EN content, structured weight, public
+          ingredients, allergens and media, all through the existing PATCH /api/menu/items/:id. */}
+      {editItem && (
+        <MenuDishEditor
+          draft={editItem}
+          assets={assets}
+          onClose={() => setEditItem(null)}
+          onSaved={async () => { await loadMenu(); if (selected) await loadModifiers(selected.id); }}
+        />
       )}
     </div>
   );

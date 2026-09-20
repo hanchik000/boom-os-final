@@ -14,6 +14,16 @@ const ALLOWED = new Map([
   ['image/jpeg', ['IMAGE','.jpg']], ['image/png', ['IMAGE','.png']],
   ['image/webp', ['IMAGE','.webp']], ['image/gif', ['GIF','.gif']]
 ]);
+// Stage 37 -- 360 media.
+//
+// A 360 asset is an ordinary equirectangular image FILE; what makes it 360 is the declaration,
+// not the bytes, so the operator marks it explicitly and the server records that declaration.
+// We deliberately do NOT infer 360 from a mime type: a normal JPG must never silently become a
+// 360 asset. MEDIA_360 is therefore only reachable by an explicit `kind` on the JSON create
+// route or by an explicit promotion on PATCH, and only from an image asset.
+const KINDS = ['IMAGE','VIDEO','GIF','MEDIA_360'];
+const IMAGE_KINDS = ['IMAGE','MEDIA_360'];
+
 const allowed = (req:Request, branchId:string|null) => !branchId || Boolean(req.user?.isSuperUser || req.user?.allowedBranchIds.includes(branchId));
 const bool = (v:any, d=false) => v===undefined ? d : ['true','1','yes','on'].includes(String(v).toLowerCase());
 
@@ -50,7 +60,10 @@ router.post('/', requirePermission('menu.media.manage'), async (req,res)=>{
   if(branch&&!allowed(req,branch))return res.status(403).json({error:'BRANCH_ACCESS_DENIED'});
   if(!branch&&!req.user!.isSuperUser)return res.status(403).json({error:'GLOBAL_MEDIA_REQUIRES_SUPERUSER'});
   const name=String(req.body?.name||'').trim(), url=String(req.body?.url||'').trim(), kind=String(req.body?.kind||'IMAGE').toUpperCase();
-  if(!name||!url||!['IMAGE','VIDEO','GIF'].includes(kind))return res.status(400).json({error:'INVALID_MEDIA_ASSET'});
+  if(!name||!url||!KINDS.includes(kind))return res.status(400).json({error:'INVALID_MEDIA_ASSET'});
+  // A 360 asset is a still image projected by the viewer; a video or GIF cannot be one.
+  const declaredMime=String(req.body?.mime_type||'');
+  if(kind==='MEDIA_360'&&declaredMime&&!declaredMime.startsWith('image/'))return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_360_ASSET',message:'A 360 asset must be an equirectangular image.'});
   const id=`masset_${crypto.randomUUID()}`,now=new Date().toISOString();
   await execute(`INSERT INTO media_assets (id,branch_id,name,kind,mime_type,url,poster_url,alt_ru,alt_tk,focal_x,focal_y,size_bytes,width,height,duration_ms,active,priority,created_by,updated_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[id,branch,String(name),kind,String(req.body?.mime_type||''),url,req.body?.poster_url||null,req.body?.alt_ru||null,req.body?.alt_tk||null,Number(req.body?.focal_x??50),Number(req.body?.focal_y??50),null,null,null,null,bool(req.body?.active,true),Number(req.body?.priority||0),req.user!.id,req.user!.id,now,now]);
   await recordAuditLog({action:'MENU_MEDIA_ASSET_CREATED',entityType:'MEDIA_ASSET',entityId:id,branchId:branch||undefined,newValues:req.body,req});
@@ -61,7 +74,16 @@ router.patch('/:id', requirePermission('menu.media.manage'), async (req,res)=>{
   const row=await queryOne<any>('SELECT * FROM media_assets WHERE id=?',[req.params.id]); if(!row)return res.status(404).json({error:'NOT_FOUND'});
   if(row.branch_id&&!allowed(req,row.branch_id))return res.status(403).json({error:'BRANCH_ACCESS_DENIED'});
   const n={...row,...req.body,updated_at:new Date().toISOString(),updated_by:req.user!.id};
-  await execute(`UPDATE media_assets SET name=?,poster_url=?,alt_ru=?,alt_tk=?,focal_x=?,focal_y=?,active=?,priority=?,updated_by=?,updated_at=? WHERE id=?`,[String(n.name),n.poster_url||null,n.alt_ru||null,n.alt_tk||null,Number(n.focal_x??50),Number(n.focal_y??50),bool(n.active),Number(n.priority||0),req.user!.id,n.updated_at,row.id]);
+  // Stage 37: an uploaded image can be DECLARED a 360 asset (or demoted back to a flat image).
+  // Only ever between the two image kinds -- a video or GIF can never be relabelled this way.
+  let kind=row.kind;
+  if(req.body?.kind!==undefined){
+    const want=String(req.body.kind).toUpperCase();
+    if(!IMAGE_KINDS.includes(want)||!IMAGE_KINDS.includes(row.kind))
+      return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_MEDIA_KIND_CHANGE',message:'Only an image asset can be marked as, or unmarked from, a 360 asset.'});
+    kind=want;
+  }
+  await execute(`UPDATE media_assets SET name=?,kind=?,poster_url=?,alt_ru=?,alt_tk=?,focal_x=?,focal_y=?,active=?,priority=?,updated_by=?,updated_at=? WHERE id=?`,[String(n.name),kind,n.poster_url||null,n.alt_ru||null,n.alt_tk||null,Number(n.focal_x??50),Number(n.focal_y??50),bool(n.active),Number(n.priority||0),req.user!.id,n.updated_at,row.id]);
   await recordAuditLog({action:'MENU_MEDIA_ASSET_UPDATED',entityType:'MEDIA_ASSET',entityId:row.id,branchId:row.branch_id||undefined,oldValues:row,newValues:n,req});
   res.json({asset:await queryOne<any>('SELECT * FROM media_assets WHERE id=?',[row.id])});
 });

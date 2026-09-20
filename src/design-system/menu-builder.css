@@ -94,3 +94,12 @@
 .mb-brand-row{display:flex;flex-direction:column;gap:5px;padding:9px 0;border-top:1px solid var(--boom-border)}
 .mb-brand-row:first-of-type{border-top:none}
 .mb-brand-label{font-size:11.5px;color:var(--boom-text-secondary);font-weight:650}
+
+/* Stage 37 — allergen picker and dish public-information controls. */
+.mb-allergens{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mb-allergen{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--boom-border);border-radius:999px;font-size:11px;color:var(--boom-text-secondary);cursor:pointer;transition:border-color var(--boom-motion-fast) var(--boom-ease),color var(--boom-motion-fast) var(--boom-ease)}
+.mb-allergen:hover{border-color:rgba(245,158,11,.4);color:var(--boom-text)}
+.mb-allergen.on{border-color:var(--boom-gold);background:var(--boom-gold-soft);color:var(--boom-text)}
+.mb-allergen:focus-within{box-shadow:var(--boom-focus-ring)}
+.mb-mod .mb-chip{margin-left:6px}
+@media (prefers-reduced-motion:reduce){.mb-allergen{transition:none}}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ImagePlus, Power, Trash2, Upload, Pencil, Check, X, Loader2, RotateCcw } from 'lucide-react';
+import { ImagePlus, Power, Trash2, Upload, Pencil, Check, X, Loader2, RotateCcw, Rotate3d } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -18,7 +18,7 @@ import { useLanguage } from '../context/LanguageContext';
 // because dishes, banners and catalog blocks reference them; nothing is hard-deleted.
 // ---------------------------------------------------------------------------------------------
 
-interface Draft { name: string; alt_ru: string; alt_tk: string; poster_url: string; focal_x: string; focal_y: string; priority: string }
+interface Draft { name: string; alt_ru: string; alt_tk: string; poster_url: string; focal_x: string; focal_y: string; priority: string; is360: boolean }
 
 const toDraft = (a: any): Draft => ({
   name: String(a.name ?? ''),
@@ -28,6 +28,7 @@ const toDraft = (a: any): Draft => ({
   focal_x: String(a.focal_x ?? 50),
   focal_y: String(a.focal_y ?? 50),
   priority: String(a.priority ?? 0),
+  is360: a.kind === 'MEDIA_360',
 });
 
 export const MediaLibraryView: React.FC = () => {
@@ -85,6 +86,8 @@ export const MediaLibraryView: React.FC = () => {
       focal_x: clamp(draft.focal_x, 50),
       focal_y: clamp(draft.focal_y, 50),
       priority: Number.isFinite(Number(draft.priority)) ? Number(draft.priority) : 0,
+      // Only sent for an image asset; the server refuses the change for any other kind.
+      ...((a.kind === 'IMAGE' || a.kind === 'MEDIA_360') ? { kind: draft.is360 ? 'MEDIA_360' : 'IMAGE' } : {}),
     }));
     cancelEdit();
   };
@@ -139,7 +142,9 @@ export const MediaLibraryView: React.FC = () => {
                 {a.kind === 'VIDEO'
                   ? <video src={a.url} poster={a.poster_url || undefined} muted loop playsInline controls className="w-full h-full object-cover" />
                   : <img src={a.url} alt={ru ? a.alt_ru || a.name : a.alt_tk || a.name} className="w-full h-full object-cover" style={{ objectPosition: `${d.focal_x}% ${d.focal_y}%` }} />}
-                <div className="absolute top-3 left-3 px-2 py-1 rounded-lg bg-black/70 text-[10px] text-amber-300">{a.kind}</div>
+                <div className="absolute top-3 left-3 px-2 py-1 rounded-lg bg-black/70 text-[10px] text-amber-300 inline-flex items-center gap-1">
+                  {a.kind === 'MEDIA_360' && <Rotate3d className="w-3 h-3" />}{a.kind === 'MEDIA_360' ? '360' : a.kind}
+                </div>
                 {!a.active && <div className="absolute top-3 right-3 mb-chip archived">{t('ВЫКЛ', 'ÖÇÜK')}</div>}
               </div>
               <div className="p-4">
@@ -152,6 +157,15 @@ export const MediaLibraryView: React.FC = () => {
                     <input className="mb-input" type="number" min={0} max={100} value={d.focal_x} onChange={e => setDraft(v => v && { ...v, focal_x: e.target.value })} placeholder="focal X %" aria-label="focal X" />
                     <input className="mb-input" type="number" min={0} max={100} value={d.focal_y} onChange={e => setDraft(v => v && { ...v, focal_y: e.target.value })} placeholder="focal Y %" aria-label="focal Y" />
                     <input className="mb-input mb-span2" type="number" value={d.priority} onChange={e => setDraft(v => v && { ...v, priority: e.target.value })} placeholder={t('Приоритет', 'Prioritet')} aria-label={t('Приоритет', 'Prioritet')} />
+                    {/* Stage 37: a 360 asset is an ordinary equirectangular IMAGE -- what makes it
+                        360 is this declaration, never the file type. Only an image can be marked,
+                        so a normal photo never silently becomes a 360 asset and a video never can. */}
+                    {(a.kind === 'IMAGE' || a.kind === 'MEDIA_360') && (
+                      <label className="mb-cb mb-span2">
+                        <input type="checkbox" checked={d.is360} onChange={e => setDraft(v => v && { ...v, is360: e.target.checked })} aria-label={t('360-материал', '360 material')} />
+                        <Rotate3d className="w-3.5 h-3.5 text-amber-400" /> {t('Это 360-материал (равнопромежуточная проекция)', 'Bu 360 material (ekwirektangulýar proýeksiýa)')}
+                      </label>
+                    )}
                     <div className="mb-span2 mb-form-row">
                       <button className="mb-btn gold boom-focusable" disabled={saving === a.id} onClick={() => void saveEdit(a)}>
                         {saving === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} {t('Сохранить', 'Ýatda sakla')}

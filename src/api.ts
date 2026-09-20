@@ -207,6 +207,8 @@ export const api = {
   updateMenuItem: (id:string,data:any) => request<{item:any}>(`/api/menu/items/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
   archiveMenuItem: (id:string) => request<{success:boolean;message:string}>(`/api/menu/items/${encodeURIComponent(id)}`,{method:'DELETE'}),
   getMenuModifiers: (itemId:string, branch_id?:string, includeArchived?:boolean) => { const q=new URLSearchParams(); if(branch_id)q.set('branch_id',branch_id); if(includeArchived)q.set('include_archived','true'); const s=q.toString(); return request<{item:any;groups:any[]}>(`/api/menu/items/${itemId}/modifiers${s?`?${s}`:''}`); },
+  // Stage 37: the regulated allergen reference list (read-only; seeded, not user content).
+  getAllergens: () => request<{ allergens: Array<{id:string;code:string;label_ru:string;label_tk:string;label_en:string;sort_order:number}> }>('/api/menu/allergens'),
   createModifierGroup: (itemId:string,data:any) => request<{group:any}>(`/api/menu/items/${itemId}/modifier-groups`,{method:'POST',body:JSON.stringify(data)}),
   createModifier: (groupId:string,data:any) => request<{modifier:any}>(`/api/menu/modifier-groups/${groupId}/modifiers`,{method:'POST',body:JSON.stringify(data)}),
   // Stage 36: modifier group/option editing and archiving (new backend routes).

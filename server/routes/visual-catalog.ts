@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { query, queryOne, execute } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { activePromotionMap } from './promotions';
+import { pickLang, loc, publicMenuExtras } from './public-menu';
 
 const router = Router();
 const TYPES = ['HERO','CATEGORY','BANNER','PROMOTION','NEW_ITEMS','SPACER'];
@@ -26,23 +27,32 @@ function normalizeChannels(v: unknown): string | null {
 }
 
 router.get('/public', async (req,res) => {
-  const branch=String(req.query.branch_id||'').trim(); const lang=String(req.query.lang||'ru')==='tk'?'tk':'ru';
+  const branch=String(req.query.branch_id||'').trim();
+  // Stage 37: the QR/visual guest surface shares the SAME language resolver and the SAME public
+  // extras helper as /api/public/menu, so the two customer screens can never disagree about a
+  // dish's translation, weight, allergens or selectable components.
+  const lang=pickLang(req.query.lang);
   const channelRaw=String(req.query.channel||'').toUpperCase();
   const channel=CHANNELS.includes(channelRaw)?channelRaw:null;
   if(!branch) return res.status(400).json({error:'BRANCH_REQUIRED',message:'branch_id is required.'});
   const b=await queryOne<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE id=? AND status='ACTIVE'`,[branch]);
   if(!b) return res.status(404).json({error:'BRANCH_NOT_FOUND',message:'Branch not found.'});
-  const categories=await query<any>(`SELECT id,name_ru,name_tk,sort_order FROM menu_categories WHERE (branch_id=? OR branch_id IS NULL) AND status='ACTIVE' AND deleted_at IS NULL ORDER BY sort_order,name_ru`,[branch]);
+  const categories=await query<any>(`SELECT id,name_ru,name_tk,name_en,sort_order FROM menu_categories WHERE (branch_id=? OR branch_id IS NULL) AND status='ACTIVE' AND deleted_at IS NULL ORDER BY sort_order,name_ru`,[branch]);
   // Stage 36: the dish photo attached in ADMIN, joined from the same media_assets row the plain
   // public menu reads -- the two customer surfaces can never show different photos.
-  const itemRows=await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.description_ru,mi.description_tk,mi.price,mi.sort_order,
+  const itemRows=await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.name_en,mi.description_ru,mi.description_tk,mi.description_en,mi.ingredients_ru,mi.ingredients_tk,mi.ingredients_en,mi.weight_value,mi.weight_unit,mi.price,mi.sort_order,
       md.url AS media_url,md.kind AS media_kind,md.poster_url AS media_poster_url,md.alt_ru AS media_alt_ru,md.alt_tk AS media_alt_tk,md.focal_x AS media_focal_x,md.focal_y AS media_focal_y
     FROM menu_items mi LEFT JOIN media_assets md ON md.id=mi.media_asset_id AND md.active=true
     WHERE (mi.branch_id=? OR mi.branch_id IS NULL) AND mi.status='ACTIVE' AND mi.deleted_at IS NULL ORDER BY mi.sort_order,mi.name_ru`,[branch]);
   // Stage 35.6: the real promotional price for every item that is genuinely inside an active
   // promotion window right now -- the SAME rule public-menu.ts uses, never a second computation.
   const promos=await activePromotionMap(branch, new Date().toISOString());
-  const items=itemRows.map((x:any)=>{ const promo=promos.get(x.id); return {...x, promo_price: promo?promo.promo_price:null, promo_badge: promo?(lang==='tk'?promo.badge_tk:promo.badge_ru):null, promo_ends_at: promo?promo.ends_at:null}; });
+  const extra=await publicMenuExtras(branch, itemRows.map((x:any)=>x.id), lang);
+  const items=itemRows.map((x:any)=>{ const promo=promos.get(x.id); return {...x,
+    name: loc(x,'name',lang), description: loc(x,'description',lang), ingredients: loc(x,'ingredients',lang),
+    weight_value: x.weight_value===null?null:String(x.weight_value), weight_unit: x.weight_unit||null,
+    allergens: extra.allergens.get(x.id)||[], gallery: extra.gallery.get(x.id)||[], modifier_groups: extra.groups.get(x.id)||[],
+    promo_price: promo?promo.promo_price:null, promo_badge: promo?(lang==='tk'?promo.badge_tk:promo.badge_ru):null, promo_ends_at: promo?promo.ends_at:null}; });
   const rows=await query<any>(`SELECT v.*,m.url AS asset_url,m.kind AS asset_kind,m.mime_type AS asset_mime_type,m.poster_url AS asset_poster_url,m.alt_ru AS asset_alt_ru,m.alt_tk AS asset_alt_tk,m.focal_x AS asset_focal_x,m.focal_y AS asset_focal_y FROM visual_catalog_blocks v LEFT JOIN media_assets m ON m.id=v.media_asset_id WHERE (v.branch_id=? OR v.branch_id IS NULL) AND v.active=true AND (v.media_asset_id IS NULL OR m.active=true) ORDER BY v.priority DESC,v.sort_order ASC,v.created_at DESC`,[branch]);
   const blocks=rows.filter(activeNow).filter((r:any)=>onChannel(r,channel)).map((r:any)=>({...r,title:lang==='tk'?r.title_tk:r.title_ru,subtitle:lang==='tk'?r.subtitle_tk:r.subtitle_ru,media_url:r.asset_url||r.media_url,media_kind:r.asset_kind||r.media_kind,poster_url:r.asset_poster_url||null,media_alt:lang==='tk'?r.asset_alt_tk:r.asset_alt_ru,focal_x:r.asset_focal_x??50,focal_y:r.asset_focal_y??50}));
   res.json({branch,language:lang,channel,categories,items,blocks});

@@ -318,6 +318,34 @@ export async function seedInitialData() {
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_logo_dark_url','BRANDING_LOGO_DARK_URL','','string','Logo URL for light backgrounds. Empty falls back to the primary logo.',now,now]);
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_favicon_url','BRANDING_FAVICON_URL','','string','Favicon URL. Empty keeps the bundled default.',now,now]);
 
+  // Stage 37 -- the allergen reference list (the regulated EU 14). These are a fixed legal set,
+  // not user content, so they are seeded rather than given a CRUD screen nobody asked for: ADMIN
+  // links a dish to them, it does not invent new ones. Public information only -- a code and
+  // three labels, never a quantity, a cost or a supplier.
+  const ALLERGENS: Array<[string, string, string, string]> = [
+    ['GLUTEN',    'Глютен (злаки)',      'Gluten (däneli ekinler)',   'Cereals containing gluten'],
+    ['CRUSTACEA', 'Ракообразные',        'Gabykly deňiz jandarlary',  'Crustaceans'],
+    ['EGG',       'Яйца',                'Ýumurtga',                  'Eggs'],
+    ['FISH',      'Рыба',                'Balyk',                     'Fish'],
+    ['PEANUT',    'Арахис',              'Ýer hozy',                  'Peanuts'],
+    ['SOY',       'Соя',                 'Soýa',                      'Soybeans'],
+    ['MILK',      'Молоко (лактоза)',    'Süýt (laktoza)',            'Milk (incl. lactose)'],
+    ['NUTS',      'Орехи',               'Hozlar',                    'Tree nuts'],
+    ['CELERY',    'Сельдерей',           'Selderey',                  'Celery'],
+    ['MUSTARD',   'Горчица',             'Gorçisa',                   'Mustard'],
+    ['SESAME',    'Кунжут',              'Künji',                     'Sesame seeds'],
+    ['SULPHITE',  'Диоксид серы/сульфиты','Kükürt dioksidi/sulfitler','Sulphur dioxide and sulphites'],
+    ['LUPIN',     'Люпин',               'Lupin',                     'Lupin'],
+    ['MOLLUSC',   'Моллюски',            'Mollýuskalar',              'Molluscs'],
+  ];
+  for (let i = 0; i < ALLERGENS.length; i++) {
+    const [code, ru, tk, en] = ALLERGENS[i];
+    await execute(
+      `INSERT INTO allergens (id,code,label_ru,label_tk,label_en,sort_order,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`,
+      [`allergen_${code.toLowerCase()}`, code, ru, tk, en, i, true, now, now],
+    );
+  }
+
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_dine_service_charge','DINE_IN_SERVICE_CHARGE_PERCENT','10','number','Server-calculated service charge percentage for DINE_IN orders only.',now,now]);
   // Stage 34.2: takeaway (pickup) and delivery carry their own configurable service charge, never a
   // hardcoded number and never silently reused from dine-in. A branch's service charge configuration

@@ -38,10 +38,15 @@ const checks = [
   // ---------------------------------------------------------------- A. dish media == ONE media engine
   ['dish media is a nullable FK into the EXISTING MediaAsset table, not a second media table',
     /media_asset_id\s+String\?/.test(schema) && /media_asset\s+MediaAsset\?\s+@relation\(fields:\s*\[media_asset_id\]/.test(schema)],
-  ['Stage 36 introduced NO new media model -- only the two that already existed (PosMedia for POS idle screens, MediaAsset for the menu library)',
+  ['NO second media STORE exists -- only PosMedia and MediaAsset hold a file; anything else named *Media may only REFERENCE them',
     (() => {
-      const models = (schema.match(/^model\s+(\w*Media\w*)\s/gm) || []).map(m => m.trim().split(/\s+/)[1]).sort();
-      return models.join(',') === 'MediaAsset,PosMedia';
+      // Stage 37 added MenuItemMedia, a pure link table (menu_item_id + media_asset_id + order).
+      // The invariant that matters is not the model COUNT but that no new model stores a file, so
+      // this checks for the columns that make something a media store.
+      const blocks = schema.match(/^model\s+\w*Media\w*\s*\{[\s\S]*?^\}/gm) || [];
+      const stores = blocks.filter(b => /\n\s*url\s+String/.test(b) && /\n\s*mime_type\s+String/.test(b))
+        .map(b => b.match(/^model\s+(\w+)/)[1]).sort();
+      return stores.join(',') === 'MediaAsset,PosMedia';
     })()],
   ['detaching or deleting an asset never cascades a dish away (ON DELETE SET NULL)',
     /ON DELETE SET NULL/.test(migration) && /onDelete:\s*SetNull/.test(schema)],
