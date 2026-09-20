@@ -18,15 +18,24 @@ export const OrderApprovalsView: React.FC = () => {
   const canClosure = hasPermission('orders.closure.approve');
   const canCompliment = hasPermission('orders.compliment.approve');
 
+  const [error, setError] = useState('');
+
+  // Stage 36: these three reads are branch-scoped, so a holding-level user with no branch of
+  // their own gets a legitimate 403 from the server. That refusal is correct -- what was wrong is
+  // that it escaped as an unhandled rejection and left the screen on "Loading..." forever. The
+  // refusal is now surfaced to the operator instead.
   const load = async () => {
-    setLoading(true);
+    setLoading(true); setError('');
     try {
       if (canRemoval) setRequests((await api.getItemRemovalRequests({ branch_id: user?.branch_id || undefined, status: 'PENDING' })).requests || []);
       if (canClosure) setClosures((await api.getOrderClosures({ branch_id: user?.branch_id || undefined, status: 'PENDING' })).closures || []);
       if (canCompliment) setCompliments((await api.getComplimentRequests({ branch_id: user?.branch_id || undefined, status: 'PENDING' })).compliments || []);
+    } catch (e: any) {
+      setError(e?.message || (ru ? 'Не удалось загрузить запросы.' : 'Haýyşlar ýüklenmedi.'));
+      setRequests([]); setClosures([]); setCompliments([]);
     } finally { setLoading(false); }
   };
-  useEffect(() => { if (canRemoval || canClosure || canCompliment) load(); }, [user?.branch_id, canRemoval, canClosure, canCompliment]);
+  useEffect(() => { void load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [user?.branch_id, canRemoval, canClosure, canCompliment]);
 
   if (!canRemoval && !canClosure && !canCompliment) return null;
 
@@ -74,6 +83,8 @@ export const OrderApprovalsView: React.FC = () => {
         </div>
         <button onClick={load} className="p-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"><RefreshCw className="w-4 h-4" /></button>
       </div>
+
+      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
 
       {canClosure && (
         <section className="space-y-3">

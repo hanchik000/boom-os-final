@@ -367,6 +367,10 @@ model MenuItem {
   id             String        @id
   branch_id      String?
   category_id    String
+  // Stage 36: the dish photo/video. A nullable FK into the EXISTING Stage 35.4 Media Engine --
+  // no second media table, no duplicated image record. Every surface that shows a dish (admin
+  // menu, waiter POS, customer menu, visual catalog) reads this one asset.
+  media_asset_id String?
   sku            String        @unique
   name_ru        String
   name_tk        String
@@ -383,6 +387,7 @@ model MenuItem {
 
   branch         Branch?       @relation(fields: [branch_id], references: [id], onDelete: Cascade)
   category       MenuCategory  @relation(fields: [category_id], references: [id], onDelete: Restrict)
+  media_asset    MediaAsset?   @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
   order_items    OrderItem[]
   recipes        Recipe[]
   modifier_groups MenuModifierGroup[]
@@ -1709,6 +1714,8 @@ model MediaAsset {
   updated_by  String?
   created_at  String
   updated_at  String
+
+  menu_items  MenuItem[]
 
   @@index([branch_id, active, priority], map: "idx_media_assets_branch_active")
   @@index([kind, active], map: "idx_media_assets_kind")

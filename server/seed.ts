@@ -307,6 +307,17 @@ export async function seedInitialData() {
     }
   }
 
+  // Stage 36 -- branding. ONE source of truth for the product name, network name, wordmark and
+  // logo, stored in the existing system_settings table so it inherits the existing settings.update
+  // permission (Owner/SuperAdmin) and the existing SETTINGS_UPDATED audit record. Nothing about
+  // branding is hardcoded in a React component any more.
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_product_name','BRANDING_PRODUCT_NAME','BOOM OS','string','Product name shown in the ADMIN sidebar, POS headers and login screen.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_network_name','BRANDING_NETWORK_NAME','BOOMBURGER Network','string','Organization/network name shown under the product name.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_mark','BRANDING_MARK','B','string','Short wordmark letter(s) used when no logo image is configured.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_logo_url','BRANDING_LOGO_URL','','string','Primary logo URL (a Media Library asset URL). Empty falls back to the wordmark.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_logo_dark_url','BRANDING_LOGO_DARK_URL','','string','Logo URL for light backgrounds. Empty falls back to the primary logo.',now,now]);
+  await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_branding_favicon_url','BRANDING_FAVICON_URL','','string','Favicon URL. Empty keeps the bundled default.',now,now]);
+
   await execute(`INSERT INTO system_settings (id,key,value,type,description,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (key) DO NOTHING`, ['setting_dine_service_charge','DINE_IN_SERVICE_CHARGE_PERCENT','10','number','Server-calculated service charge percentage for DINE_IN orders only.',now,now]);
   // Stage 34.2: takeaway (pickup) and delivery carry their own configurable service charge, never a
   // hardcoded number and never silently reused from dine-in. A branch's service charge configuration

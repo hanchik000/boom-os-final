@@ -198,14 +198,22 @@ export const api = {
   getStockMovements: (branch_id?: string) => request<{ movements: any[] }>(`/api/inventory/movements${branch_id ? `?branch_id=${encodeURIComponent(branch_id)}` : ''}`),
 
   // Menu / Tables / Unified Order Core
-  getMenuAdmin: (branch_id?: string) => { const q=branch_id?`?branch_id=${encodeURIComponent(branch_id)}`:''; return request<{branch_id:string;categories:any[];items:any[]}>(`/api/menu${q}`); },
+  getMenuAdmin: (branch_id?: string, includeArchived?: boolean) => { const q=new URLSearchParams(); if(branch_id)q.set('branch_id',branch_id); if(includeArchived)q.set('include_archived','true'); const s=q.toString(); return request<{branch_id:string;categories:any[];items:any[]}>(`/api/menu${s?`?${s}`:''}`); },
   createMenuCategory: (data:any) => request<{category:any}>('/api/menu/categories',{method:'POST',body:JSON.stringify(data)}),
   updateMenuCategory: (id:string,data:any) => request<{category:any}>(`/api/menu/categories/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
+  // Stage 36: archive (soft delete) -- the backend has always supported it, ADMIN never called it.
+  archiveMenuCategory: (id:string) => request<{success:boolean;message:string}>(`/api/menu/categories/${encodeURIComponent(id)}`,{method:'DELETE'}),
   createMenuItem: (data:any) => request<{item:any}>('/api/menu/items',{method:'POST',body:JSON.stringify(data)}),
   updateMenuItem: (id:string,data:any) => request<{item:any}>(`/api/menu/items/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
-  getMenuModifiers: (itemId:string, branch_id?:string) => request<{item:any;groups:any[]}>(`/api/menu/items/${itemId}/modifiers${branch_id?`?branch_id=${encodeURIComponent(branch_id)}`:''}`),
+  archiveMenuItem: (id:string) => request<{success:boolean;message:string}>(`/api/menu/items/${encodeURIComponent(id)}`,{method:'DELETE'}),
+  getMenuModifiers: (itemId:string, branch_id?:string, includeArchived?:boolean) => { const q=new URLSearchParams(); if(branch_id)q.set('branch_id',branch_id); if(includeArchived)q.set('include_archived','true'); const s=q.toString(); return request<{item:any;groups:any[]}>(`/api/menu/items/${itemId}/modifiers${s?`?${s}`:''}`); },
   createModifierGroup: (itemId:string,data:any) => request<{group:any}>(`/api/menu/items/${itemId}/modifier-groups`,{method:'POST',body:JSON.stringify(data)}),
   createModifier: (groupId:string,data:any) => request<{modifier:any}>(`/api/menu/modifier-groups/${groupId}/modifiers`,{method:'POST',body:JSON.stringify(data)}),
+  // Stage 36: modifier group/option editing and archiving (new backend routes).
+  updateModifierGroup: (groupId:string,data:any) => request<{group:any}>(`/api/menu/modifier-groups/${encodeURIComponent(groupId)}`,{method:'PATCH',body:JSON.stringify(data)}),
+  archiveModifierGroup: (groupId:string) => request<{success:boolean;message:string}>(`/api/menu/modifier-groups/${encodeURIComponent(groupId)}`,{method:'DELETE'}),
+  updateModifier: (modifierId:string,data:any) => request<{modifier:any}>(`/api/menu/modifiers/${encodeURIComponent(modifierId)}`,{method:'PATCH',body:JSON.stringify(data)}),
+  archiveModifier: (modifierId:string) => request<{success:boolean;message:string}>(`/api/menu/modifiers/${encodeURIComponent(modifierId)}`,{method:'DELETE'}),
 
   getMenu: (branch_id?: string) => {
     const q = branch_id ? `?branch_id=${encodeURIComponent(branch_id)}` : '';
@@ -475,6 +483,9 @@ export const api = {
     }),
 
   // Settings
+  // Stage 36: the one branding read every surface uses (public by design -- it is the brand a
+  // guest already sees; it exposes no other setting).
+  getPublicBranding: () => request<{ branding: { product_name:string; network_name:string; mark:string; logo_url:string; logo_dark_url:string; favicon_url:string } }>('/api/public/branding'),
   getSettings: () =>
     request<{ settings: SystemSetting[] }>('/api/settings'),
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Tag, Plus, Power, Trash2 } from 'lucide-react';
+import { Tag, Plus, Power, Trash2, Pencil, Check, X } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -35,6 +35,8 @@ export const PromotionsView: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [error, setError] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>({ promo_price: '', starts_at: '', ends_at: '', badge_ru: '', badge_tk: '', placements: [] as string[] });
   const [form, setForm] = useState<any>({ menu_item_id: '', promo_price: '', starts_at: toLocalInput(new Date().toISOString()), ends_at: '', placements: ['PRODUCT_CARD', 'CATALOG'], badge_ru: 'Акция', badge_tk: 'BOOM DEAL' });
 
   const load = async () => {
@@ -63,6 +65,37 @@ export const PromotionsView: React.FC = () => {
       setForm({ ...form, menu_item_id: '', promo_price: '', ends_at: '' });
       await load();
     } catch (e: any) { setError(e?.message || (ru ? 'Ошибка' : 'Ýalňyşlyk')); }
+  };
+
+  // Editing an existing promotion goes through the SAME PATCH route as the toggle above, so the
+  // server re-validates the price, the window and the placements. Nothing is recomputed here.
+  const startEdit = (p: any) => {
+    setEditing(p.id);
+    setEditForm({
+      promo_price: String(p.promo_price ?? ''),
+      starts_at: toLocalInput(p.starts_at),
+      ends_at: toLocalInput(p.ends_at),
+      badge_ru: p.badge_ru || '',
+      badge_tk: p.badge_tk || '',
+      placements: String(p.placements || '').split(',').filter(Boolean),
+    });
+  };
+  const toggleEditPlacement = (x: string) =>
+    setEditForm((f: any) => ({ ...f, placements: f.placements.includes(x) ? f.placements.filter((y: string) => y !== x) : [...f.placements, x] }));
+  const saveEdit = async (p: any) => {
+    setError('');
+    try {
+      await api.updatePromotion(p.id, {
+        promo_price: editForm.promo_price,
+        starts_at: new Date(editForm.starts_at).toISOString(),
+        ends_at: new Date(editForm.ends_at).toISOString(),
+        badge_ru: editForm.badge_ru || null,
+        badge_tk: editForm.badge_tk || null,
+        placements: editForm.placements,
+      });
+      setEditing(null);
+      await load();
+    } catch (e: any) { setError(e?.message || (ru ? 'Не удалось сохранить акцию.' : 'Aksiýa ýatda saklanmady.')); }
   };
 
   if (!hasPermission('promotions.view')) return <div className="p-8 text-slate-400">{ru ? 'Нет доступа.' : 'Elýeterli däl.'}</div>;
@@ -120,8 +153,35 @@ export const PromotionsView: React.FC = () => {
             </div>
             {can && (
               <div className="flex gap-1">
-                <button className="btn bg-slate-800" onClick={() => void api.updatePromotion(p.id, { active: !p.active }).then(load)}><Power className="w-3.5 h-3.5" /></button>
-                <button className="btn bg-red-500/10 text-red-300" onClick={() => void api.deactivatePromotion(p.id).then(load)}><Trash2 className="w-3.5 h-3.5" /></button>
+                <button className="btn bg-slate-800" aria-label={ru ? 'Изменить акцию' : 'Aksiýany üýtget'} onClick={() => (editing === p.id ? setEditing(null) : startEdit(p))}><Pencil className="w-3.5 h-3.5" /></button>
+                <button className="btn bg-slate-800" aria-label={p.active ? (ru ? 'Выключить' : 'Öçür') : (ru ? 'Включить' : 'Aç')} onClick={() => void api.updatePromotion(p.id, { active: !p.active }).then(load)}><Power className="w-3.5 h-3.5" /></button>
+                <button className="btn bg-red-500/10 text-red-300" aria-label={ru ? 'Деактивировать' : 'Deaktiwle'} onClick={() => void api.deactivatePromotion(p.id).then(load)}><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            )}
+            {can && editing === p.id && (
+              <div className="w-full mb-boxed">
+                <div className="grid md:grid-cols-3 gap-3">
+                  <input className="field" type="number" min="0" step="0.01" value={editForm.promo_price} onChange={e => setEditForm({ ...editForm, promo_price: e.target.value })} aria-label={ru ? 'Акционная цена' : 'Aksiýa bahasy'} />
+                  <input className="field" type="datetime-local" value={editForm.starts_at} onChange={e => setEditForm({ ...editForm, starts_at: e.target.value })} aria-label={ru ? 'Начало' : 'Başlangyç'} />
+                  <input className="field" type="datetime-local" value={editForm.ends_at} onChange={e => setEditForm({ ...editForm, ends_at: e.target.value })} aria-label={ru ? 'Окончание' : 'Tamamlanma'} />
+                  <input className="field" value={editForm.badge_ru} onChange={e => setEditForm({ ...editForm, badge_ru: e.target.value })} aria-label="Badge RU" placeholder="Badge RU" />
+                  <input className="field" value={editForm.badge_tk} onChange={e => setEditForm({ ...editForm, badge_tk: e.target.value })} aria-label="Badge TK" placeholder="Badge TK" />
+                </div>
+                {Number(editForm.promo_price) > 0 && Number(editForm.promo_price) >= Number(p.item_price) && (
+                  <div className="text-[11px] text-red-400 mt-2">{ru ? `Акционная цена должна быть ниже обычной (${money(p.item_price)}).` : `Aksiýa bahasy adaty bahadan (${money(p.item_price)}) pes bolmaly.`}</div>
+                )}
+                <div className="flex flex-wrap items-center gap-3 mt-3">
+                  {PLACEMENTS.map(x => (
+                    <label key={x} className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                      <input type="checkbox" checked={editForm.placements.includes(x)} onChange={() => toggleEditPlacement(x)} />
+                      {ru ? PLACEMENT_LABELS[x].ru : PLACEMENT_LABELS[x].tk}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button className="btn" onClick={() => void saveEdit(p)}><Check className="w-3.5 h-3.5" /> {ru ? 'Сохранить' : 'Ýatda sakla'}</button>
+                  <button className="btn bg-slate-800" onClick={() => setEditing(null)}><X className="w-3.5 h-3.5" /> {ru ? 'Отмена' : 'Ýatyr'}</button>
+                </div>
               </div>
             )}
           </div>

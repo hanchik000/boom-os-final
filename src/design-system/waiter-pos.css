@@ -35,3 +35,6 @@
 .pos-media-vignette{position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.55),transparent 55%),linear-gradient(0deg,rgba(0,0,0,.5),transparent 50%);pointer-events:none}
 .pos-media-label{position:absolute;left:15px;bottom:13px;display:flex;flex-direction:column;gap:3px;pointer-events:none}.pos-media-label span{font:700 9px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;color:var(--boom-gold)}.pos-media-label b{font-size:13px;color:white;text-shadow:0 1px 8px #000}
 @media (max-width:560px){.pos-media-stage{height:125px;min-height:125px;border-radius:14px}}
+
+/* Stage 36 — when branding supplies a logo, the wordmark slot renders it instead of the letter. */
+img.mini-boom{object-fit:cover;background:transparent}

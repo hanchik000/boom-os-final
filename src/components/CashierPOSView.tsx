@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserRound, Coins, Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 import { useLanguage } from '../context/LanguageContext';
 
 // ---------------------------------------------------------------------------------------------
@@ -68,6 +69,7 @@ export function complimentReasonLabel(reason: string, ru = true) {
 
 export const CashierPOSView: React.FC = () => {
   const { user, hasPermission } = useAuth();
+  const { branding } = useBranding();
   const { language } = useLanguage();
   const ru = language === 'ru';
   const branchId = user?.branch_id || '';
@@ -1041,7 +1043,7 @@ export const CashierPOSView: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-2xl bg-white text-slate-900 p-5 font-mono text-xs space-y-1" id="cashier-receipt-print-area">
             {config.logo_url && show('logo') && <img src={config.logo_url} alt="" className="h-10 mx-auto mb-1" />}
-            <div className="text-center font-bold text-sm">{config.business_name || 'BOOM OS'}</div>
+            <div className="text-center font-bold text-sm">{config.business_name || branding.product_name}</div>
             <div className="text-center">{user?.branch_name || ''}</div>
             {config.address && <div className="text-center">{config.address}</div>}
             {config.phone && <div className="text-center">{config.phone}</div>}

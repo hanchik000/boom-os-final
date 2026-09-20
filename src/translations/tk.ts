@@ -2,6 +2,20 @@ import { ru } from './ru';
 
 export const tk: Record<keyof typeof ru, string> = {
   // Navigation
+  "nav.group.overview": "Syn",
+  "nav.group.operations": "Amallar",
+  "nav.group.menu": "Menýu",
+  "nav.group.kitchen": "Aşhana we ammar",
+  "nav.group.customers": "Müşderiler",
+  "nav.group.staff": "Işgärler",
+  "nav.group.reports": "Hasabatlar",
+  "nav.group.pos": "POS konfigurasiýasy",
+  "nav.group.settings": "Sazlamalar",
+  "nav.menu": "Menýu we naharlar",
+  "nav.operations": "Sargytlar we KDS",
+  "nav.orderApprovals": "Sargyt tassyklamalary",
+  "nav.menuPreview": "Menýu deslapky görnüşi",
+  "nav.branding": "Brending",
   "nav.organization": "Guramaçylyk",
   "nav.dashboard": "Dolandyryş paneli",
   "nav.franchises": "Franşizalar",

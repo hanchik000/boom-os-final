@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Mail, KeyRound, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useBranding } from '../context/BrandingContext';
 
 export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
@@ -9,6 +10,7 @@ export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
 }) => {
   const { login } = useAuth();
   const { t } = useLanguage();
+  const { branding } = useBranding();
   const [emailOrPhone, setEmailOrPhone] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,7 @@ export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
             disabled={loading}
             className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Authenticating...' : 'Sign In to BOOM OS'}
+            {loading ? 'Authenticating...' : `Sign In to ${branding.product_name}`}
           </button>
         </form>
 

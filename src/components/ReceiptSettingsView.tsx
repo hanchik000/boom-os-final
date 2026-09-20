@@ -37,7 +37,9 @@ export const ReceiptSettingsView: React.FC = () => {
   const [saved, setSaved] = useState(false);
 
   const load = async () => {
-    if (!branchId) return;
+    // Stage 36: a holding-level user has no branch of their own. Before this the screen sat on
+    // "Loading..." forever; now it stops and says what is missing, like the POS screens do.
+    if (!branchId) { setLoading(false); return; }
     setLoading(true); setError('');
     try {
       const r = await api.getPrintProfiles(branchId);
@@ -72,6 +74,7 @@ export const ReceiptSettingsView: React.FC = () => {
   if (!canEdit) {
     return <div className="p-6 text-slate-400">{ru ? 'У вас нет доступа к настройкам чеков.' : 'Çek sazlamalaryna girişiňiz ýok.'}</div>;
   }
+  if (!branchId) return <div className="p-6 text-slate-400">{ru ? 'У вас нет назначенного филиала. Настройки чека задаются для конкретного филиала.' : 'Size şahamça bellenmedi. Çek sazlamalary anyk şahamça üçin kesgitlenýär.'}</div>;
   if (loading) return <div className="p-6 text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>;
 
   const Toggle = ({ k, label }: { k: string; label: string }) => (

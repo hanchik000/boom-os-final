@@ -33,7 +33,12 @@ router.get('/public', async (req,res) => {
   const b=await queryOne<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE id=? AND status='ACTIVE'`,[branch]);
   if(!b) return res.status(404).json({error:'BRANCH_NOT_FOUND',message:'Branch not found.'});
   const categories=await query<any>(`SELECT id,name_ru,name_tk,sort_order FROM menu_categories WHERE (branch_id=? OR branch_id IS NULL) AND status='ACTIVE' AND deleted_at IS NULL ORDER BY sort_order,name_ru`,[branch]);
-  const itemRows=await query<any>(`SELECT id,category_id,sku,name_ru,name_tk,description_ru,description_tk,price,sort_order FROM menu_items WHERE (branch_id=? OR branch_id IS NULL) AND status='ACTIVE' AND deleted_at IS NULL ORDER BY sort_order,name_ru`,[branch]);
+  // Stage 36: the dish photo attached in ADMIN, joined from the same media_assets row the plain
+  // public menu reads -- the two customer surfaces can never show different photos.
+  const itemRows=await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.description_ru,mi.description_tk,mi.price,mi.sort_order,
+      md.url AS media_url,md.kind AS media_kind,md.poster_url AS media_poster_url,md.alt_ru AS media_alt_ru,md.alt_tk AS media_alt_tk,md.focal_x AS media_focal_x,md.focal_y AS media_focal_y
+    FROM menu_items mi LEFT JOIN media_assets md ON md.id=mi.media_asset_id AND md.active=true
+    WHERE (mi.branch_id=? OR mi.branch_id IS NULL) AND mi.status='ACTIVE' AND mi.deleted_at IS NULL ORDER BY mi.sort_order,mi.name_ru`,[branch]);
   // Stage 35.6: the real promotional price for every item that is genuinely inside an active
   // promotion window right now -- the SAME rule public-menu.ts uses, never a second computation.
   const promos=await activePromotionMap(branch, new Date().toISOString());

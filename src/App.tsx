@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
+import { BrandingProvider, useBranding } from './context/BrandingContext';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
@@ -36,6 +37,8 @@ import { POSMediaView } from './components/POSMediaView';
 import { VisualCatalogView } from './components/VisualCatalogView';
 import { MediaLibraryView } from './components/MediaLibraryView';
 import { PromotionsView } from './components/PromotionsView';
+import { BrandingView } from './components/BrandingView';
+import { MenuPreviewView } from './components/MenuPreviewView';
 
 function MainLayout() {
   const publicScreen = new URLSearchParams(window.location.search).get('screen');
@@ -49,15 +52,16 @@ function MainLayout() {
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const acceptanceTestsEnabled = import.meta.env.VITE_ENABLE_ACCEPTANCE_TESTS === 'true';
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const { branding } = useBranding();
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3">
         <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-xl animate-pulse">
-          B
+          {branding.mark}
         </div>
         <p className="text-xs font-mono font-medium tracking-wide">
-          BOOTING BOOM OS FOUNDATION...
+          BOOTING {branding.product_name} FOUNDATION...
         </p>
       </div>
     );
@@ -155,6 +159,20 @@ function MainLayout() {
             ? 'Глобальные параметры холдинга, сессии и операционные флаги'
             : 'Holdingiň global parametrleri, sessiýa we operasion sazlamalar'
         };
+      case 'menuPreview':
+        return {
+          title: t('nav.menuPreview'),
+          subtitle: language === 'ru'
+            ? 'Реальный гостевой экран и QR-вход выбранного филиала, без отдельной копии меню'
+            : 'Saýlanan şahamçanyň hakyky myhman ekrany we QR girişi, menýunyň nusgasyz'
+        };
+      case 'branding':
+        return {
+          title: t('nav.branding'),
+          subtitle: language === 'ru'
+            ? 'Логотип и названия из system_settings — единый источник для всех интерфейсов'
+            : 'system_settings-den logotip we atlar — ähli interfeýsler üçin bitewi çeşme'
+        };
       case 'audit':
         return { 
           title: t('nav.audit'), 
@@ -221,6 +239,8 @@ function MainLayout() {
           {currentTab === 'boomcard' && <BoomcardView />}
           {currentTab === 'customers' && <CustomersView />}
           {currentTab === 'orderApprovals' && <OrderApprovalsView />}
+          {currentTab === 'menuPreview' && <MenuPreviewView />}
+          {currentTab === 'branding' && <BrandingView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}
         </main>
@@ -244,7 +264,9 @@ export default function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
-        <MainLayout />
+        <BrandingProvider>
+          <MainLayout />
+        </BrandingProvider>
       </AuthProvider>
     </LanguageProvider>
   );

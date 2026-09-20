@@ -21,6 +21,7 @@ import { api } from '../api';
 import { SystemTelemetry, FranchiseOverview } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useBranding } from '../context/BrandingContext';
 import { NavTab } from './Sidebar';
 
 interface DashboardViewProps {
@@ -32,6 +33,9 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpenTestModal, acceptanceTestsEnabled = false }) => {
   const { user, selectedFranchiseFilter } = useAuth();
   const { t, language } = useLanguage();
+  const { branding } = useBranding();
+  // Presentation only: the network name comes from the branding source of truth, never a literal.
+  const networkSuffix = branding.network_name ? ` ${branding.network_name}` : '';
   const [telemetry, setTelemetry] = useState<SystemTelemetry | null>(null);
   const [franchiseOverview, setFranchiseOverview] = useState<FranchiseOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +74,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25">
-              BOOM OS
+              {branding.product_name}
             </span>
             <span className="text-slate-400 text-xs font-mono">• Foundation Kernel Active</span>
           </div>
@@ -79,8 +83,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
           </h2>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
             {language === 'ru'
-              ? 'Централизованная система управления сетью ресторанов BOOMBURGER. Управление мульти-филиальным доступом, франшизами, RBAC безопасностью и неизменяемым криптографическим аудитом.'
-              : 'BOOMBURGER restoranlar ulgamy üçin merkezi dolandyryş ulgamy. Şahamçalary, franşizalary, RBAC howpsuzlygyny we üýtgewsiz audit ýazgylaryny dolandyrýar.'}
+              ? `Централизованная система управления сетью ресторанов${networkSuffix}. Управление мульти-филиальным доступом, франшизами, RBAC безопасностью и неизменяемым криптографическим аудитом.`
+              : `${branding.network_name || 'Restoranlar'} ulgamy üçin merkezi dolandyryş ulgamy. Şahamçalary, franşizalary, RBAC howpsuzlygyny we üýtgewsiz audit ýazgylaryny dolandyrýar.`}
           </p>
         </div>
 

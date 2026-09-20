@@ -209,6 +209,26 @@ function scoreItem(item: any, parsed: ReturnType<typeof parseRequest>, lang: 'ru
   return { score, matched: [...new Set(matched)].slice(0, 4), name: lang === 'tk' ? item.name_tk : item.name_ru };
 }
 
+// Stage 36 -- public branding read. The ADMIN sidebar, the POS surfaces and the guest menu must
+// all render the SAME brand identity, but the guest menu and the waiter device are not JWT
+// sessions, so they cannot use the settings.view-gated /api/settings route. This returns ONLY the
+// six BRANDING_* keys -- a product name, a network name, a wordmark and three image URLs, all of
+// which are already shown to any guest who opens the menu. No other setting is reachable here.
+router.get('/branding', async (_req, res) => {
+  const rows = await query<any>(`SELECT key,value FROM system_settings WHERE key IN ('BRANDING_PRODUCT_NAME','BRANDING_NETWORK_NAME','BRANDING_MARK','BRANDING_LOGO_URL','BRANDING_LOGO_DARK_URL','BRANDING_FAVICON_URL')`);
+  const map = new Map(rows.map((r: any) => [r.key, r.value]));
+  res.json({
+    branding: {
+      product_name: map.get('BRANDING_PRODUCT_NAME') || 'BOOM OS',
+      network_name: map.get('BRANDING_NETWORK_NAME') || '',
+      mark: map.get('BRANDING_MARK') || 'B',
+      logo_url: map.get('BRANDING_LOGO_URL') || '',
+      logo_dark_url: map.get('BRANDING_LOGO_DARK_URL') || '',
+      favicon_url: map.get('BRANDING_FAVICON_URL') || '',
+    },
+  });
+});
+
 router.get('/branches', async (_req, res) => {
   const branches = await query<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE status='ACTIVE' ORDER BY name`);
   res.json({ branches });
@@ -233,14 +253,19 @@ router.get('/menu', async (req, res) => {
   if (!branch) return res.status(400).json({ error:'VALIDATION_ERROR', code:'BRANCH_REQUIRED', message:'branch_id is required.', details:{} });
   const b = await queryOne<any>(`SELECT id,name,code,address,phone,currency FROM branches WHERE id=? AND status='ACTIVE'`, [branch]);
   if (!b) return res.status(404).json({ error:'NOT_FOUND', code:'BRANCH_NOT_FOUND', message:'Branch not found.', details:{} });
-  const rows = await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.description_ru,mi.description_tk,mi.price,mi.smart_tags_ru,mi.smart_tags_tk,mc.name_ru AS category_name_ru,mc.name_tk AS category_name_tk
+  // Stage 36: the guest sees the SAME dish photo the manager attached in ADMIN -- one media asset,
+  // joined here read-only. Only public-safe media columns are selected; no cost/stock/recipe data
+  // exists on this path, exactly as before.
+  const rows = await query<any>(`SELECT mi.id,mi.category_id,mi.sku,mi.name_ru,mi.name_tk,mi.description_ru,mi.description_tk,mi.price,mi.smart_tags_ru,mi.smart_tags_tk,mc.name_ru AS category_name_ru,mc.name_tk AS category_name_tk,
+      md.url AS media_url,md.kind AS media_kind,md.poster_url AS media_poster_url,md.alt_ru AS media_alt_ru,md.alt_tk AS media_alt_tk,md.focal_x AS media_focal_x,md.focal_y AS media_focal_y
     FROM menu_items mi JOIN menu_categories mc ON mc.id=mi.category_id
+    LEFT JOIN media_assets md ON md.id=mi.media_asset_id AND md.active=true
     WHERE (mi.branch_id=? OR mi.branch_id IS NULL) AND mi.status='ACTIVE' AND mi.deleted_at IS NULL AND mc.status='ACTIVE' AND mc.deleted_at IS NULL
     ORDER BY mc.sort_order,mi.sort_order,mi.name_ru`, [branch]);
   // Stage 35.6: the real promotional price, if this item is genuinely inside an active promotion
   // window right now -- computed by the ONE shared rule (activePromotionMap), never invented here.
   const promos = await activePromotionMap(branch, new Date().toISOString());
-  const items = rows.map((x:any) => { const promo = promos.get(x.id); return { id:x.id, category_id:x.category_id, sku:x.sku, name:lang==='tk'?x.name_tk:x.name_ru, description:lang==='tk'?x.description_tk:x.description_ru, category_name:lang==='tk'?x.category_name_tk:x.category_name_ru, price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru, promo_price: promo ? promo.promo_price : null, promo_badge: promo ? (lang==='tk'?promo.badge_tk:promo.badge_ru) : null, promo_ends_at: promo ? promo.ends_at : null }; });
+  const items = rows.map((x:any) => { const promo = promos.get(x.id); return { id:x.id, category_id:x.category_id, sku:x.sku, name:lang==='tk'?x.name_tk:x.name_ru, description:lang==='tk'?x.description_tk:x.description_ru, category_name:lang==='tk'?x.category_name_tk:x.category_name_ru, price:String(x.price), tags:lang==='tk'?x.smart_tags_tk:x.smart_tags_ru, promo_price: promo ? promo.promo_price : null, promo_badge: promo ? (lang==='tk'?promo.badge_tk:promo.badge_ru) : null, promo_ends_at: promo ? promo.ends_at : null, media_url: x.media_url || null, media_kind: x.media_kind || null, media_poster_url: x.media_poster_url || null, media_alt: (lang==='tk'?x.media_alt_tk:x.media_alt_ru) || null, media_focal_x: x.media_focal_x ?? 50, media_focal_y: x.media_focal_y ?? 50 }; });
   res.json({ branch:b, language:lang, items });
 });
 
