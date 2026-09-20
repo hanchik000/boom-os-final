@@ -262,7 +262,11 @@ router.patch('/categories/:id', requirePermission('menu.manage'), async(req,res)
 });
 
 router.patch('/items/:id', requirePermission('menu.manage'), async(req,res)=>{
-  const row=await queryOne<any>('SELECT * FROM menu_items WHERE id=? AND deleted_at IS NULL',[req.params.id]); if(!row||!scopedBranch(req,row.branch_id||req.user!.branch_id||'')) return res.status(404).json({error:'NOT_FOUND',code:'MENU_ITEM_NOT_FOUND',message:'Menu item not found.',details:{}});
+  // Stage 39: an ARCHIVED dish is loaded too. Archiving sets deleted_at, so restricting this
+  // lookup to `deleted_at IS NULL` made archiving irreversible -- the Menu Builder's own
+  // "return to sale" button always answered 404. Setting status back to ACTIVE now clears
+  // deleted_at, which is what restore has always meant everywhere else in BOOM OS.
+  const row=await queryOne<any>('SELECT * FROM menu_items WHERE id=?',[req.params.id]); if(!row||!scopedBranch(req,row.branch_id||req.user!.branch_id||'')) return res.status(404).json({error:'NOT_FOUND',code:'MENU_ITEM_NOT_FOUND',message:'Menu item not found.',details:{}});
   const ru=String(req.body?.name_ru??row.name_ru).trim(),tk=String(req.body?.name_tk??row.name_tk).trim(),status=String(req.body?.status??row.status).toUpperCase(),price=validMoney(req.body?.price??row.price); const sort=validInt(req.body?.sort_order,row.sort_order);
   if(!ru||!tk||price===null||sort===null||!['ACTIVE','INACTIVE'].includes(status)) return res.status(400).json({error:'VALIDATION_ERROR',code:'INVALID_MENU_ITEM_UPDATE',message:'Invalid menu item update.',details:{}});
   // Stage 36: the dish photo. `media_asset_id` is only touched when the caller actually sends the
@@ -303,9 +307,19 @@ router.patch('/items/:id', requirePermission('menu.manage'), async(req,res)=>{
     if (g === false) return res.status(403).json({error:'BRANCH_ACCESS_DENIED',code:'BRANCH_ACCESS_DENIED',message:'A gallery asset is missing, inactive or outside your access scope.',details:{}});
   }
 
-  const now=new Date().toISOString(); await execute('UPDATE menu_items SET name_ru=?,name_tk=?,name_en=?,description_ru=?,description_tk=?,description_en=?,ingredients_ru=?,ingredients_tk=?,ingredients_en=?,weight_value=CAST(? AS numeric),weight_unit=?,price=CAST(? AS numeric),sort_order=?,status=?,media_asset_id=?,updated_at=? WHERE id=?',[ru,tk,nameEn,descRu,descTk,descEn,ingRu,ingTk,ingEn,weight.value,weight.unit,price,sort,status,mediaAssetId,now,row.id]);
-  await insertAuditLog(execute,{userId:req.user!.id,branchId:row.branch_id,action:'MENU_ITEM_UPDATED',entityType:'MENU_ITEM',entityId:row.id,oldValues:{name_ru:row.name_ru,name_tk:row.name_tk,name_en:row.name_en,price:String(row.price),status:row.status,media_asset_id:row.media_asset_id,weight_value:row.weight_value===null?null:String(row.weight_value),weight_unit:row.weight_unit},newValues:{name_ru:ru,name_tk:tk,name_en:nameEn,price,status,media_asset_id:mediaAssetId,weight_value:weight.value,weight_unit:weight.unit,allergen_ids:req.body?.allergen_ids,gallery_media_ids:req.body?.gallery_media_ids},req});
-  const updated=await queryOne<any>('SELECT * FROM menu_items WHERE id=? AND deleted_at IS NULL',[row.id]);
+  // Stage 39: a dish can be moved between categories from ADMIN. The target category must be in
+  // the same branch scope, so a move can never place a dish into another branch's menu.
+  let categoryId = row.category_id;
+  if (req.body?.category_id !== undefined && String(req.body.category_id) !== String(row.category_id)) {
+    const target = await queryOne<any>(`SELECT id FROM menu_categories WHERE id=? AND (branch_id=? OR branch_id IS NULL) AND status='ACTIVE' AND deleted_at IS NULL`, [String(req.body.category_id), row.branch_id || req.user!.branch_id || '']);
+    if (!target) return res.status(404).json({error:'NOT_FOUND',code:'MENU_CATEGORY_NOT_FOUND',message:'Menu category not found for this branch.',details:{}});
+    categoryId = target.id;
+  }
+  // Restoring means ACTIVE again AND out of the archive; archiving keeps whatever date it had.
+  const deletedAt = status === 'ACTIVE' ? null : row.deleted_at;
+  const now=new Date().toISOString(); await execute('UPDATE menu_items SET name_ru=?,name_tk=?,name_en=?,description_ru=?,description_tk=?,description_en=?,ingredients_ru=?,ingredients_tk=?,ingredients_en=?,weight_value=CAST(? AS numeric),weight_unit=?,price=CAST(? AS numeric),sort_order=?,status=?,category_id=?,deleted_at=?,media_asset_id=?,updated_at=? WHERE id=?',[ru,tk,nameEn,descRu,descTk,descEn,ingRu,ingTk,ingEn,weight.value,weight.unit,price,sort,status,categoryId,deletedAt,mediaAssetId,now,row.id]);
+  await insertAuditLog(execute,{userId:req.user!.id,branchId:row.branch_id,action:'MENU_ITEM_UPDATED',entityType:'MENU_ITEM',entityId:row.id,oldValues:{name_ru:row.name_ru,name_tk:row.name_tk,name_en:row.name_en,price:String(row.price),status:row.status,media_asset_id:row.media_asset_id,weight_value:row.weight_value===null?null:String(row.weight_value),weight_unit:row.weight_unit},newValues:{name_ru:ru,name_tk:tk,name_en:nameEn,price,status,category_id:categoryId,deleted_at:deletedAt,media_asset_id:mediaAssetId,weight_value:weight.value,weight_unit:weight.unit,allergen_ids:req.body?.allergen_ids,gallery_media_ids:req.body?.gallery_media_ids},req});
+  const updated=await queryOne<any>('SELECT * FROM menu_items WHERE id=?',[row.id]);
   await decorateItems([updated]);
   res.json({item:updated});
 });

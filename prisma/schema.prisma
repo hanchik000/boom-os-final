@@ -69,6 +69,7 @@ model User {
   @@index([employment_status], map: "idx_users_employment_status")
   @@index([disciplinary_status], map: "idx_users_disciplinary_status")
   @@map("users")
+  site_designs_updated SiteDesign[] @relation("SiteDesignUpdatedBy")
 }
 
 
@@ -220,6 +221,7 @@ model Branch {
   @@index([status], map: "idx_branches_status")
   @@index([franchise_id], map: "idx_branches_franchise")
   @@map("branches")
+  site_design   SiteDesign?
 }
 
 model UserBranchAccess {
@@ -1635,8 +1637,28 @@ model VisualCatalogBlock {
   type          String   @default("BANNER")
   title_ru      String?
   title_tk      String?
+  // Stage 39: EN joins the existing RU/TK pair, same paired-column i18n pattern as everywhere else.
+  title_en      String?
   subtitle_ru   String?
   subtitle_tk   String?
+  subtitle_en   String?
+  // Stage 39: a call-to-action label for HERO / CTA sections. The DESTINATION is still the
+  // existing link_type/category_id/menu_item_id/external_url fields -- this is only its wording.
+  cta_label_ru  String?
+  cta_label_tk  String?
+  cta_label_en  String?
+  // -------------------------------------------------------------------------------------------
+  // Stage 39 -- per-section APPEARANCE presets.
+  //
+  // These are enums validated server-side against a fixed list, never free CSS. Administrators
+  // choose from BOOM OS design tokens; they cannot inject a style string, a class name or markup.
+  // Nothing here is business data: a section can say how a dish is shown, never what it costs.
+  // -------------------------------------------------------------------------------------------
+  card_style    String?  // STANDARD | PREMIUM | COMPACT | IMAGE_FIRST
+  density       String?  // COMPACT | NORMAL | SPACIOUS
+  image_ratio   String?  // SQUARE | PORTRAIT | LANDSCAPE | WIDE | AUTO
+  overlay       String?  // NONE | SOFT | STRONG
+  alignment     String?  // LEFT | CENTER
   media_url     String?
   media_kind    String?
   media_asset_id String?
@@ -1825,4 +1847,37 @@ model MenuItemMedia {
   @@unique([menu_item_id, media_asset_id], map: "menu_item_media_pair_key")
   @@index([menu_item_id, sort_order], map: "idx_menu_item_media_item")
   @@map("menu_item_media")
+}
+
+
+// -----------------------------------------------------------------------------------------------
+// Stage 39 -- the page-level design of a branch's Customer Menu.
+//
+// One row per branch (branch_id is unique), holding ONLY preset identifiers drawn from the
+// existing BOOM OS design tokens. There is deliberately no raw CSS, no HTML and no script field:
+// every value is validated server-side against a fixed enum, so an administrator can restyle the
+// guest menu without any route through which markup or a stylesheet could be injected.
+//
+// This is presentation only. It carries no price, no availability and no dish data -- those stay
+// in the Menu Engine, which the guest menu reads directly.
+// -----------------------------------------------------------------------------------------------
+model SiteDesign {
+  id            String  @id
+  branch_id     String  @unique
+  theme         String  @default("MIDNIGHT")   // MIDNIGHT | GRAPHITE | CHARCOAL
+  accent        String  @default("GOLD")       // GOLD | AMBER | COPPER | IVORY
+  typography    String  @default("EDITORIAL")  // EDITORIAL | COMPACT | DISPLAY
+  card_style    String  @default("STANDARD")   // STANDARD | PREMIUM | COMPACT | IMAGE_FIRST
+  density       String  @default("NORMAL")     // COMPACT | NORMAL | SPACIOUS
+  radius        String  @default("ROUNDED")    // SHARP | SOFT | ROUNDED
+  image_ratio   String  @default("LANDSCAPE")  // SQUARE | PORTRAIT | LANDSCAPE | WIDE | AUTO
+  show_hero     Boolean @default(true)
+  updated_by    String?
+  created_at    String
+  updated_at    String
+
+  branch        Branch @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  updater       User?  @relation("SiteDesignUpdatedBy", fields: [updated_by], references: [id], onDelete: SetNull)
+
+  @@map("site_designs")
 }

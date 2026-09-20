@@ -103,3 +103,60 @@
 .mb-allergen:focus-within{box-shadow:var(--boom-focus-ring)}
 .mb-mod .mb-chip{margin-left:6px}
 @media (prefers-reduced-motion:reduce){.mb-allergen{transition:none}}
+
+/* ===========================================================================================
+   Stage 39 — Customer Menu design presets.
+
+   Every rule here is driven by a data-* attribute whose value the SERVER validated against a
+   closed enum. Nothing is generated from an administrator-supplied string, so there is no path
+   from the site editor to injected CSS. The guest menu sets these on one wrapper element.
+   =========================================================================================== */
+.boom-site{
+  --site-bg:#070707; --site-surface:rgba(255,255,255,.035); --site-border:rgba(255,255,255,.10);
+  --site-accent:#f59e0b; --site-accent-soft:rgba(245,158,11,.16);
+  --site-radius:1.5rem; --site-gap:1.25rem; --site-pad:1.25rem;
+  --site-title:clamp(1.05rem,2.4vw,1.35rem); --site-display:clamp(2.5rem,7vw,4.5rem);
+}
+.boom-site[data-theme="GRAPHITE"]{--site-bg:#101216;--site-surface:rgba(255,255,255,.055);--site-border:rgba(255,255,255,.14)}
+.boom-site[data-theme="CHARCOAL"]{--site-bg:#17181b;--site-surface:rgba(255,255,255,.07);--site-border:rgba(255,255,255,.17)}
+.boom-site[data-accent="AMBER"]{--site-accent:#fbbf24;--site-accent-soft:rgba(251,191,36,.18)}
+.boom-site[data-accent="COPPER"]{--site-accent:#c2703f;--site-accent-soft:rgba(194,112,63,.20)}
+.boom-site[data-accent="IVORY"]{--site-accent:#ede4d3;--site-accent-soft:rgba(237,228,211,.16)}
+.boom-site[data-radius="SHARP"]{--site-radius:.25rem}
+.boom-site[data-radius="SOFT"]{--site-radius:.85rem}
+.boom-site[data-density="COMPACT"]{--site-gap:.7rem;--site-pad:.8rem}
+.boom-site[data-density="SPACIOUS"]{--site-gap:2rem;--site-pad:1.85rem}
+.boom-site[data-typography="COMPACT"]{--site-title:clamp(.95rem,2vw,1.1rem);--site-display:clamp(1.9rem,5vw,3rem)}
+.boom-site[data-typography="DISPLAY"]{--site-title:clamp(1.2rem,3vw,1.7rem);--site-display:clamp(3rem,9vw,6rem)}
+
+.boom-site{background:var(--site-bg)}
+.site-accent{color:var(--site-accent)}
+.site-display{font-size:var(--site-display);line-height:.92;letter-spacing:-.02em}
+.site-grid{display:grid;gap:var(--site-gap)}
+@media (min-width:640px){.site-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1024px){.site-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.site-card{border:1px solid var(--site-border);border-radius:var(--site-radius);background:var(--site-surface);padding:var(--site-pad);text-align:left;transition:transform var(--boom-motion-base) var(--boom-ease),border-color var(--boom-motion-base) var(--boom-ease)}
+.site-card:hover{transform:translateY(-3px);border-color:var(--site-accent)}
+.site-card:focus-visible{outline:none;box-shadow:0 0 0 3px var(--site-accent-soft)}
+.site-card-title{font-size:var(--site-title);font-weight:800}
+.site-card[data-card="PREMIUM"]{background:linear-gradient(180deg,var(--site-surface),rgba(0,0,0,.45));border-color:var(--site-accent-soft)}
+.site-card[data-card="COMPACT"]{padding:calc(var(--site-pad) * .6)}
+.site-card[data-card="COMPACT"] .site-card-media{display:none}
+.site-card[data-card="IMAGE_FIRST"]{padding:0;overflow:hidden}
+.site-card[data-card="IMAGE_FIRST"] .site-card-body{padding:var(--site-pad)}
+.site-card-media{width:100%;border-radius:calc(var(--site-radius) * .7);overflow:hidden;background:#000;display:block}
+.site-card[data-card="IMAGE_FIRST"] .site-card-media{border-radius:0}
+.site-card-media[data-ratio="SQUARE"]{aspect-ratio:1/1}
+.site-card-media[data-ratio="PORTRAIT"]{aspect-ratio:3/4}
+.site-card-media[data-ratio="LANDSCAPE"]{aspect-ratio:4/3}
+.site-card-media[data-ratio="WIDE"]{aspect-ratio:16/9}
+.site-card-media[data-ratio="AUTO"]{aspect-ratio:auto}
+.site-card-media img,.site-card-media video{width:100%;height:100%;object-fit:cover;display:block}
+.site-section{border:1px solid var(--site-border);border-radius:var(--site-radius);overflow:hidden;position:relative}
+.site-section[data-align="CENTER"]{text-align:center}
+.site-overlay{position:absolute;inset:0}
+.site-overlay[data-overlay="NONE"]{background:none}
+.site-overlay[data-overlay="SOFT"]{background:linear-gradient(to top,rgba(0,0,0,.75),rgba(0,0,0,.05))}
+.site-overlay[data-overlay="STRONG"]{background:linear-gradient(to top,rgba(0,0,0,.92),rgba(0,0,0,.45))}
+.site-cta{display:inline-flex;align-items:center;gap:.5rem;margin-top:1rem;padding:.6rem 1.1rem;border-radius:999px;background:var(--site-accent);color:#111;font-weight:800;font-size:.8rem}
+@media (prefers-reduced-motion:reduce){.site-card{transition:none}.site-card:hover{transform:none}}

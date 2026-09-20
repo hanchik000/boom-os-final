@@ -16,7 +16,10 @@ const checks=[
  ['static serving',read('server.ts').includes("/uploads/menu-media")],
  ['manager library',fs.existsSync('src/components/MediaLibraryView.tsx')],
  ['catalog uses asset',read('server/routes/visual-catalog.ts').includes('media_asset_id')],
- ['public video support',read('src/components/VisualCustomerMenuView.tsx').includes("media_kind==='VIDEO'")],
+ // Stage 39 moved the guest card/section rendering into CustomerSiteSections.tsx. The invariant
+ // is that the GUEST MENU still renders a video asset as a video -- not which file does it.
+ ['public video support',[read('src/components/VisualCustomerMenuView.tsx'),read('src/components/CustomerSiteSections.tsx')]
+   .some(f=>/media_kind\s*===\s*'VIDEO'/.test(f))],
  ['api client',read('src/api.ts').includes('getMediaAssets')],
  ['navigation',read('src/components/Sidebar.tsx').includes("menuMedia")],
  ['reduced business coupling',!read('server/routes/media-assets.ts').includes('orders.create')]

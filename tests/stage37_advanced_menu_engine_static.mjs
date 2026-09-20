@@ -157,7 +157,10 @@ const checks = [
   ['the constructor can name a component in EN and bind it to a real dish',
     builder.includes('source_menu_item_id') && builder.includes('name_en')],
   ['the guest menu opens the dish sheet and flags a 360 dish on the card',
-    customerMenu.includes('CustomerDishSheet') && customerMenu.includes("g.kind==='MEDIA_360'")],
+    // Stage 39 moved the card into CustomerSiteSections.tsx; the sheet is still mounted by the
+    // menu view. Assert the capability across both, not a single file's contents.
+    customerMenu.includes('CustomerDishSheet') &&
+    [customerMenu, read('src/components/CustomerSiteSections.tsx')].some(f => /MEDIA_360/.test(f))],
   ['the new admin styling honours reduced motion', /\.mb-allergen\{/.test(builderCss) && /@media \(prefers-reduced-motion:reduce\)\{\.mb-allergen\{transition:none\}\}/.test(builderCss)],
   ['the stage report exists', fs.existsSync('docs/STAGE-37-REPORT.md')],
   ['the Stage 37 runtime test exists', fs.existsSync('tests/stage37_advanced_menu_engine_e2e.mjs')],

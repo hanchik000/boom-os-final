@@ -291,6 +291,10 @@ export const api = {
   deactivatePromotion: (id:string) => request<{success:boolean}>(`/api/promotions/${encodeURIComponent(id)}`,{method:'DELETE'}),
   createVisualCatalogBlock: (data:any) => request<{block:any}>('/api/visual-catalog',{method:'POST',body:JSON.stringify(data)}),
   updateVisualCatalogBlock: (id:string,data:any) => request<{block:any}>(`/api/visual-catalog/${id}`,{method:'PATCH',body:JSON.stringify(data)}),
+  // Stage 39: server-persisted section order and the per-branch page design.
+  reorderVisualCatalog: (branch_id:string, block_ids:string[]) => request<{success:boolean;block_ids:string[]}>('/api/visual-catalog/reorder',{method:'POST',body:JSON.stringify({branch_id,block_ids})}),
+  getSiteDesign: (branch_id:string) => request<{design:any;presets:Record<string,string[]>}>(`/api/visual-catalog/design?branch_id=${encodeURIComponent(branch_id)}`),
+  updateSiteDesign: (branch_id:string, data:any) => request<{design:any}>('/api/visual-catalog/design',{method:'PUT',body:JSON.stringify({branch_id,...data})}),
   deactivateVisualCatalogBlock: (id:string) => request<{success:boolean}>(`/api/visual-catalog/${id}`,{method:'DELETE'}),
   createPosMedia: (data: any) => request<{ media: any }>('/api/pos-media', { method:'POST', body:JSON.stringify(data) }),
   updatePosMedia: (id: string, data: any) => request<{ media: any }>(`/api/pos-media/${encodeURIComponent(id)}`, { method:'PATCH', body:JSON.stringify(data) }),

@@ -28,7 +28,7 @@ export interface DishDraft {
   description_ru: string; description_tk: string; description_en: string;
   ingredients_ru: string; ingredients_tk: string; ingredients_en: string;
   weight_value: string; weight_unit: string;
-  price: string; sort_order: string; status: string;
+  price: string; sort_order: string; status: string; category_id: string;
   media_asset_id: string | null;
   allergen_ids: string[];
   gallery_media_ids: string[];
@@ -46,6 +46,7 @@ export function toDishDraft(i: any): DishDraft {
     weight_value: i.weight_value === null || i.weight_value === undefined ? '' : String(Number(i.weight_value)),
     weight_unit: i.weight_unit || 'G',
     price: dec(i.price), sort_order: String(i.sort_order ?? 0), status: i.status || 'ACTIVE',
+    category_id: i.category_id || '',
     media_asset_id: i.media_asset_id || null,
     allergen_ids: (i.allergens || []).map((a: any) => a.id),
     gallery_media_ids: (i.gallery || []).map((g: any) => g.id),
@@ -55,11 +56,12 @@ export function toDishDraft(i: any): DishDraft {
 interface Props {
   draft: DishDraft;
   assets: any[];
+  categories: any[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
 
-export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, onClose, onSaved }) => {
+export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, categories, onClose, onSaved }) => {
   const { hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
@@ -95,6 +97,9 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, onClos
         weight_value: d.weight_value.trim() === '' ? null : d.weight_value,
         weight_unit: d.weight_unit,
         price: d.price, sort_order: d.sort_order, status: d.status,
+        // Stage 39: moving a dish between categories is Menu CONTENT, edited here -- never by
+        // editing a Visual Catalog section.
+        category_id: d.category_id || undefined,
         media_asset_id: d.media_asset_id,
         allergen_ids: d.allergen_ids,
         gallery_media_ids: d.gallery_media_ids,
@@ -136,6 +141,9 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, onClos
             <input className="mb-input mb-span2" value={d.description_en} onChange={e => set('description_en', e.target.value)} placeholder={t('Описание EN', 'Beýany EN')} aria-label="description EN" />
             <input className="mb-input" value={d.price} onChange={e => set('price', e.target.value)} placeholder={t('Цена', 'Baha')} inputMode="decimal" aria-label={t('Цена', 'Baha')} />
             <input className="mb-input" value={d.sort_order} onChange={e => set('sort_order', e.target.value)} placeholder="#" aria-label={t('Порядок', 'Tertip')} />
+            <select className="mb-input mb-span2" value={d.category_id} onChange={e => set('category_id', e.target.value)} aria-label={t('Категория', 'Kategoriýa')}>
+              {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name_ru}</option>)}
+            </select>
             <select className="mb-input mb-span2" value={d.status} onChange={e => set('status', e.target.value)} aria-label={t('Статус', 'Ýagdaý')}>
               <option value="ACTIVE">{t('В продаже', 'Satuwda')}</option>
               <option value="INACTIVE">{t('Снято с продажи (архив)', 'Satuwdan aýryldy (arhiw)')}</option>
