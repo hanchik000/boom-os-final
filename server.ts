@@ -29,6 +29,7 @@ import orderBillsRouter from './server/routes/order-bills';
 import paymentsRouter from './server/routes/payments';
 import cashShiftsRouter from './server/routes/cash-shifts';
 import kdsRouter from './server/routes/kds';
+import kitchenRouter from './server/routes/kitchen';
 import inventoryRouter from './server/routes/inventory';
 import serviceChargeRouter from './server/routes/service-charge';
 import customersRouter from './server/routes/customers';
@@ -143,7 +144,7 @@ async function startServer() {
   // synchronous throw.
   [
     docsRouter, publicMenuRouter, authRouter, usersRouter, employeesRouter, waitersRouter,
-    menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter,
+    menuRouter, tablesRouter, orderBillsRouter, ordersRouter, paymentsRouter, cashShiftsRouter, kdsRouter, kitchenRouter,
     inventoryRouter, serviceChargeRouter, customersRouter, loyaltyRouter, boomcardRouter, boomcardJournalRouter, kpiRouter, operatorPosRouter, printRouter,
     franchisesRouter, branchesRouter, rolesRouter, permissionsRouter, rbacRouter,
     organizationRouter, settingsRouter, auditRouter, systemRouter, creditRouter, dashboardRouter, operationsRouter, foodCostRouter, analyticsRouter,
@@ -168,6 +169,8 @@ async function startServer() {
   app.use('/api/payments', paymentsRouter);
   app.use('/api/cash-shifts', cashShiftsRouter);
   app.use('/api/kds', kdsRouter);
+  // Stage 42: the kitchen's own layer -- stations, per-item work, forecasts, delays and EXPO.
+  app.use('/api/kitchen', kitchenRouter);
   app.use('/api/inventory', inventoryRouter);
   app.use('/api/service-charge', serviceChargeRouter);
   app.use('/api/customers', customersRouter);

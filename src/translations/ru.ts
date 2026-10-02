@@ -44,6 +44,10 @@ export const ru = {
   "nav.posMedia": "Экраны POS",
   "nav.menuMedia": "Фото и видео",
   "nav.visualCatalog": "Оформление меню",
+
+  "nav.kitchen": "Кухня",
+  "nav.expo": "Выдача",
+  "nav.kitchenLoad": "Нагрузка кухни",
   "nav.promotions": "Акции",
   "nav.serviceCharge": "Сервисный сбор",
   "nav.boomcard": "Карты лояльности",

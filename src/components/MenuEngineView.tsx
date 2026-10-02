@@ -436,6 +436,7 @@ export const MenuEngineView: React.FC = () => {
           draft={editItem}
           assets={assets}
           categories={data.categories.filter((c: any) => !isArchived(c))}
+          branchId={branchId}
           onClose={() => setEditItem(null)}
           onSaved={async () => { await loadMenu(); if (selected) await loadModifiers(selected.id); }}
         />

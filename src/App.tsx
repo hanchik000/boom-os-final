@@ -15,6 +15,9 @@ import { RolesView } from './components/RolesView';
 import { RBACTestConsoleView } from './components/RBACTestConsoleView';
 import { SettingsView } from './components/SettingsView';
 import { AuditView } from './components/AuditView';
+import { KitchenStationView } from './components/KitchenStationView';
+import { ExpoView } from './components/ExpoView';
+import { KitchenControlView } from './components/KitchenControlView';
 import { AcceptanceTestModal } from './components/AcceptanceTestModal';
 import { LoginModal } from './components/LoginModal';
 import { WaiterPOSView } from './components/WaiterPOSView';
@@ -84,6 +87,7 @@ function MainLayout() {
     menuMedia: 'nav.menuMedia', visualCatalog: 'nav.visualCatalog', promotions: 'nav.promotions',
     foodCost: 'nav.foodCost', inventory: 'nav.inventory', settings: 'nav.settings',
     menuPreview: 'nav.menuPreview', branding: 'nav.branding', audit: 'nav.audit',
+    kitchen: 'nav.kitchen', expo: 'nav.expo', kitchenLoad: 'nav.kitchenLoad',
   };
   const PAGE_DESCRIPTIONS: Record<NavTab, [string, string]> = {
     dashboard: ['Общее состояние сети за сегодня', 'Şu günki umumy ýagdaý'],
@@ -117,6 +121,9 @@ function MainLayout() {
     menuPreview: ['Меню глазами гостя и QR-вход', 'Menýu myhmanyň gözi bilen we QR giriş'],
     branding: ['Логотип и названия во всех интерфейсах', 'Ähli interfeýslerde logotip we atlar'],
     audit: ['Кто, что и когда изменил в системе', 'Ulgamda kim, näme we haçan üýtgetdi'],
+    kitchen: ['Очередь цеха: что принять, начать и отдать', 'Bölümiň nobaty: kabul et, başla we ber'],
+    expo: ['Сборка и передача готовых заказов', 'Taýýar sargytlary ýygnamak we bermek'],
+    kitchenLoad: ['Загрузка цехов, задержки и запросы помощи', 'Bölümleriň ýüki, gijä galmalar we kömek haýyşlary'],
   };
   const getTabTitle = (tab: NavTab) => ({
     title: t(PAGE_KEYS[tab]),
@@ -187,6 +194,9 @@ function MainLayout() {
           {currentTab === 'branding' && <BrandingView />}
           {currentTab === 'settings' && <SettingsView />}
           {currentTab === 'audit' && <AuditView />}
+          {currentTab === 'kitchen' && <KitchenStationView />}
+          {currentTab === 'expo' && <ExpoView />}
+          {currentTab === 'kitchenLoad' && <KitchenControlView />}
         </main>
       </div>
 

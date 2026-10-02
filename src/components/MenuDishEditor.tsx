@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, X, Loader2, ImagePlus, Trash2, Rotate3d, Film, Info, Languages, Scale, Images } from 'lucide-react';
+import { Check, X, Loader2, ImagePlus, Trash2, Rotate3d, Film, Info, Languages, Scale, Images, ChefHat } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -21,7 +21,7 @@ import { ConfirmDialog } from './ui';
 // ---------------------------------------------------------------------------------------------
 
 const WEIGHT_UNITS = ['G', 'KG', 'ML', 'L', 'PCS'];
-type Section = 'general' | 'public' | 'media';
+type Section = 'general' | 'public' | 'media' | 'kitchen';
 
 export interface DishDraft {
   id: string;
@@ -58,11 +58,13 @@ interface Props {
   draft: DishDraft;
   assets: any[];
   categories: any[];
+  /** Stage 42: the branch whose kitchen stations this dish can be routed to. */
+  branchId?: string;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
 
-export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, categories, onClose, onSaved }) => {
+export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, categories, branchId: branchOfDish, onClose, onSaved }) => {
   const { hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
@@ -71,6 +73,13 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
   const [d, setD] = useState<DishDraft>(initial);
   const [section, setSection] = useState<Section>('general');
   const [allergens, setAllergens] = useState<any[]>([]);
+  // Stage 42: which station cooks this dish and how long it should take. This is CONFIGURATION of
+  // the dish, so it lives in the dish editor rather than in a separate kitchen admin screen.
+  const [stations, setStations] = useState<any[]>([]);
+  const [routes, setRoutes] = useState<Array<{ station_id: string; standard_minutes: string; tolerance_minutes: string; is_secondary: boolean }>>([]);
+  const [routesLoaded, setRoutesLoaded] = useState(false);
+  const [routeBusy, setRouteBusy] = useState(false);
+  const [routeSaved, setRouteSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const canManage = hasPermission('menu.manage');
@@ -123,6 +132,39 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
     return () => window.removeEventListener('keydown', onKey);
   }, [requestClose]);
 
+  useEffect(() => {
+    if (section !== 'kitchen' || routesLoaded || !d.id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const branchId = branchOfDish;
+        const [st, rt] = await Promise.all([
+          branchId ? api.getKitchenStations(branchId) : Promise.resolve({ stations: [] as any[] }),
+          branchId ? api.getKitchenRoutes(branchId) : Promise.resolve({ item_routes: [] as any[], category_routes: [] as any[] }),
+        ]);
+        if (cancelled) return;
+        setStations((st.stations || []).filter((x: any) => !x.is_expo));
+        setRoutes((rt.item_routes || []).filter((r: any) => r.menu_item_id === d.id).map((r: any) => ({
+          station_id: r.station_id, standard_minutes: String(Number(r.standard_minutes)), tolerance_minutes: String(Number(r.tolerance_minutes)), is_secondary: Boolean(r.is_secondary),
+        })));
+      } catch { /* the editor still works without the kitchen configuration */ }
+      finally { if (!cancelled) setRoutesLoaded(true); }
+    })();
+    return () => { cancelled = true; };
+  }, [section, routesLoaded, d.id, branchOfDish]);
+
+  const saveRoutes = useCallback(async () => {
+    if (routeBusy) return;
+    setRouteBusy(true); setError(''); setRouteSaved(false);
+    try {
+      await api.setKitchenItemRoutes(d.id, routes.map(r => ({
+        station_id: r.station_id, standard_minutes: Number(r.standard_minutes), tolerance_minutes: Number(r.tolerance_minutes), is_secondary: r.is_secondary,
+      })));
+      setRouteSaved(true);
+    } catch (e: any) { setError(e?.message || t('Не удалось сохранить настройки кухни.', 'Aşhana sazlamalary saklanmady.')); }
+    finally { setRouteBusy(false); }
+  }, [routes, d.id, routeBusy, t]);
+
   const tab = (id: Section, icon: React.ReactNode, label: string) => (
     <button className={`mb-btn boom-focusable ${section === id ? 'gold' : ''}`} onClick={() => setSection(id)}>{icon} {label}</button>
   );
@@ -139,6 +181,7 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
           {tab('general', <Languages className="w-3.5 h-3.5" />, t('Основное', 'Esasy'))}
           {tab('public', <Info className="w-3.5 h-3.5" />, t('Публичная информация', 'Jemgyýetçilik maglumaty'))}
           {tab('media', <Images className="w-3.5 h-3.5" />, t('Медиа', 'Media'))}
+          {tab('kitchen', <ChefHat className="w-3.5 h-3.5" />, t('Кухня', 'Aşhana'))}
         </div>
 
         {error && <div className="cmd-error">{error}</div>}
@@ -199,6 +242,66 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
                 })}
                 {!allergens.length && <span className="mb-muted mb-note">{t('Справочник аллергенов не загружен.', 'Allergen sanawy ýüklenmedi.')}</span>}
               </div>
+            </div>
+          </>
+        )}
+
+        {section === 'kitchen' && (
+          <>
+            <div className="mb-boxed">
+              <div className="mb-brand-label">{t('Цех и нормативное время', 'Bölüm we kada wagty')}</div>
+              <p className="mb-muted mb-note">
+                {t('Кухня распределяет позиции по цехам именно по этой настройке. Если цех не выбран, система берёт правило категории, а если и его нет — позиция попадёт в очередь «Требует назначения». Название блюда ни на что не влияет.',
+                   'Aşhana pozisiýalary şu sazlama boýunça bölümlere paýlaýar. Bölüm saýlanmasa, ulgam kategoriýanyň düzgünini alýar, ol hem ýok bolsa — pozisiýa «Bellemeli» nobatyna düşer. Naharyň ady hiç zada täsir etmeýär.')}
+              </p>
+              {!routesLoaded ? (
+                <span className="mb-muted mb-note">{t('Загружаем цеха…', 'Bölümler ýüklenýär…')}</span>
+              ) : !stations.length ? (
+                <span className="mb-muted mb-note">{t('В этом филиале ещё нет цехов.', 'Bu şahamçada entek bölüm ýok.')}</span>
+              ) : (
+                <>
+                  {routes.map((r, idx) => (
+                    <div className="mb-form-row" key={idx} style={{ marginTop: 8 }}>
+                      <select className="mb-input" value={r.station_id} disabled={!canManage}
+                        onChange={e => setRoutes(routes.map((x, i) => i === idx ? { ...x, station_id: e.target.value } : x))}>
+                        {stations.map(st => <option key={st.id} value={st.id}>{ru ? st.name_ru : st.name_tk}</option>)}
+                      </select>
+                      <input className="mb-input mb-input-sm" type="number" min="1" max="240" value={r.standard_minutes} disabled={!canManage}
+                        aria-label={t('Нормативное время, мин', 'Kada wagty, min')}
+                        onChange={e => setRoutes(routes.map((x, i) => i === idx ? { ...x, standard_minutes: e.target.value } : x))} />
+                      <input className="mb-input mb-input-sm" type="number" min="0" max="120" value={r.tolerance_minutes} disabled={!canManage}
+                        aria-label={t('Допустимое отклонение, мин', 'Rugsat edilýän tapawut, min')}
+                        onChange={e => setRoutes(routes.map((x, i) => i === idx ? { ...x, tolerance_minutes: e.target.value } : x))} />
+                      <label className="mb-cb">
+                        <input type="checkbox" checked={r.is_secondary} disabled={!canManage}
+                          onChange={e => setRoutes(routes.map((x, i) => i === idx ? { ...x, is_secondary: e.target.checked } : x))} />
+                        {t('дополнительный этап', 'goşmaça etap')}
+                      </label>
+                      {canManage && (
+                        <button className="mb-icon danger boom-focusable" aria-label={t('Убрать цех', 'Bölümi aýyr')}
+                          onClick={() => setRoutes(routes.filter((_, i) => i !== idx))}><Trash2 className="w-3.5 h-3.5" /></button>
+                      )}
+                    </div>
+                  ))}
+                  {canManage && routes.length < 4 && (
+                    <button className="mb-add boom-focusable" onClick={() => setRoutes([...routes, { station_id: stations[0].id, standard_minutes: '5', tolerance_minutes: '2', is_secondary: routes.length > 0 }])}>
+                      + {t('Добавить цех', 'Bölüm goş')}
+                    </button>
+                  )}
+                  <div className="mb-form-row" style={{ marginTop: 10 }}>
+                    {canManage && (
+                      <button className="mb-btn gold boom-focusable" disabled={routeBusy} onClick={() => void saveRoutes()}>
+                        {routeBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} {t('Сохранить настройки кухни', 'Aşhana sazlamalaryny sakla')}
+                      </button>
+                    )}
+                    {routeSaved && <span className="mb-muted mb-note" style={{ color: 'var(--boom-success)' }}>{t('Сохранено.', 'Saklandy.')}</span>}
+                  </div>
+                  <p className="mb-muted mb-note" style={{ marginTop: 8 }}>
+                    {t('Нормативное время — это ожидание до появления реальных данных. Как только позиции начнут готовиться, прогноз будет считаться по фактическому времени этого цеха.',
+                       'Kada wagty — hakyky maglumatlar ýygnalýança garaşylýan wagt. Pozisiýalar taýýarlanyp başlandan soň çaklama şu bölümiň hakyky wagty boýunça hasaplanar.')}
+                  </p>
+                </>
+              )}
             </div>
           </>
         )}

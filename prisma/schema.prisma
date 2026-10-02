@@ -217,6 +217,13 @@ model Branch {
   visual_catalog_blocks  VisualCatalogBlock[]
   promotions             Promotion[]
 
+  kitchen_stations       KitchenStation[]
+  kds_item_tasks         KdsItemTask[]
+  kitchen_thresholds     KitchenThreshold[]
+  kitchen_comments       KitchenComment[]
+  kitchen_alerts         KitchenAlert[]
+  expo_handovers         ExpoHandover[]
+
   @@index([code], map: "idx_branches_code")
   @@index([status], map: "idx_branches_status")
   @@index([franchise_id], map: "idx_branches_franchise")
@@ -368,6 +375,7 @@ model MenuCategory {
   @@index([status], map: "idx_menu_categories_status")
   @@index([deleted_at], map: "idx_menu_categories_deleted_at")
   @@map("menu_categories")
+  station_routes KitchenCategoryRoute[]
 }
 
 model MenuItem {
@@ -429,6 +437,8 @@ model MenuItem {
   @@index([smart_tags_tk], map: "idx_menu_items_smart_tags_tk")
   @@index([deleted_at], map: "idx_menu_items_deleted_at")
   @@map("menu_items")
+  station_routes KitchenItemRoute[]
+  kitchen_tasks  KdsItemTask[]
 }
 
 model MenuModifierGroup {
@@ -588,6 +598,10 @@ model Order {
   @@index([status], map: "idx_orders_status")
   @@index([created_at], map: "idx_orders_created")
   @@map("orders")
+  kitchen_tasks      KdsItemTask[]
+  kitchen_comments   KitchenComment[]
+  kitchen_alerts     KitchenAlert[]
+  expo_handovers     ExpoHandover[]
 }
 
 // Stage 34.1: the controlled cancellation / "closed by establishment" workflow. A refund is never
@@ -925,6 +939,9 @@ model OrderItem {
   removal_approvals OrderItemRemovalApproval[]
   modifiers        OrderItemModifier[]
   compliments      ComplimentRequest[]
+
+  kitchen_tasks     KdsItemTask[]
+  kitchen_comments  KitchenComment[]
 
   @@index([order_id], map: "idx_order_items_order")
   @@index([menu_item_id], map: "idx_order_items_menu_item")
@@ -1880,4 +1897,226 @@ model SiteDesign {
   updater       User?  @relation("SiteDesignUpdatedBy", fields: [updated_by], references: [id], onDelete: SetNull)
 
   @@map("site_designs")
+}
+
+
+// ----------------------------------------------------------------------------------------------
+// Stage 42 — Smart Kitchen. The kitchen's own layer on top of Order Core, never beside it: every
+// task points at the order line it came from, and the order's money, recipe and stock behaviour is
+// untouched by anything in this section.
+// ----------------------------------------------------------------------------------------------
+
+/// A station of a branch's kitchen. Rows, not hardcoded constants: a branch can run GRILL/FRY/
+/// COLD/BAR/EXPO, or wok and pizza stations, without a code change.
+model KitchenStation {
+  id                String   @id
+  branch_id         String
+  code              String
+  name_ru           String
+  name_tk           String
+  is_expo           Boolean  @default(false)
+  parallel_capacity Int      @default(1)
+  sort_order        Int      @default(0)
+  status            String   @default("ACTIVE")
+  deleted_at        String?
+  created_at        String
+  updated_at        String
+
+  branch            Branch   @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  item_routes       KitchenItemRoute[]
+  category_routes   KitchenCategoryRoute[]
+  tasks             KdsItemTask[]
+  thresholds        KitchenThreshold[]
+  alerts            KitchenAlert[]
+
+  @@unique([branch_id, code], map: "kitchen_stations_branch_code_key")
+  @@index([branch_id, status, sort_order], map: "idx_kitchen_stations_branch")
+  @@map("kitchen_stations")
+}
+
+/// Which station cooks this dish, and the standard time a manager set for it. is_secondary is an
+/// ADDITIONAL step on another station rather than a replacement.
+model KitchenItemRoute {
+  id                String   @id
+  menu_item_id      String
+  station_id        String
+  standard_minutes  Decimal  @db.Decimal(8,2) @default(5)
+  tolerance_minutes Decimal  @db.Decimal(8,2) @default(2)
+  is_secondary      Boolean  @default(false)
+  status            String   @default("ACTIVE")
+  created_at        String
+  updated_at        String
+
+  menu_item         MenuItem       @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  station           KitchenStation @relation(fields: [station_id], references: [id], onDelete: Cascade)
+
+  @@unique([menu_item_id, station_id], map: "menu_item_routes_item_station_key")
+  @@index([menu_item_id, status], map: "idx_menu_item_routes_item")
+  @@map("menu_item_routes")
+}
+
+/// The explicitly configured category fallback. Nothing in this system infers a station from a
+/// dish name: with no dish route and no category route, the item waits for a human to assign it.
+model KitchenCategoryRoute {
+  id                String   @id
+  category_id       String
+  station_id        String
+  standard_minutes  Decimal  @db.Decimal(8,2) @default(5)
+  tolerance_minutes Decimal  @db.Decimal(8,2) @default(2)
+  status            String   @default("ACTIVE")
+  created_at        String
+  updated_at        String
+
+  category          MenuCategory   @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  station           KitchenStation @relation(fields: [station_id], references: [id], onDelete: Cascade)
+
+  @@unique([category_id, station_id], map: "menu_category_routes_category_station_key")
+  @@map("menu_category_routes")
+}
+
+/// One order line on one station. The norm (standard_minutes), the prediction (forecast_*) and the
+/// fact (started_at/ready_at) are three separate things and are never collapsed into one another.
+model KdsItemTask {
+  id                   String   @id
+  branch_id            String
+  order_id             String
+  order_item_id        String
+  station_id           String?
+  menu_item_id         String?
+  title_snapshot       String
+  quantity             Int      @default(1)
+  is_secondary         Boolean  @default(false)
+  status               String   @default("QUEUED")
+  priority             Int      @default(0)
+  standard_minutes     Decimal? @db.Decimal(8,2)
+  tolerance_minutes    Decimal? @db.Decimal(8,2)
+  expected_minutes     Decimal? @db.Decimal(8,2)
+  forecast_source      String?
+  forecast_start_at    String?
+  forecast_ready_at    String?
+  forecast_confidence  String?
+  forecast_sample_size Int      @default(0)
+  accepted_at          String?
+  started_at           String?
+  ready_at             String?
+  served_at            String?
+  cancelled_at         String?
+  delay_state          String   @default("NONE")
+  delay_reason         String?
+  reassigned_from      String?
+  reassign_reason      String?
+  created_at           String
+  updated_at           String
+
+  branch               Branch          @relation(fields: [branch_id], references: [id], onDelete: Restrict)
+  order                Order           @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_item           OrderItem       @relation(fields: [order_item_id], references: [id], onDelete: Cascade)
+  station              KitchenStation? @relation(fields: [station_id], references: [id], onDelete: SetNull)
+  menu_item            MenuItem?       @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  alerts               KitchenAlert[]
+
+  @@unique([order_item_id, station_id], map: "kds_item_tasks_item_station_key")
+  @@index([branch_id, station_id, status, created_at], map: "idx_kds_item_tasks_station_queue")
+  @@index([order_id], map: "idx_kds_item_tasks_order")
+  @@index([station_id, menu_item_id, ready_at], map: "idx_kds_item_tasks_history")
+  @@map("kds_item_tasks")
+}
+
+/// When lateness becomes a warning, a delay or a critical delay, as ratios of the expected time.
+/// A row with no station and no category is the branch default.
+model KitchenThreshold {
+  id               String   @id
+  branch_id        String
+  station_id       String?
+  category_id      String?
+  warning_ratio    Decimal  @db.Decimal(5,2) @default(0.80)
+  late_ratio       Decimal  @db.Decimal(5,2) @default(1.00)
+  critical_ratio   Decimal  @db.Decimal(5,2) @default(1.50)
+  escalate_minutes Int      @default(5)
+  updated_by       String?
+  created_at       String
+  updated_at       String
+
+  branch           Branch          @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  station          KitchenStation? @relation(fields: [station_id], references: [id], onDelete: Cascade)
+
+  @@unique([branch_id, station_id, category_id], map: "kitchen_thresholds_scope_key")
+  @@map("kitchen_thresholds")
+}
+
+/// A message from the floor to the kitchen. It carries no price, no quantity and no recipe: an
+/// actual change to an order still goes through the existing approval routes.
+model KitchenComment {
+  id              String   @id
+  branch_id       String
+  order_id        String
+  order_item_id   String?
+  kind            String
+  text            String?
+  author_user_id  String?
+  author_role     String?
+  source          String
+  after_start     Boolean  @default(false)
+  acknowledged_at String?
+  acknowledged_by String?
+  created_at      String
+
+  branch          Branch     @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  order           Order      @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order_item      OrderItem? @relation(fields: [order_item_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id, created_at], map: "idx_kitchen_comments_order")
+  @@index([branch_id, acknowledged_at, created_at], map: "idx_kitchen_comments_branch_new")
+  @@map("kitchen_comments")
+}
+
+/// Delay notifications, help requests and escalations. dedupe_key is the idempotency: the same
+/// delay on the same task exists at most once, no matter how often a screen refreshes.
+model KitchenAlert {
+  id              String   @id
+  branch_id       String
+  station_id      String?
+  order_id        String?
+  task_id         String?
+  type            String
+  severity        String   @default("INFO")
+  audience        String
+  reason          String?
+  message_ru      String?
+  message_tk      String?
+  dedupe_key      String   @unique(map: "kitchen_alerts_dedupe_key")
+  created_by      String?
+  acknowledged_at String?
+  acknowledged_by String?
+  resolution      String?
+  created_at      String
+
+  branch          Branch          @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  station         KitchenStation? @relation(fields: [station_id], references: [id], onDelete: SetNull)
+  order           Order?          @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  task            KdsItemTask?    @relation(fields: [task_id], references: [id], onDelete: Cascade)
+
+  @@index([branch_id, acknowledged_at, created_at], map: "idx_kitchen_alerts_branch_open")
+  @@map("kitchen_alerts")
+}
+
+/// Who assembled an order and who took it away -- and, when an incomplete order was released,
+/// which items were missing, why, and on whose authority.
+model ExpoHandover {
+  id            String  @id
+  branch_id     String
+  order_id      String
+  kind          String
+  missing_items String?
+  reason        String?
+  actor_user_id String?
+  actor_role    String?
+  created_at    String
+
+  branch        Branch  @relation(fields: [branch_id], references: [id], onDelete: Cascade)
+  order         Order   @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id, created_at], map: "idx_expo_handovers_order")
+  @@index([branch_id, created_at], map: "idx_expo_handovers_branch")
+  @@map("expo_handovers")
 }

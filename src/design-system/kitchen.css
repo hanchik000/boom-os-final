@@ -1,0 +1,167 @@
+/* BOOM OS — Stage 42: the kitchen's working screens.
+ *
+ * These screens are read at two metres, with wet hands, under pressure. They share the BOOM OS
+ * tokens (same black/graphite surface, same gold accent, same focus ring) but not the density of an
+ * administrative table: everything here is larger, flatter and reachable with one tap.
+ */
+
+.kitchen-screen {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--boom-text);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ------------------------------------------------------------------ station switcher + load */
+.kt-stations { display: flex; flex-wrap: wrap; gap: 8px; }
+.kt-station-tab {
+  display: inline-flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  min-height: 56px; min-width: 128px;
+  padding: 9px 14px;
+  border: 1px solid var(--boom-border);
+  border-radius: var(--boom-radius-md);
+  background: var(--boom-surface);
+  color: var(--boom-text-secondary);
+  cursor: pointer;
+  transition: border-color var(--boom-motion-fast) var(--boom-ease), color var(--boom-motion-fast) var(--boom-ease);
+}
+.kt-station-tab:hover { border-color: var(--boom-border-strong); color: var(--boom-text); }
+.kt-station-tab:focus-visible { outline: none; box-shadow: var(--boom-focus-ring); }
+.kt-station-tab.is-active { border-color: rgba(245,158,11,.6); background: var(--boom-gold-soft); color: var(--boom-text); }
+.kt-station-name { font-size: 17px; font-weight: 800; letter-spacing: .01em; }
+.kt-station-meta { font-size: 12px; color: var(--boom-text-muted); font-variant-numeric: tabular-nums; }
+.kt-station-tab.has-delay .kt-station-meta { color: #fca5a5; }
+
+.kt-load {
+  display: flex; flex-wrap: wrap; gap: 10px;
+}
+.kt-load-tile {
+  flex: 1 1 150px;
+  padding: 12px 14px;
+  border: 1px solid var(--boom-border);
+  border-radius: var(--boom-radius-md);
+  background: var(--boom-surface);
+}
+.kt-load-label { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--boom-text-muted); }
+.kt-load-value { margin-top: 4px; font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.kt-load-tile.is-warn .kt-load-value { color: #fbbf24; }
+.kt-load-tile.is-bad .kt-load-value { color: #fca5a5; }
+
+/* ------------------------------------------------------------------------------ the columns */
+.kt-board { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; }
+@media (max-width: 1280px) { .kt-board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px)  { .kt-board { grid-template-columns: minmax(0, 1fr); } }
+.kt-column { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.kt-column-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--boom-radius-sm);
+  background: rgba(255,255,255,.04);
+  font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--boom-text-secondary);
+}
+.kt-column-count { font-variant-numeric: tabular-nums; color: var(--boom-text); }
+
+/* -------------------------------------------------------------------------------- the ticket */
+.kt-card {
+  border: 1px solid var(--boom-border);
+  border-left: 4px solid var(--boom-border-strong);
+  border-radius: var(--boom-radius-md);
+  background: var(--boom-surface);
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.kt-card.is-warning { border-left-color: #fbbf24; }
+.kt-card.is-late { border-left-color: #f97316; }
+.kt-card.is-critical { border-left-color: var(--boom-danger); background: rgba(239,68,68,.07); }
+.kt-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.kt-order { font-size: 15px; font-weight: 800; color: var(--boom-text); }
+.kt-where { font-size: 12.5px; color: var(--boom-text-muted); }
+.kt-title { font-size: 20px; font-weight: 900; line-height: 1.15; }
+.kt-qty { color: var(--boom-gold); }
+.kt-mods { display: flex; flex-wrap: wrap; gap: 5px; }
+.kt-mod {
+  font-size: 12px; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid var(--boom-border); color: var(--boom-text-secondary);
+}
+.kt-note {
+  display: flex; gap: 6px; align-items: flex-start;
+  font-size: 13px; padding: 7px 9px; border-radius: var(--boom-radius-sm);
+  border: 1px solid rgba(245,158,11,.3); background: rgba(245,158,11,.08); color: #fcd34d;
+}
+.kt-note.is-late-change { border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.09); color: #fca5a5; }
+.kt-times { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12.5px; color: var(--boom-text-muted); font-variant-numeric: tabular-nums; }
+.kt-times b { color: var(--boom-text-secondary); font-weight: 700; }
+.kt-forecast-soft { opacity: .75; font-style: italic; }
+.kt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* One action size for the whole kitchen: a thumb, not a cursor. */
+.kt-btn {
+  flex: 1 1 auto;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: var(--boom-radius-sm);
+  border: 1px solid var(--boom-border-strong);
+  background: var(--boom-surface-soft);
+  color: var(--boom-text);
+  font-size: 15px; font-weight: 750;
+  cursor: pointer;
+  transition: background var(--boom-motion-fast) var(--boom-ease);
+}
+.kt-btn:hover:not(:disabled) { background: var(--boom-surface-elevated); }
+.kt-btn:focus-visible { outline: none; box-shadow: var(--boom-focus-ring); }
+.kt-btn:disabled { opacity: .45; cursor: not-allowed; }
+.kt-btn.is-primary { background: var(--boom-gold); border-color: var(--boom-gold); color: #111827; }
+.kt-btn.is-done { background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.4); color: #86efac; }
+.kt-btn.is-alarm { background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.4); color: #fca5a5; }
+.kt-btn.is-quiet { background: transparent; color: var(--boom-text-muted); }
+
+.kt-empty {
+  padding: 22px 12px; text-align: center; font-size: 13.5px; color: var(--boom-text-muted);
+  border: 1px dashed var(--boom-border); border-radius: var(--boom-radius-md);
+}
+
+/* ---------------------------------------------------------------------------------- the pass */
+.kt-expo-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.kt-expo-card {
+  border: 1px solid var(--boom-border); border-radius: var(--boom-radius-lg);
+  background: var(--boom-surface); padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.kt-expo-card.is-ready { border-color: rgba(34,197,94,.45); box-shadow: 0 0 0 1px rgba(34,197,94,.18) inset; }
+.kt-expo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.kt-expo-state { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--boom-text-muted); }
+.kt-expo-card.is-ready .kt-expo-state { color: #86efac; }
+.kt-expo-lines { display: flex; flex-direction: column; gap: 6px; }
+.kt-expo-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14.5px; }
+.kt-expo-line .kt-chip {
+  font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--boom-border); color: var(--boom-text-muted); white-space: nowrap;
+}
+.kt-expo-line .kt-chip.is-ready { border-color: rgba(34,197,94,.4); color: #86efac; }
+.kt-expo-line .kt-chip.is-cooking { border-color: rgba(245,158,11,.4); color: #fcd34d; }
+
+/* ------------------------------------------------------------------- manager control surface */
+.kt-alerts { display: flex; flex-direction: column; gap: 8px; }
+.kt-alert {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 13px; border-radius: var(--boom-radius-md);
+  border: 1px solid var(--boom-border); background: var(--boom-surface); font-size: 13.5px;
+}
+.kt-alert.is-critical { border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.08); }
+.kt-alert.is-high { border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.06); }
+.kt-alert-meta { font-size: 12px; color: var(--boom-text-muted); }
+.kt-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.kt-table th, .kt-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--boom-border); }
+.kt-table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--boom-text-muted); font-weight: 700; }
+.kt-table td { font-variant-numeric: tabular-nums; }
+.kt-scroll { overflow-x: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kt-station-tab, .kt-btn { transition: none; }
+}
+@media (pointer: coarse) {
+  .kt-btn { min-height: 56px; font-size: 16px; }
+  .kt-station-tab { min-height: 64px; }
+}

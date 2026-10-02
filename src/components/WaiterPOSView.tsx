@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Ban, Check, Delete, ClipboardList, SplitSquareHorizontal, Merge, UserRound, LockKeyhole, Plus, ReceiptText, Send, UtensilsCrossed, LoaderCircle, Minus, RefreshCw, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Ban, Check, ClipboardList, Delete, LoaderCircle, LockKeyhole, Merge, MessageSquare, Minus, Plus, ReceiptText, RefreshCw, Send, Sparkles, SplitSquareHorizontal, UserRound, UtensilsCrossed, X } from 'lucide-react';
 import { api, getStoredWaiterSession, setStoredWaiterSession } from '../api';
 import { useBranding } from '../context/BrandingContext';
 
@@ -24,6 +24,18 @@ export const WaiterPOSView: React.FC = () => {
   // Stage 34.1 -- "ОТКАЗ". The waiter may only REQUEST a cancellation: they choose the reason AND
   // what must happen to the products, and a manager decides. Nothing is finalised here, and the
   // product choice is never pre-selected -- an unchosen decision cannot be submitted.
+  // Stage 42: notes from the floor to the kitchen. A note is a MESSAGE -- it never changes the
+  // order's composition or price, which still goes through the existing approval process.
+  const [noteFor,setNoteFor]=useState<any|null>(null);
+  const [noteKind,setNoteKind]=useState('GUEST_WAITING');
+  const [noteText,setNoteText]=useState('');
+  const [noteBusy,setNoteBusy]=useState(false);
+  const [noteDone,setNoteDone]=useState('');
+  const KITCHEN_NOTES:Array<[string,string]>=[['NO_ONION','Без лука'],['NO_SAUCE','Без соуса'],['NOT_SPICY','Не остро'],['ALLERGY_CHECK','Аллергия — уточнить'],['GUEST_WAITING','Гость ждёт'],['SERVE_TOGETHER','Подать вместе'],['URGENT','Срочно'],['FREE_TEXT','Другое']];
+  const sendKitchenNote=async()=>{if(!noteFor||noteBusy)return;if(noteKind==='FREE_TEXT'&&!noteText.trim())return;setNoteBusy(true);setNoteDone('');
+    try{const r=await api.sendWaiterKitchenComment({order_id:noteFor.id,kind:noteKind,text:noteText.trim()||undefined});
+      setNoteDone(r.after_start?'Кухня уже готовит этот заказ — сообщение отмечено как позднее.':'Кухня получила сообщение.');setNoteText('');}
+    catch(e:any){setNoteDone(e?.message||'Не удалось отправить сообщение.')}finally{setNoteBusy(false)}};
   const [myOrders,setMyOrders]=useState<any[]>([]); const [myOrdersOpen,setMyOrdersOpen]=useState(false); const [myOrdersLoading,setMyOrdersLoading]=useState(false);
   const [refusal,setRefusal]=useState<any|null>(null); const [refusalReason,setRefusalReason]=useState(''); const [refusalComment,setRefusalComment]=useState('');
   const [refusalTreatment,setRefusalTreatment]=useState<''|'WRITE_OFF'|'NO_WRITE_OFF'>(''); const [refusalBusy,setRefusalBusy]=useState(false); const [refusalError,setRefusalError]=useState(''); const [refusalSent,setRefusalSent]=useState(false);
@@ -184,11 +196,29 @@ export const WaiterPOSView: React.FC = () => {
       {!refusal?<>
         <div className="flex items-center justify-between"><div><h2 className="text-white text-xl font-bold">Мои активные заказы</h2><p className="text-slate-400 text-sm">Отказ отправляется менеджеру на подтверждение.</p></div><button className="btn" onClick={()=>setMyOrdersOpen(false)}><X className="w-4 h-4"/></button></div>
         {refusalError&&<div className="rounded border border-red-500/30 bg-red-500/10 text-red-300 text-xs p-2">{refusalError}</div>}
+        {noteFor&&<div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <strong className="text-white">Сообщение на кухню · #{noteFor.order_number}</strong>
+            <button className="btn-secondary btn-sm" onClick={()=>{setNoteFor(null);setNoteDone('')}}>Закрыть</button>
+          </div>
+          <p className="text-xs text-slate-400">Это только сообщение повару. Состав и цена заказа не меняются — для изменения заказа нужен отдельный запрос менеджеру.</p>
+          <div className="flex flex-wrap gap-2">
+            {KITCHEN_NOTES.map(([code,label])=>(
+              <button key={code} className={code===noteKind?'btn btn-sm':'btn-secondary btn-sm'} onClick={()=>setNoteKind(code)}>{label}</button>
+            ))}
+          </div>
+          {noteKind==='FREE_TEXT'&&<input className="field" value={noteText} onChange={e=>setNoteText(e.target.value)} placeholder="Что передать на кухню?"/>}
+          <div className="flex items-center gap-3">
+            <button className="btn" disabled={noteBusy||(noteKind==='FREE_TEXT'&&!noteText.trim())} onClick={()=>void sendKitchenNote()}>Отправить на кухню</button>
+            {noteDone&&<span className="text-xs text-amber-300">{noteDone}</span>}
+          </div>
+        </div>}
         {myOrdersLoading?<div className="text-slate-400 text-sm">Загрузка…</div>:!myOrders.length?<div className="text-slate-500 text-sm text-center py-8">Активных заказов нет.</div>:<div className="space-y-2">{myOrders.map(o=><div key={o.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 flex items-center justify-between gap-3">
           <div className="min-w-0"><div className="text-white font-semibold">#{o.order_number}{o.table_code?` · Стол ${o.table_code}`:''}</div><div className="text-xs text-slate-400 mt-0.5">{o.status} · {o.final_amount} TMT{o.production_started_at?' · готовится/приготовлено':''}</div></div>
           <div className="flex gap-2 shrink-0">
             <button className="btn-secondary" onClick={()=>void openGuest(o)}><UserRound className="w-4 h-4 inline mr-1"/>Клиент</button>
             <button className="btn-secondary" onClick={()=>void openSplit(o)}><SplitSquareHorizontal className="w-4 h-4 inline mr-1"/>Счёт</button>
+            <button className="btn-secondary" onClick={()=>{setNoteFor(o);setNoteKind('GUEST_WAITING');setNoteText('');setNoteDone('')}}><MessageSquare className="w-4 h-4 inline mr-1"/>На кухню</button>
             {o.pending_closure?<span className="text-xs text-amber-300 self-center">Запрос на рассмотрении</span>:<button className="btn-danger" onClick={()=>openRefusal(o)}><Ban className="w-4 h-4 inline mr-1"/>ОТКАЗ</button>}
           </div>
         </div>)}</div>}

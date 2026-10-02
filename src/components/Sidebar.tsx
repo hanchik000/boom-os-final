@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
+  ChefHat,
+  PackageCheck,
   LayoutDashboard,
   Users,
   ShieldCheck,
@@ -39,7 +41,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useBranding } from '../context/BrandingContext';
 import { TranslationKey } from '../translations/ru';
 
-export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'boomcardJournal' | 'serviceCharge' | 'posMedia' | 'visualCatalog' | 'menuMedia' | 'promotions' | 'boomcard' | 'customers' | 'settings' | 'audit' | 'branding' | 'menuPreview';
+export type NavTab = 'dashboard' | 'commandCenter' | 'liveOperations' | 'menu' | 'organization' | 'franchises' | 'branches' | 'employees' | 'users' | 'roles' | 'rbac' | 'inventory' | 'operations' | 'cashierPos' | 'receiptSettings' | 'orderApprovals' | 'creditReports' | 'foodCost' | 'analytics' | 'boomcardJournal' | 'serviceCharge' | 'posMedia' | 'visualCatalog' | 'menuMedia' | 'promotions' | 'boomcard' | 'customers' | 'settings' | 'audit' | 'branding' | 'menuPreview' | 'kitchen' | 'expo' | 'kitchenLoad';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -94,6 +96,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
       { id: 'operations', key: 'nav.operations', icon: MonitorCog, permission: 'orders.view' },
       { id: 'liveOperations', key: 'nav.liveOperations', icon: Radio, permission: 'operations.view' },
       { id: 'orderApprovals', key: 'nav.orderApprovals', icon: ClipboardCheck, permission: 'orders.item_remove.approve' },
+      // Stage 42: the kitchen's own working screens. Daily operations, so they belong here and not
+      // in "Расширенные настройки"; each is gated by the permission its API already demands.
+      { id: 'kitchen', key: 'nav.kitchen', icon: ChefHat, permission: 'kds.view' },
+      { id: 'expo', key: 'nav.expo', icon: PackageCheck, permission: 'kitchen.expo.view' },
+      { id: 'kitchenLoad', key: 'nav.kitchenLoad', icon: Gauge, permission: 'kds.view' },
     ] },
     { id: 'menu', key: 'nav.group.menu', icon: UtensilsCrossed, items: [
       { id: 'menu', key: 'nav.menu', icon: UtensilsCrossed, permission: 'menu.view' },

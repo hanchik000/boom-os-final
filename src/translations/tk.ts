@@ -46,6 +46,10 @@ export const tk: Record<keyof typeof ru, string> = {
   "nav.posMedia": "POS ekranlary",
   "nav.menuMedia": "Surat we wideo",
   "nav.visualCatalog": "Menýunyň bezegi",
+
+  "nav.kitchen": "Aşhana",
+  "nav.expo": "Beriş",
+  "nav.kitchenLoad": "Aşhananyň ýüki",
   "nav.promotions": "Aksiýalar",
   "nav.serviceCharge": "Hyzmat ýygymy",
   "nav.boomcard": "Wepalylyk kartlary",

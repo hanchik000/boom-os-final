@@ -354,6 +354,53 @@ export const api = {
   getCurrentCashShift: (branch_id?:string) => request<{shift:any|null}>(`/api/cash-shifts/current${branch_id?`?branch_id=${encodeURIComponent(branch_id)}`:''}`),
   openCashShift: (branch_id:string,opening_cash:string) => request<{shift:any}>('/api/cash-shifts',{method:'POST',body:JSON.stringify({branch_id,opening_cash})}),
   closeCashShift: (id:string,actual_cash:string) => request<{report:any}>(`/api/cash-shifts/${id}/z-report`,{method:'POST',body:JSON.stringify({actual_cash})}),
+  // ---------------------------------------------------------------------------------- Stage 42
+  // Smart Kitchen. Station routing, the per-item queue, forecasts, delays, notes and handover.
+  // Every figure here is the server's: nothing on these screens computes a time or a load itself.
+  getKitchenStations: (branch_id:string) => request<{ branch_id:string; stations:any[] }>(`/api/kitchen/stations?branch_id=${encodeURIComponent(branch_id)}`),
+  createKitchenStation: (data:{ branch_id:string; code:string; name_ru:string; name_tk:string; parallel_capacity?:number; sort_order?:number }) =>
+    request<{ station:any }>('/api/kitchen/stations', { method:'POST', body: JSON.stringify(data) }),
+  updateKitchenStation: (id:string, data:any) => request<{ station:any }>(`/api/kitchen/stations/${encodeURIComponent(id)}`, { method:'PATCH', body: JSON.stringify(data) }),
+  archiveKitchenStation: (id:string) => request<{ success:boolean; message:string }>(`/api/kitchen/stations/${encodeURIComponent(id)}`, { method:'DELETE' }),
+  getKitchenRoutes: (branch_id:string) => request<{ branch_id:string; item_routes:any[]; category_routes:any[] }>(`/api/kitchen/routes?branch_id=${encodeURIComponent(branch_id)}`),
+  setKitchenItemRoutes: (menuItemId:string, routes:Array<{ station_id:string; standard_minutes:number|string; tolerance_minutes:number|string; is_secondary?:boolean }>) =>
+    request<{ success:boolean; routes:any[] }>(`/api/kitchen/routes/items/${encodeURIComponent(menuItemId)}`, { method:'PUT', body: JSON.stringify({ routes }) }),
+  setKitchenCategoryRoute: (categoryId:string, data:{ station_id:string|null; standard_minutes?:number|string; tolerance_minutes?:number|string }) =>
+    request<{ success:boolean; routes:any[] }>(`/api/kitchen/routes/categories/${encodeURIComponent(categoryId)}`, { method:'PUT', body: JSON.stringify(data) }),
+  getKitchenQueue: (branch_id:string, station_id:string) =>
+    request<{ branch_id:string; station_id:string|null; unassigned:boolean; load:any; tasks:any[] }>(`/api/kitchen/queue?branch_id=${encodeURIComponent(branch_id)}&station_id=${encodeURIComponent(station_id)}`),
+  setKitchenTaskStatus: (taskId:string, status:string, reason?:string) =>
+    request<{ task:any; order_status:string|null }>(`/api/kitchen/tasks/${encodeURIComponent(taskId)}/status`, { method:'POST', body: JSON.stringify({ status, reason }) }),
+  assignKitchenTask: (taskId:string, station_id:string, reason:string) =>
+    request<{ task:any }>(`/api/kitchen/tasks/${encodeURIComponent(taskId)}/assign`, { method:'POST', body: JSON.stringify({ station_id, reason }) }),
+  reportKitchenProblem: (taskId:string, reason:string) =>
+    request<{ success:boolean }>(`/api/kitchen/tasks/${encodeURIComponent(taskId)}/problem`, { method:'POST', body: JSON.stringify({ reason }) }),
+  requestKitchenHelp: (data:{ branch_id:string; station_id?:string|null; reason:string; comment?:string; order_id?:string }) =>
+    request<{ success:boolean }>('/api/kitchen/help-requests', { method:'POST', body: JSON.stringify(data) }),
+  sendKitchenComment: (data:{ order_id:string; order_item_id?:string|null; kind:string; text?:string }) =>
+    request<{ comment:any; after_start:boolean }>('/api/kitchen/comments', { method:'POST', body: JSON.stringify(data) }),
+  ackKitchenComment: (id:string) => request<{ success:boolean }>(`/api/kitchen/comments/${encodeURIComponent(id)}/ack`, { method:'POST', body:'{}' }),
+  getExpoBoard: (branch_id:string) => request<{ branch_id:string; orders:any[] }>(`/api/kitchen/expo?branch_id=${encodeURIComponent(branch_id)}`),
+  handOverOrder: (orderId:string, data?:{ allow_incomplete?:boolean; reason?:string }) =>
+    request<{ handover:any }>(`/api/kitchen/expo/${encodeURIComponent(orderId)}/handover`, { method:'POST', body: JSON.stringify(data || {}) }),
+  returnKitchenItem: (orderId:string, task_id:string, reason:string) =>
+    request<{ task:any }>(`/api/kitchen/expo/${encodeURIComponent(orderId)}/return-item`, { method:'POST', body: JSON.stringify({ task_id, reason }) }),
+  getKitchenLoad: (branch_id:string, from?:string, to?:string) => {
+    const q = new URLSearchParams({ branch_id }); if (from) q.set('from', from); if (to) q.set('to', to);
+    return request<{ branch_id:string; window:any; stations:any[]; unassigned:any; delays:any[]; thresholds:any }>(`/api/kitchen/load?${q.toString()}`);
+  },
+  getKitchenAlerts: (branch_id:string, status?:'OPEN'|'ALL') =>
+    request<{ branch_id:string; alerts:any[]; comments:any[]; awaiting_expo:any[] }>(`/api/kitchen/alerts?branch_id=${encodeURIComponent(branch_id)}${status==='ALL'?'&status=ALL':''}`),
+  resolveKitchenAlert: (id:string, resolution?:string) =>
+    request<{ success:boolean }>(`/api/kitchen/alerts/${encodeURIComponent(id)}/ack`, { method:'POST', body: JSON.stringify({ resolution }) }),
+  getKitchenThresholds: (branch_id:string) => request<{ branch_id:string; thresholds:any[]; effective:any }>(`/api/kitchen/thresholds?branch_id=${encodeURIComponent(branch_id)}`),
+  setKitchenThresholds: (data:{ branch_id:string; station_id?:string|null; warning_ratio:number; late_ratio:number; critical_ratio:number; escalate_minutes:number }) =>
+    request<{ success:boolean; thresholds:any[] }>('/api/kitchen/thresholds', { method:'PUT', body: JSON.stringify(data) }),
+  routeOrderToKitchen: (orderId:string) => request<{ created:number; unassigned:number }>(`/api/kitchen/orders/${encodeURIComponent(orderId)}/route`, { method:'POST', body:'{}' }),
+  // The waiter device sends its kitchen notes over its own session, like every other POS call.
+  sendWaiterKitchenComment: (data:{ order_id:string; order_item_id?:string|null; kind:string; text?:string }) =>
+    waiterRequest<{ comment:any; after_start:boolean }>('/api/kitchen/comments', { method:'POST', body: JSON.stringify(data) }),
+
   getKds: (params?: { branch_id?: string; status?: string }) => { const q=new URLSearchParams(); if(params?.branch_id) q.set('branch_id',params.branch_id); if(params?.status) q.set('status',params.status); return request<{tickets:any[]}>(`/api/kds?${q.toString()}`); },
   updateKdsStatus: (id:string,status:string) => request<{ticket:any}>(`/api/kds/${id}/status`,{method:'POST',body:JSON.stringify({status})}),
   requestItemRemoval: (orderId:string, itemId:string, quantity:string|number, reason:string) => waiterRequest<{ approval:any }>(`/api/orders/${orderId}/items/${itemId}/removal-request`, { method:'POST', body: JSON.stringify({ quantity, reason }) }),

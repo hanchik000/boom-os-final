@@ -453,6 +453,56 @@ export async function seedInitialData() {
     );
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Stage 42 -- Smart Kitchen. New permissions only; the existing kds.view/kds.update still govern
+  // reading a queue and advancing an item, so a kitchen account that worked before this stage keeps
+  // working. Nothing here widens an existing role beyond the kitchen.
+  // ---------------------------------------------------------------------------------------------
+  const stage42Perms = [
+    { id: 'perm_kitchen_stations_view', code: 'kitchen.stations.view', name: 'View Kitchen Stations', module: 'kitchen', description: 'See the stations of a branch kitchen' },
+    { id: 'perm_kitchen_stations_manage', code: 'kitchen.stations.manage', name: 'Manage Kitchen Stations', module: 'kitchen', description: 'Create, rename, re-capacity and archive kitchen stations' },
+    { id: 'perm_kitchen_tasks_reassign', code: 'kitchen.tasks.reassign', name: 'Reassign Kitchen Items', module: 'kitchen', description: 'Move an item to another station, with a reason' },
+    { id: 'perm_kitchen_help_request', code: 'kitchen.help.request', name: 'Request Kitchen Help', module: 'kitchen', description: 'Ask the kitchen manager for staff, equipment or ingredients' },
+    { id: 'perm_kitchen_alerts_view', code: 'kitchen.alerts.view', name: 'View Kitchen Notifications', module: 'kitchen', description: 'See delays, problems and help requests' },
+    { id: 'perm_kitchen_alerts_resolve', code: 'kitchen.alerts.resolve', name: 'Resolve Kitchen Notifications', module: 'kitchen', description: 'Acknowledge a kitchen notification and record what was done' },
+    { id: 'perm_kitchen_comments_create', code: 'kitchen.comments.create', name: 'Send Notes To Kitchen', module: 'kitchen', description: 'Send a note from the floor to the kitchen' },
+    { id: 'perm_kitchen_expo_view', code: 'kitchen.expo.view', name: 'View Handover Screen', module: 'kitchen', description: 'See the assembly and handover screen' },
+    { id: 'perm_kitchen_expo_handover', code: 'kitchen.expo.handover', name: 'Hand Over Orders', module: 'kitchen', description: 'Confirm assembly and hand an order to the waiter' },
+    { id: 'perm_kitchen_expo_override', code: 'kitchen.expo.override', name: 'Release Incomplete Orders', module: 'kitchen', description: 'Release an order that is not fully ready, with a reason' },
+    { id: 'perm_kitchen_thresholds_manage', code: 'kitchen.thresholds.manage', name: 'Manage Delay Limits', module: 'kitchen', description: 'Set when a dish counts as delayed' },
+  ];
+  for (const p of stage42Perms) {
+    await execute(`INSERT INTO permissions (id,code,name,module,description,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT (code) DO NOTHING`, [p.id, p.code, p.name, p.module, p.description, now]);
+  }
+  const permIdOf = async (code: string) => (await queryOne<{ id: string }>('SELECT id FROM permissions WHERE code=?', [code]))?.id || null;
+  const grant = async (roleId: string | undefined, codes: string[], tag: string) => {
+    if (!roleId) return;
+    for (const code of codes) {
+      const id = await permIdOf(code);
+      if (!id) continue;
+      await execute(`INSERT INTO role_permissions (id,role_id,permission_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`,
+        [`rp_${tag}_${code.replace(/[^a-z0-9]/gi, '_')}`, roleId, id, now]);
+    }
+  };
+  const roleKitchen = await queryOne<{ id: string }>('SELECT id FROM roles WHERE code = ?', ['KITCHEN']);
+  // Owner and Super Admin receive every permission in the loop above, so they are already covered.
+  const KITCHEN_MANAGER_PERMS = ['kitchen.stations.view','kitchen.stations.manage','kitchen.tasks.reassign','kitchen.help.request',
+    'kitchen.alerts.view','kitchen.alerts.resolve','kitchen.comments.create','kitchen.expo.view','kitchen.expo.handover',
+    'kitchen.expo.override','kitchen.thresholds.manage'];
+  // The owner and super administrator bypass permission checks at runtime, but the grants are
+  // recorded anyway so the roles screen tells the truth about who holds what.
+  const ALL_42 = stage42Perms.map(p => p.code);
+  await grant(roleOwner?.id, ALL_42, 'owner42');
+  await grant(roleSuperAdmin?.id, ALL_42, 'sa42');
+  await grant(roleGeneralManager?.id, KITCHEN_MANAGER_PERMS, 'gm42');
+  await grant(roleBranchManager?.id, KITCHEN_MANAGER_PERMS, 'bm42');
+  // A cook sees the stations, works the queue (kds.view/kds.update, already theirs), stands at the
+  // pass and can ask for help. Releasing an incomplete order is deliberately NOT theirs.
+  await grant(roleKitchen?.id, ['kds.view','kds.update','kitchen.stations.view','kitchen.help.request','kitchen.expo.view','kitchen.expo.handover'], 'kit42');
+  // The floor can tell the kitchen something; it cannot change the kitchen's work.
+  await grant(roleWaiter?.id, ['kitchen.comments.create'], 'waiter42');
+  await grant(roleCashier?.id, ['kitchen.comments.create'], 'csh42');
+
   // No synthetic bootstrap audit event is inserted. Real actions are audited when they happen.
 
   console.log('BOOM OS foundation initial data seeded successfully.');
