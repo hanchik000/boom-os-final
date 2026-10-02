@@ -90,7 +90,11 @@ ok('40. every endpoint is branch-checked through the shared helper', (analytics.
 ok('41. the router is mounted once and is no longer a reserved 501 stub', (serverTs.match(/app\.use\('\/api\/analytics'/g) || []).length === 1 && /const futureModules = \['crm'\];/.test(serverTs));
 ok('42. the client asks the server for every figure and computes none', /getAnalyticsSales|getAnalyticsDishes|getAnalyticsMatrix/.test(api) && !/reduce\(\(s|Math\.round/.test(view));
 ok('43. the screen is permission-gated in navigation and rendered from App', /permission: 'analytics\.view'/.test(sidebar) && /currentTab === 'analytics' && <AnalyticsView \/>/.test(app));
-ok('44. and is bilingual, like every other screen', /"nav\.analytics": "Аналитика"/.test(ru) && /"nav\.analytics": "Analitika"/.test(tk) && /ru \? 'Матрица меню' : 'Menýu matrisasy'/.test(view));
+// Stage 40 renamed this entry to plain language ("Аналитика" -> "Отчёты"). The check is about the
+// screen being bilingual, not about one particular word, so it now asserts the entry exists in both
+// files with a non-empty label of its own.
+ok('44. and is bilingual, like every other screen', /"nav\.analytics": "[^"]+"/.test(ru) && /"nav\.analytics": "[^"]+"/.test(tk) &&
+  !/"nav\.analytics": "([^"]+)"[\s\S]*/.exec(ru)?.[1].match(/^\s*$/) && /ru \? 'Матрица меню' : 'Menýu matrisasy'/.test(view));
 
 console.log(`Stage 34.11 static checks: ${checks}`);
 if (failures.length) { console.error(`\nFAILURES (${failures.length}):`); for (const f of failures) console.error(' - ' + f); process.exit(1); }

@@ -3,6 +3,7 @@ import { Loader2, ScrollText, X, Search } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 34.12 -- the unified BOOMCARD Operations Journal, manager-facing.
@@ -112,7 +113,7 @@ export const BoomcardJournalView: React.FC = () => {
           <ScrollText className="w-4 h-4" />
           <span className="text-sm font-semibold">{ru ? 'Журнал операций BOOMCARD' : 'BOOMCARD amallar žurnaly'}</span>
         </div>
-        <button className="btn text-xs bg-slate-800 text-slate-200" onClick={() => setSummaryOpen(true)}>{ru ? 'Сводка' : 'Jemleýji'}</button>
+        <button className="btn-secondary btn-sm" onClick={() => setSummaryOpen(true)}>{ru ? 'Сводка' : 'Jemleýji'}</button>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">
@@ -134,14 +135,14 @@ export const BoomcardJournalView: React.FC = () => {
         </select>
         <form onSubmit={submitSearch} className="flex items-center gap-1">
           <input className="field text-xs py-1 w-48" placeholder={ru ? 'Гость, телефон, карта, заказ…' : 'Myhman, telefon, kart, sargyt…'} value={searchInput} onChange={e => setSearchInput(e.target.value)} />
-          <button type="submit" className="btn text-xs py-1 px-2 bg-slate-800 text-slate-200"><Search className="w-3.5 h-3.5" /></button>
+          <button type="submit" className="btn-secondary btn-sm"><Search className="w-3.5 h-3.5" /></button>
         </form>
         {(start || end || eventType || source || search || orderIdFilter) && (
-          <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-300" onClick={() => { setStart(''); setEnd(''); setEventType(''); setSource(''); setSearch(''); setSearchInput(''); setOrderIdFilter(''); }}>{ru ? 'Сбросить' : 'Arassala'}</button>
+          <button className="btn-secondary btn-sm" onClick={() => { setStart(''); setEnd(''); setEventType(''); setSource(''); setSearch(''); setSearchInput(''); setOrderIdFilter(''); }}>{ru ? 'Сбросить' : 'Arassala'}</button>
         )}
       </div>
 
-      {loading && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {loading && <LoadingState/>}
       {error && <div className="text-red-400 text-sm">{error}</div>}
 
       {!loading && (
@@ -178,7 +179,7 @@ export const BoomcardJournalView: React.FC = () => {
                       : r.boomcoin_amount !== null ? <span className="text-emerald-400">{r.boomcoin_amount}</span>
                       : r.amount !== null ? money(r.amount) : '—'}
                   </td>
-                  <td className="px-3 py-2 text-right"><button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" onClick={() => setDetail(r)}>{ru ? 'Детали' : 'Jikme-jik'}</button></td>
+                  <td className="px-3 py-2 text-right"><button className="btn-secondary btn-sm" onClick={() => setDetail(r)}>{ru ? 'Детали' : 'Jikme-jik'}</button></td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">{ru ? 'Нет записей за период' : 'Döwürde ýazgy ýok'}</td></tr>}
@@ -187,9 +188,9 @@ export const BoomcardJournalView: React.FC = () => {
           <div className="flex items-center justify-between px-3 py-2 border-t border-slate-800 text-[11px] text-slate-400">
             <span>{ru ? `Всего: ${total}` : `Jemi: ${total}`}</span>
             <div className="flex items-center gap-2">
-              <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>{ru ? 'Назад' : 'Yza'}</button>
+              <button className="btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>{ru ? 'Назад' : 'Yza'}</button>
               <span>{page} / {totalPages}</span>
-              <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>{ru ? 'Вперёд' : 'Öňe'}</button>
+              <button className="btn-secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>{ru ? 'Вперёд' : 'Öňe'}</button>
             </div>
           </div>
         </div>
@@ -219,7 +220,7 @@ export const BoomcardJournalView: React.FC = () => {
               <dt className="text-slate-500">{ru ? 'Причина' : 'Sebäp'}</dt><dd>{detail.reason || '—'}</dd>
               <dt className="text-slate-500">{ru ? 'Статус' : 'Ýagdaý'}</dt><dd>{detail.status || '—'}</dd>
             </dl>
-            {detail.order_id && <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" onClick={() => setOrderIdFilter(detail.order_id)}>{ru ? 'Показать только этот заказ' : 'Diňe şu sargydy görkez'}</button>}
+            {detail.order_id && <button className="btn-secondary btn-sm" onClick={() => setOrderIdFilter(detail.order_id)}>{ru ? 'Показать только этот заказ' : 'Diňe şu sargydy görkez'}</button>}
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { Tag, Plus, Power, Trash2, Pencil, Check, X } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { ConfirmDialog, EmptyState, Notice, Toolbar } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 35.6 -- the Promotion Engine, manager-facing.
@@ -36,6 +37,7 @@ export const PromotionsView: React.FC = () => {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  const [ending, setEnding] = useState<any | null>(null);
   const [editForm, setEditForm] = useState<any>({ promo_price: '', starts_at: '', ends_at: '', badge_ru: '', badge_tk: '', placements: [] as string[] });
   const [form, setForm] = useState<any>({ menu_item_id: '', promo_price: '', starts_at: toLocalInput(new Date().toISOString()), ends_at: '', placements: ['PRODUCT_CARD', 'CATALOG'], badge_ru: 'Акция', badge_tk: 'BOOM DEAL' });
 
@@ -102,16 +104,12 @@ export const PromotionsView: React.FC = () => {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-[10px] uppercase tracking-[.18em] text-amber-400 font-bold">Stage 35.6 · Promotion Engine</div>
-          <h2 className="text-2xl font-black text-white mt-1">{ru ? 'Акции' : 'Aksiýalar'}</h2>
-          <p className="text-xs text-slate-400 mt-1">{ru ? 'Реальное блюдо, реальная цена и реальная акционная цена. Гость видит это автоматически на всех каналах меню.' : 'Hakyky nahar, hakyky baha we hakyky aksiýa bahasy. Myhman muny ähli menýu kanallarynda awtomatiki görýär.'}</p>
-        </div>
-        <select className="field w-64" value={branchId} onChange={e => setBranchId(e.target.value)}>{branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}</select>
-      </div>
+      {/* Stage 41: the title comes from the shell header. The internal build label
+          ("Stage 35.6 · Promotion Engine") is gone -- it named a development stage, not anything the
+          person running promotions needs to know. */}
+      <Toolbar left={<select className="field w-64" aria-label={ru ? 'Филиал' : 'Şahamça'} value={branchId} onChange={e => setBranchId(e.target.value)}>{branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}</select>} />
 
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{error}</div>}
+      {error && <Notice kind="error">{error}</Notice>}
 
       {can && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
@@ -136,7 +134,7 @@ export const PromotionsView: React.FC = () => {
             <span className="text-[10px] uppercase tracking-wider text-slate-500">{ru ? 'Где показывать' : 'Nirede görkezmeli'}</span>
             {PLACEMENTS.map(p => <label key={p} className="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer"><input type="checkbox" checked={form.placements.includes(p)} onChange={() => togglePlacement(p)} />{ru ? PLACEMENT_LABELS[p].ru : PLACEMENT_LABELS[p].tk}</label>)}
           </div>
-          <button className="btn" onClick={() => void save()}><Plus className="w-4 h-4" /> {ru ? 'Создать акцию' : 'Aksiýa döret'}</button>
+          <button className="btn" onClick={() => void save()}><Plus className="w-4 h-4" /> {ru ? 'Добавить акцию' : 'Aksiýa goş'}</button>
         </div>
       )}
 
@@ -153,9 +151,11 @@ export const PromotionsView: React.FC = () => {
             </div>
             {can && (
               <div className="flex gap-1">
-                <button className="btn bg-slate-800" aria-label={ru ? 'Изменить акцию' : 'Aksiýany üýtget'} onClick={() => (editing === p.id ? setEditing(null) : startEdit(p))}><Pencil className="w-3.5 h-3.5" /></button>
-                <button className="btn bg-slate-800" aria-label={p.active ? (ru ? 'Выключить' : 'Öçür') : (ru ? 'Включить' : 'Aç')} onClick={() => void api.updatePromotion(p.id, { active: !p.active }).then(load)}><Power className="w-3.5 h-3.5" /></button>
-                <button className="btn bg-red-500/10 text-red-300" aria-label={ru ? 'Деактивировать' : 'Deaktiwle'} onClick={() => void api.deactivatePromotion(p.id).then(load)}><Trash2 className="w-3.5 h-3.5" /></button>
+                <button className="btn-secondary" aria-label={ru ? 'Изменить акцию' : 'Aksiýany üýtget'} onClick={() => (editing === p.id ? setEditing(null) : startEdit(p))}><Pencil className="w-3.5 h-3.5" /></button>
+                <button className="btn-secondary" aria-label={p.active ? (ru ? 'Выключить' : 'Öçür') : (ru ? 'Включить' : 'Aç')} onClick={() => void api.updatePromotion(p.id, { active: !p.active }).then(load)}><Power className="w-3.5 h-3.5" /></button>
+                {/* Stage 41: ending a promotion is irreversible for the guest who is looking at it
+                    right now, so it is confirmed like every other irreversible action. */}
+                <button className="btn-danger" aria-label={ru ? 'Завершить акцию' : 'Aksiýany tamamla'} onClick={() => setEnding(p)}><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             )}
             {can && editing === p.id && (
@@ -164,8 +164,8 @@ export const PromotionsView: React.FC = () => {
                   <input className="field" type="number" min="0" step="0.01" value={editForm.promo_price} onChange={e => setEditForm({ ...editForm, promo_price: e.target.value })} aria-label={ru ? 'Акционная цена' : 'Aksiýa bahasy'} />
                   <input className="field" type="datetime-local" value={editForm.starts_at} onChange={e => setEditForm({ ...editForm, starts_at: e.target.value })} aria-label={ru ? 'Начало' : 'Başlangyç'} />
                   <input className="field" type="datetime-local" value={editForm.ends_at} onChange={e => setEditForm({ ...editForm, ends_at: e.target.value })} aria-label={ru ? 'Окончание' : 'Tamamlanma'} />
-                  <input className="field" value={editForm.badge_ru} onChange={e => setEditForm({ ...editForm, badge_ru: e.target.value })} aria-label="Badge RU" placeholder="Badge RU" />
-                  <input className="field" value={editForm.badge_tk} onChange={e => setEditForm({ ...editForm, badge_tk: e.target.value })} aria-label="Badge TK" placeholder="Badge TK" />
+                  <input className="field" value={editForm.badge_ru} onChange={e => setEditForm({ ...editForm, badge_ru: e.target.value })} aria-label={ru ? 'Бейдж (RU)' : 'Bellik (RU)'} placeholder={ru ? 'Бейдж (RU)' : 'Bellik (RU)'} />
+                  <input className="field" value={editForm.badge_tk} onChange={e => setEditForm({ ...editForm, badge_tk: e.target.value })} aria-label={ru ? 'Бейдж (TK)' : 'Bellik (TK)'} placeholder={ru ? 'Бейдж (TK)' : 'Bellik (TK)'} />
                 </div>
                 {Number(editForm.promo_price) > 0 && Number(editForm.promo_price) >= Number(p.item_price) && (
                   <div className="text-[11px] text-red-400 mt-2">{ru ? `Акционная цена должна быть ниже обычной (${money(p.item_price)}).` : `Aksiýa bahasy adaty bahadan (${money(p.item_price)}) pes bolmaly.`}</div>
@@ -180,14 +180,27 @@ export const PromotionsView: React.FC = () => {
                 </div>
                 <div className="flex gap-2 mt-3">
                   <button className="btn" onClick={() => void saveEdit(p)}><Check className="w-3.5 h-3.5" /> {ru ? 'Сохранить' : 'Ýatda sakla'}</button>
-                  <button className="btn bg-slate-800" onClick={() => setEditing(null)}><X className="w-3.5 h-3.5" /> {ru ? 'Отмена' : 'Ýatyr'}</button>
+                  <button className="btn-secondary" onClick={() => setEditing(null)}><X className="w-3.5 h-3.5" /> {ru ? 'Отмена' : 'Ýatyr'}</button>
                 </div>
               </div>
             )}
           </div>
         ))}
-        {!promotions.length && <div className="rounded-2xl border border-dashed border-slate-800 p-12 text-center text-slate-500">{ru ? 'Нет акций.' : 'Aksiýa ýok.'}</div>}
+        {!promotions.length && <div className="rounded-2xl border border-dashed border-slate-800"><EmptyState
+          title={ru ? 'Акций пока нет.' : 'Entek aksiýa ýok.'}
+          hint={ru ? 'Акция — это временная цена на конкретное блюдо. Гость видит её автоматически во всех меню.' : 'Aksiýa — belli bir nahar üçin wagtlaýyn baha. Myhman ony ähli menýularda awtomatiki görýär.'}/></div>}
       </div>
+      <ConfirmDialog
+        open={Boolean(ending)}
+        title={ru ? 'Завершить акцию?' : 'Aksiýany tamamlamaly?'}
+        description={ending
+          ? (ru
+            ? `Блюдо «${ending.item_name_ru}» снова будет продаваться по обычной цене ${money(ending.item_price)}. Уже оформленные заказы не меняются.`
+            : `«${ending.item_name_tk}» nahary ýene adaty ${money(ending.item_price)} bahasyndan satylar. Eýýäm resmileşdirilen sargytlar üýtgemeýär.`)
+          : undefined}
+        confirmLabel={ru ? 'Завершить' : 'Tamamla'}
+        onCancel={() => setEnding(null)}
+        onConfirm={() => { const target = ending; setEnding(null); if (target) void api.deactivatePromotion(target.id).then(load); }}/>
     </div>
   );
 };

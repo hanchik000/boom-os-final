@@ -663,7 +663,7 @@ export const CashierPOSView: React.FC = () => {
                         </div>
                         <div className="flex gap-1">
                           <input className="field text-xs py-1" placeholder={ru ? 'Заметка к позиции…' : 'Pozisiýa bellik…'} value={itemNoteDrafts[item.id] || ''} onChange={e => setItemNoteDrafts(v => ({ ...v, [item.id]: e.target.value }))} />
-                          <button className="btn text-xs py-1" disabled={itemNoteBusy === item.id || !itemNoteDrafts[item.id]} onClick={() => saveItemNote(item.id, itemNoteDrafts[item.id])}>{ru ? 'OK' : 'OK'}</button>
+                          <button className="btn btn-sm" disabled={itemNoteBusy === item.id || !itemNoteDrafts[item.id]} onClick={() => saveItemNote(item.id, itemNoteDrafts[item.id])}>{ru ? 'OK' : 'OK'}</button>
                         </div>
                       </div>
                     )}
@@ -684,7 +684,7 @@ export const CashierPOSView: React.FC = () => {
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400"><StickyNote className="w-3.5 h-3.5" /> {ru ? 'Заметка заказа' : 'Sargyt belligi'}</div>
                 <textarea className="field text-xs" rows={2} placeholder={ru ? 'Клиентская заметка (может попасть в чек)' : 'Müşderi belligi (çeke düşüp biler)'} value={customerNoteDraft} onChange={e => setCustomerNoteDraft(e.target.value)} />
                 <textarea className="field text-xs" rows={2} placeholder={ru ? 'Внутренняя заметка (только для персонала)' : 'Içerki bellik (diňe işgärler üçin)'} value={internalNoteDraft} onChange={e => setInternalNoteDraft(e.target.value)} />
-                <button className="btn text-xs" disabled={notesBusy} onClick={() => void saveNotes()}>{notesBusy ? '…' : notesSaved ? (ru ? 'Сохранено ✓' : 'Ýatda saklandy ✓') : (ru ? 'Сохранить заметки' : 'Belliklary ýatda saklamak')}</button>
+                <button className="btn btn-sm" disabled={notesBusy} onClick={() => void saveNotes()}>{notesBusy ? '…' : notesSaved ? (ru ? 'Сохранено ✓' : 'Ýatda saklandy ✓') : (ru ? 'Сохранить заметки' : 'Belliklary ýatda saklamak')}</button>
               </div>
 
               {/* RIGHT / ACTION AREA -- pay / receipt / closure / compliment */}
@@ -764,8 +764,8 @@ export const CashierPOSView: React.FC = () => {
             <input type="password" autoFocus className="field" placeholder={ru ? 'Пароль' : 'Parol'} value={unlockPassword} onChange={e => setUnlockPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && void doUnlock()} />
             {unlockError && <div className="text-red-400 text-xs">{unlockError}</div>}
             <div className="flex gap-2 justify-end">
-              <button className="btn bg-slate-800 text-slate-200" onClick={() => { setUnlockOpen(false); setUnlockPassword(''); setUnlockError(''); }}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-              <button className="btn bg-amber-500 text-slate-950" disabled={unlockBusy || !unlockPassword} onClick={() => void doUnlock()}>{unlockBusy ? '…' : (ru ? 'РАЗБЛОКИРОВАТЬ POS' : 'POS-Y AÇMAK')}</button>
+              <button className="btn-secondary" onClick={() => { setUnlockOpen(false); setUnlockPassword(''); setUnlockError(''); }}>{ru ? 'Отмена' : 'Ýatyr'}</button>
+              <button className="btn" disabled={unlockBusy || !unlockPassword} onClick={() => void doUnlock()}>{unlockBusy ? '…' : (ru ? 'РАЗБЛОКИРОВАТЬ POS' : 'POS-Y AÇMAK')}</button>
             </div>
           </div>
         </div>
@@ -779,8 +779,8 @@ export const CashierPOSView: React.FC = () => {
             <p className="text-slate-400 text-sm">{ru ? 'Ожидаемая наличность' : 'Garaşylýan nagt'}: {money(shift.expected_cash)} TMT</p>
             <input className="field" value={actualCash} onChange={e => setActualCash(e.target.value)} placeholder={ru ? 'Фактическая наличность' : 'Hakyky nagt'} />
             <div className="flex gap-2 justify-end">
-              <button className="btn bg-slate-800 text-slate-200" onClick={() => setCloseConfirmOpen(false)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-              <button className="btn bg-red-500 text-white" disabled={shiftBusy} onClick={() => void closeShift()}>{ru ? 'Закрыть смену (Z)' : 'Çalyşygy ýap (Z)'}</button>
+              <button className="btn-secondary" onClick={() => setCloseConfirmOpen(false)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
+              <button className="btn-danger" disabled={shiftBusy} onClick={() => void closeShift()}>{ru ? 'Закрыть смену (Z)' : 'Çalyşygy ýap (Z)'}</button>
             </div>
           </div>
         </div>
@@ -827,7 +827,7 @@ export const CashierPOSView: React.FC = () => {
                 <p className="text-[11px] text-slate-500">{ru ? 'Гость не платит за позицию, но её реальная себестоимость учитывается заведением.' : 'Myhman pozisiýa üçin tölemeýär, ýöne onuň hakyky özüne düşýän bahasy hasaba alynýar.'}</p>
                 <div className="flex gap-2 justify-end">
                   <button className="btn" disabled={complimentBusy} onClick={() => setComplimentOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
-                  <button className="btn bg-sky-500 text-slate-950 font-semibold" disabled={complimentBusy || !complimentItem || !complimentReason} onClick={() => void submitCompliment()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
+                  <button className="btn" disabled={complimentBusy || !complimentItem || !complimentReason} onClick={() => void submitCompliment()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
                 </div>
               </>
             )}
@@ -856,7 +856,7 @@ export const CashierPOSView: React.FC = () => {
               <input className="field w-full" value={newCustomerPhone} onChange={e => setNewCustomerPhone(e.target.value)} placeholder={ru ? 'Телефон' : 'Telefon'} />
               <div className="flex gap-2 justify-end">
                 <button className="btn" disabled={customerBusy} onClick={() => setCustomerOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
-                <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={customerBusy || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void createAndAttach()}>{ru ? 'Создать и привязать' : 'Döretmek we baglamak'}</button>
+                <button className="btn" disabled={customerBusy || !newCustomerName.trim() || !newCustomerPhone.trim()} onClick={() => void createAndAttach()}>{ru ? 'Создать и привязать' : 'Döretmek we baglamak'}</button>
               </div>
             </div>
           </div>
@@ -886,7 +886,7 @@ export const CashierPOSView: React.FC = () => {
             </label>
             <div className="flex gap-2 justify-end">
               <button className="btn" disabled={discountBusy} onClick={() => setDiscountOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
-              <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={discountBusy || !discountPercent.trim()} onClick={() => void applyDiscount(discountPercent)}>{ru ? 'Применить' : 'Ulanmak'}</button>
+              <button className="btn" disabled={discountBusy || !discountPercent.trim()} onClick={() => void applyDiscount(discountPercent)}>{ru ? 'Применить' : 'Ulanmak'}</button>
             </div>
           </div>
         </div>
@@ -931,7 +931,7 @@ export const CashierPOSView: React.FC = () => {
                 )}
                 <div className="flex gap-2 justify-end">
                   <button className="btn" disabled={closureBusy} onClick={() => setClosureOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
-                  <button className="btn bg-purple-500 text-slate-950 font-semibold" disabled={closureBusy || !closureReason.trim() || !closureTreatment} onClick={() => void submitClosure()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
+                  <button className="btn" disabled={closureBusy || !closureReason.trim() || !closureTreatment} onClick={() => void submitClosure()}>{ru ? 'Отправить запрос' : 'Haýyş ibermek'}</button>
                 </div>
               </>
             )}
@@ -978,7 +978,7 @@ export const CashierPOSView: React.FC = () => {
                   <div className="space-y-1.5">
                     <input className="field text-xs" placeholder={ru ? 'Телефон' : 'Telefon'} value={creditPhone} onChange={e => setCreditPhone(e.target.value)} />
                     <input className="field text-xs" placeholder={ru ? 'Имя' : 'Ady'} value={creditName} onChange={e => setCreditName(e.target.value)} />
-                    <button className="btn w-full text-xs" disabled={creditBusy || !creditPhone.trim() || !creditName.trim()} onClick={() => void resolveCreditCustomer()}>{creditBusy ? '…' : (ru ? 'Найти / создать клиента' : 'Müşderini tap / döret')}</button>
+                    <button className="btn btn-sm w-full" disabled={creditBusy || !creditPhone.trim() || !creditName.trim()} onClick={() => void resolveCreditCustomer()}>{creditBusy ? '…' : (ru ? 'Найти / создать клиента' : 'Müşderini tap / döret')}</button>
                   </div>
                 )}
                 {!creditAccount && creditKind === 'EMPLOYEE' && (
@@ -1003,7 +1003,7 @@ export const CashierPOSView: React.FC = () => {
                     {Number(detail.final_amount) > Number(creditAccount.available_credit) && (
                       <div className="text-amber-400">{hasPermission('credit.manage_limit') ? (ru ? 'Превышение лимита — разрешено менеджеру.' : 'Çäk aşyldy — menejer üçin rugsat edilýär.') : (ru ? 'Превышение лимита. Требуется менеджер.' : 'Çäk aşyldy. Menejer gerek.')}</div>
                     )}
-                    <button className="btn w-full text-xs mt-1" onClick={() => setCreditAccount(null)}>{ru ? 'Изменить' : 'Üýtget'}</button>
+                    <button className="btn btn-sm w-full mt-1" onClick={() => setCreditAccount(null)}>{ru ? 'Изменить' : 'Üýtget'}</button>
                   </div>
                 )}
                 {creditError && <div className="text-red-400 text-xs">{creditError}</div>}
@@ -1037,8 +1037,8 @@ export const CashierPOSView: React.FC = () => {
               </div>
             )}
             <div className="flex gap-2 pt-2">
-              <button className="btn flex-1 flex items-center justify-center gap-1.5" onClick={() => { void openReceipt(successOrder, successPayment); }}><Printer className="w-4 h-4" /> {ru ? 'ЧЕК' : 'ÇEK'}</button>
-              <button className="btn flex-1 bg-amber-500 text-slate-950" onClick={() => { setSuccessPayment(null); setSuccessOrder(null); setSelectedId(null); resetCreditFlow(); }}>{ru ? 'НОВЫЙ ЗАКАЗ' : 'TÄZE SARGYT'}</button>
+              <button className="btn flex-1" onClick={() => { void openReceipt(successOrder, successPayment); }}><Printer className="w-4 h-4" /> {ru ? 'ЧЕК' : 'ÇEK'}</button>
+              <button className="btn flex-1" onClick={() => { setSuccessPayment(null); setSuccessOrder(null); setSelectedId(null); resetCreditFlow(); }}>{ru ? 'НОВЫЙ ЗАКАЗ' : 'TÄZE SARGYT'}</button>
             </div>
           </div>
         </div>
@@ -1094,11 +1094,11 @@ export const CashierPOSView: React.FC = () => {
       )}
       {receiptOpen && (
         <div className="fixed bottom-4 right-4 z-[60] flex gap-2 print:hidden">
-          <button className="btn bg-slate-800 text-slate-200" onClick={() => setReceiptOpen(false)}><XCircle className="w-4 h-4" /></button>
+          <button className="btn-secondary" onClick={() => setReceiptOpen(false)}><XCircle className="w-4 h-4" /></button>
           {!lastPrintJob ? (
-            <button className="btn bg-amber-500 text-slate-950 flex items-center gap-1.5" disabled={printBusy || !hasPermission('print.execute')} onClick={() => void printReceipt()}><Printer className="w-4 h-4" /> {ru ? 'ПЕЧАТЬ ЧЕКА' : 'ÇEK ÇAP ET'}</button>
+            <button className="btn" disabled={printBusy || !hasPermission('print.execute')} onClick={() => void printReceipt()}><Printer className="w-4 h-4" /> {ru ? 'ПЕЧАТЬ ЧЕКА' : 'ÇEK ÇAP ET'}</button>
           ) : (
-            <button className="btn bg-slate-800 text-slate-200 flex items-center gap-1.5" disabled={printBusy || !hasPermission('print.reprint')} onClick={() => void reprintReceipt()}><Copy className="w-4 h-4" /> {ru ? 'ПОВТОРНАЯ ПЕЧАТЬ' : 'GAÝTA ÇAP ET'}</button>
+            <button className="btn-secondary" disabled={printBusy || !hasPermission('print.reprint')} onClick={() => void reprintReceipt()}><Copy className="w-4 h-4" /> {ru ? 'ПОВТОРНАЯ ПЕЧАТЬ' : 'GAÝTA ÇAP ET'}</button>
           )}
         </div>
       )}

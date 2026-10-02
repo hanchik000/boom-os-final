@@ -11,12 +11,15 @@ import {
   Clock
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { EmptyState, LoadingState, Notice, Toolbar } from './ui';
 import { api } from '../api';
 import { SystemSetting } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { errorText } from '../humanErrors';
 
 export const SettingsView: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const ru = language === 'ru';
   const { hasPermission } = useAuth();
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +93,7 @@ export const SettingsView: React.FC = () => {
       }
       fetchSettings();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save system setting.');
+      setFormError(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -98,29 +101,15 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div id="view-settings" className="p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header & Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-            <Sliders className="w-5 h-5 text-amber-400" />
-            <span>{t('ui.globalConfiguration')}</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Central parameters governing holding company identity, session lifetime, rate limits, and audit policies.
-          </p>
-        </div>
-
+      {/* Stage 41: one page header, in the shell, plus the standard toolbar with the primary action. */}
+      <Toolbar>
         {hasPermission('settings.update') && (
-          <button
-            id="btn-create-setting-modal"
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-colors"
-          >
+          <button id="btn-create-setting-modal" className="btn" onClick={openCreate}>
             <Plus className="w-4 h-4" />
             <span>{t('ui.addConfigurationKey')}</span>
           </button>
         )}
-      </div>
+      </Toolbar>
 
       {/* Settings Table */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -139,15 +128,11 @@ export const SettingsView: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
-                    Loading configuration registry...
-                  </td>
+                  <td colSpan={6}><LoadingState/></td>
                 </tr>
               ) : settings.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500">
-                    No settings configured.
-                  </td>
+                  <td colSpan={6}><EmptyState title={ru ? 'Параметров пока нет.' : 'Entek parametr ýok.'} hint={ru ? 'Здесь хранятся общие параметры сети — их меняют редко.' : 'Bu ýerde ulgamyň umumy parametrleri saklanýar — olar seýrek üýtgedilýär.'}/></td>
                 </tr>
               ) : (
                 settings.map((s) => (
@@ -219,10 +204,7 @@ export const SettingsView: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{formError}</span>
-                </div>
+                <Notice kind="error">{formError}</Notice>
               )}
 
               <div>
@@ -289,7 +271,7 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                  className="btn btn-sm"
                 >
                   {isSubmitting ? 'Saving...' : isCreateOpen ? 'Create Setting' : 'Save Changes'}
                 </button>

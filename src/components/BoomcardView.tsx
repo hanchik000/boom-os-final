@@ -3,6 +3,8 @@ import { CreditCard, RefreshCw, Check, X, Gift, PlayCircle, Loader2, History } f
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { errorText } from '../humanErrors';
+import { LoadingState, Notice, Toolbar } from './ui';
 
 export const BoomcardView: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -39,20 +41,20 @@ export const BoomcardView: React.FC = () => {
         api.getPublicMenu(branchId, ru ? 'ru' : 'tk').catch(() => ({ items: [] as any[] })),
       ]);
       setSettings(s); setCards(list.cards || []); setMenuItems((menu as any).items || []);
-    } catch (e: any) { setError(e?.message || 'Failed to load'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   }, [branchId, status, ru]);
   useEffect(() => { void load(); }, [load]);
 
   const openCard = async (id: string) => {
     setError('');
-    try { setSelected(await api.getBoomcard(id)); } catch (e: any) { setError(e?.message || 'Failed to load'); }
+    try { setSelected(await api.getBoomcard(id)); } catch (e: any) { setError(errorText(e)); }
   };
   const act = async (fn: () => Promise<any>, message: string) => {
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
     try { await fn(); setNotice(message); await load(); if (selected) await openCard(selected.card.id); }
-    catch (e: any) { setError(e?.message || 'Failed'); }
+    catch (e: any) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
 
@@ -68,16 +70,16 @@ export const BoomcardView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2"><CreditCard className="w-5 h-5 text-amber-400" /><h2 className="text-lg font-bold text-white">BOOMCARD</h2></div>
-          <p className="text-sm text-slate-400 mt-1">{ru ? 'Автоматика только предлагает кандидатов — активирует, продлевает и деактивирует карту менеджер.' : 'Awtomatika diňe dalaşgärleri hödürleýär — karty menejer işjeňleşdirýär, uzaldýar we öçürýär.'}</p>
-        </div>
-        <button onClick={() => void load()} className="p-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"><RefreshCw className="w-4 h-4" /></button>
-      </div>
+      {/* Stage 41: the page title and its description come from the shell header now -- this screen
+          used to repeat them in its own style. The refresh control keeps its place in the standard
+          toolbar, and it says what it does instead of being an unlabelled icon. */}
+      <Toolbar>
+        <button className="btn-secondary" onClick={() => void load()}><RefreshCw className="w-4 h-4" />{ru ? 'Обновить' : 'Täzele'}</button>
+      </Toolbar>
+      <Notice kind="info">{ru ? 'Автоматика только предлагает кандидатов — активирует, продлевает и деактивирует карту менеджер.' : 'Awtomatika diňe dalaşgärleri hödürleýär — karty menejer işjeňleşdirýär, uzaldýar we öçürýär.'}</Notice>
 
-      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
-      {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-3">{notice}</div>}
+      {error && <Notice kind="error">{error}</Notice>}
+      {notice && <Notice kind="success">{notice}</Notice>}
 
       {settings && (
         <div className="flex flex-wrap gap-2 text-xs">
@@ -96,7 +98,7 @@ export const BoomcardView: React.FC = () => {
           <div className="flex flex-wrap gap-2 items-end">
             <label className="space-y-1"><span className="block text-xs text-slate-400">{ru ? 'С' : 'Başlangyç'}</span><input type="datetime-local" className="field" value={from} onChange={e => setFrom(e.target.value)} /></label>
             <label className="space-y-1"><span className="block text-xs text-slate-400">{ru ? 'По' : 'Ahyry'}</span><input type="datetime-local" className="field" value={to} onChange={e => setTo(e.target.value)} /></label>
-            <button className="btn bg-amber-500 text-slate-950 font-semibold inline-flex items-center gap-1.5" disabled={busy || !from || !to}
+            <button className="btn" disabled={busy || !from || !to}
               onClick={() => void act(async () => {
                 const r = await api.evaluateBoomcardLifecycle(branchId, new Date(from).toISOString(), new Date(to).toISOString());
                 setNotice(ru ? `Кандидатов: ${r.candidates.length}. Истекло карт: ${r.expired_card_ids.length}.` : `Dalaşgärler: ${r.candidates.length}. Möhleti geçen: ${r.expired_card_ids.length}.`);
@@ -110,11 +112,11 @@ export const BoomcardView: React.FC = () => {
 
       <div className="flex gap-2">
         {([['', ru ? 'Все' : 'Ählisi'], ['CANDIDATE', ru ? 'Кандидаты' : 'Dalaşgärler'], ['ACTIVE', ru ? 'Активные' : 'Işjeň'], ['INACTIVE', ru ? 'Неактивные' : 'Işjeň däl']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${status === k ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-700 text-slate-400'}`}>{label}</button>
+          <button key={k} onClick={() => setStatus(k)} className={`boom-chip ${status === k ? 'is-active' : ''}`}>{label}</button>
         ))}
       </div>
 
-      {loading ? <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div> : (
+      {loading ? <LoadingState/> : (
         <div className="grid lg:grid-cols-2 gap-4">
           <div className="space-y-2">
             {cards.map(c => (
@@ -142,9 +144,9 @@ export const BoomcardView: React.FC = () => {
 
               {canManage && (
                 <div className="flex flex-wrap gap-2">
-                  {selected.card.status !== 'ACTIVE' && <button className="btn bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 text-sm" disabled={busy} onClick={() => void act(() => api.activateBoomcard(selected.card.id), ru ? 'Карта активирована.' : 'Kart işjeňleşdirildi.')}><Check className="w-4 h-4 inline mr-1" />{ru ? 'Активировать' : 'Işjeňleşdirmek'}</button>}
-                  {selected.card.status === 'ACTIVE' && <button className="btn bg-slate-800 text-slate-200 text-sm" disabled={busy} onClick={() => void act(() => api.renewBoomcard(selected.card.id), ru ? 'Карта продлена.' : 'Kart uzaldyldy.')}>{ru ? 'Продлить' : 'Uzaltmak'}</button>}
-                  {selected.card.status !== 'INACTIVE' && <button className="btn bg-red-600/20 border border-red-500/30 text-red-300 text-sm" disabled={busy} onClick={() => void act(() => api.deactivateBoomcard(selected.card.id), ru ? 'Карта деактивирована.' : 'Kart öçürildi.')}>{ru ? 'Деактивировать' : 'Öçürmek'}</button>}
+                  {selected.card.status !== 'ACTIVE' && <button className="btn" disabled={busy} onClick={() => void act(() => api.activateBoomcard(selected.card.id), ru ? 'Карта активирована.' : 'Kart işjeňleşdirildi.')}><Check className="w-4 h-4 inline mr-1" />{ru ? 'Активировать' : 'Işjeňleşdirmek'}</button>}
+                  {selected.card.status === 'ACTIVE' && <button className="btn-secondary" disabled={busy} onClick={() => void act(() => api.renewBoomcard(selected.card.id), ru ? 'Карта продлена.' : 'Kart uzaldyldy.')}>{ru ? 'Продлить' : 'Uzaltmak'}</button>}
+                  {selected.card.status !== 'INACTIVE' && <button className="btn-danger" disabled={busy} onClick={() => void act(() => api.deactivateBoomcard(selected.card.id), ru ? 'Карта деактивирована.' : 'Kart öçürildi.')}>{ru ? 'Деактивировать' : 'Öçürmek'}</button>}
                 </div>
               )}
 
@@ -157,7 +159,7 @@ export const BoomcardView: React.FC = () => {
                       {menuItems.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <input className="field w-20" type="number" min={1} value={giftQty} onChange={e => setGiftQty(Number(e.target.value))} />
-                    <button className="btn bg-amber-500 text-slate-950 font-semibold text-sm" disabled={busy || !giftItem} onClick={() => void act(() => api.grantBirthdayGift(selected.card.id, giftItem, giftQty), ru ? 'Подарок назначен.' : 'Sowgat bellendi.')}>{ru ? 'Назначить' : 'Bellemek'}</button>
+                    <button className="btn" disabled={busy || !giftItem} onClick={() => void act(() => api.grantBirthdayGift(selected.card.id, giftItem, giftQty), ru ? 'Подарок назначен.' : 'Sowgat bellendi.')}>{ru ? 'Назначить' : 'Bellemek'}</button>
                   </div>
                   <p className="text-[11px] text-slate-500">{ru ? 'Гость в личном кабинете видит только, что подарок есть — конкретное блюдо ему не показывается.' : 'Myhman şahsy kabinetde diňe sowgadyň barlygyny görýär — anyk tagam görkezilmeýär.'}</p>
                 </div>

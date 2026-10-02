@@ -104,7 +104,7 @@ export const WaiterPOSView: React.FC = () => {
             <input className="field pl-9" value={smartQuery} onChange={e=>setSmartQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&void runSmartSearch()} placeholder="Например: на 4 человек до 1500 манат" />
           </div>
           <button className="btn" disabled={smartLoading||!smartQuery.trim()} onClick={()=>void runSmartSearch()}>{smartLoading?<LoaderCircle className="w-4 h-4 animate-spin"/>:'Найти'}</button>
-          {smartOpen&&<button className="btn bg-slate-800 text-slate-200" onClick={closeSmartSearch}><X className="w-4 h-4"/></button>}
+          {smartOpen&&<button className="btn-secondary" onClick={closeSmartSearch}><X className="w-4 h-4"/></button>}
         </div>
         {smartError&&<div className="px-1 pb-2 text-red-400 text-xs">{smartError}</div>}
         {smartOpen ? (
@@ -117,7 +117,7 @@ export const WaiterPOSView: React.FC = () => {
                 <strong className="text-amber-300 text-sm">{opt.label}</strong>
                 <ul className="mt-2 space-y-1 text-xs text-slate-300">{opt.items.map((l:any)=><li key={l.id} className="flex justify-between"><span>{l.quantity} × {l.name}</span><span>{l.line_total}</span></li>)}</ul>
                 <div className="mt-3 flex items-center justify-between"><b className="text-white">{opt.total} TMT</b>{opt.remaining_budget!==null&&<span className="text-emerald-400 text-xs">остаток {opt.remaining_budget}</span>}</div>
-                <button className="btn w-full mt-3 bg-amber-500 text-slate-950" onClick={()=>addCombination(opt)}>Добавить в заказ</button>
+                <button className="btn w-full mt-3" onClick={()=>addCombination(opt)}>Добавить в заказ</button>
               </div>
             ))}</div>}
             <div className="menu-grid">{smartItems.map(item=><button className="menu-card" key={item.id} onClick={()=>{const real=items.find(i=>i.id===item.id); if(real) void add(real);}}><div className="food-icon"><UtensilsCrossed/></div><div className="menu-copy"><strong>{item.name}</strong><span>{item.description||''}</span><b>{item.price} TMT</b></div><Plus className="plus"/></button>)}</div>
@@ -149,7 +149,7 @@ export const WaiterPOSView: React.FC = () => {
           <div className="text-xs text-slate-400">Новый клиент</div>
           <input className="field w-full" value={guestName} onChange={e=>setGuestName(e.target.value)} placeholder="Имя (обязательно)"/>
           <input className="field w-full" value={guestPhone} onChange={e=>setGuestPhone(e.target.value)} placeholder="Телефон (необязательно)"/>
-          <div className="flex justify-end"><button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={guestBusy||!guestName.trim()} onClick={()=>void createGuest()}>Создать и привязать</button></div>
+          <div className="flex justify-end"><button className="btn" disabled={guestBusy||!guestName.trim()} onClick={()=>void createGuest()}>Создать и привязать</button></div>
         </div>
       </>}
     </div></div>}{splitOrder&&<div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={()=>{if(!splitBusy){setSplitOrder(null);setSplitData(null)}}}><div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4" onClick={e=>e.stopPropagation()}>
@@ -158,12 +158,12 @@ export const WaiterPOSView: React.FC = () => {
       {!splitData?<div className="text-slate-400 text-sm">Загрузка…</div>:splitData.split_mode==='NONE'?<>
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1"><span className="block text-xs text-slate-400">Сколько счетов</span><input className="field w-24" type="number" min={2} max={20} value={splitCount} onChange={e=>setSplitCount(Number(e.target.value))}/></label>
-          <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={splitBusy} onClick={()=>void doSplit('ITEMS')}>Разделить по позициям</button>
-          <button className="btn bg-slate-800 text-slate-200" disabled={splitBusy} onClick={()=>void doSplit('EQUAL')}>Разделить поровну</button>
+          <button className="btn" disabled={splitBusy} onClick={()=>void doSplit('ITEMS')}>Разделить по позициям</button>
+          <button className="btn-secondary" disabled={splitBusy} onClick={()=>void doSplit('EQUAL')}>Разделить поровну</button>
         </div>
         <div className="text-xs text-slate-500">Итого по заказу: {splitData.order_final_amount} TMT</div>
       </>:<>
-        <div className="flex items-center justify-between"><div className="text-xs text-slate-400">Режим: {splitData.split_mode==='EQUAL'?'поровну':'по позициям'} · Итого: {splitData.order_final_amount} TMT</div><button className="btn bg-slate-800 text-slate-200" disabled={splitBusy} onClick={()=>void doMerge()}><Merge className="w-4 h-4 inline mr-1"/>Объединить</button></div>
+        <div className="flex items-center justify-between"><div className="text-xs text-slate-400">Режим: {splitData.split_mode==='EQUAL'?'поровну':'по позициям'} · Итого: {splitData.order_final_amount} TMT</div><button className="btn-secondary" disabled={splitBusy} onClick={()=>void doMerge()}><Merge className="w-4 h-4 inline mr-1"/>Объединить</button></div>
         <div className="grid sm:grid-cols-2 gap-3">
           {splitData.bills.map((b:any)=><div key={b.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 space-y-2">
             <div className="flex items-center justify-between"><strong className="text-white">Счёт #{b.bill_number}</strong><span className="text-amber-300">{b.final_amount} TMT</span></div>
@@ -175,7 +175,7 @@ export const WaiterPOSView: React.FC = () => {
           <div className="text-xs text-slate-400">Нераспределённые позиции</div>
           {splitData.unassigned_items.map((it:any)=><div key={it.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 p-2">
             <span className="text-sm text-slate-200">{it.quantity} × {it.title_snapshot} · {it.subtotal} TMT</span>
-            <div className="flex gap-1">{splitData.bills.filter((b:any)=>b.status!=='PAID').map((b:any)=><button key={b.id} className="btn bg-slate-800 text-slate-200 text-xs" disabled={splitBusy} onClick={()=>void doMove(it.id,b.id)}>#{b.bill_number}</button>)}</div>
+            <div className="flex gap-1">{splitData.bills.filter((b:any)=>b.status!=='PAID').map((b:any)=><button key={b.id} className="btn-secondary btn-sm" disabled={splitBusy} onClick={()=>void doMove(it.id,b.id)}>#{b.bill_number}</button>)}</div>
           </div>)}
           {!splitData.unassigned_items.length&&<div className="text-xs text-slate-600">Все позиции распределены.</div>}
         </div>}
@@ -187,9 +187,9 @@ export const WaiterPOSView: React.FC = () => {
         {myOrdersLoading?<div className="text-slate-400 text-sm">Загрузка…</div>:!myOrders.length?<div className="text-slate-500 text-sm text-center py-8">Активных заказов нет.</div>:<div className="space-y-2">{myOrders.map(o=><div key={o.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 flex items-center justify-between gap-3">
           <div className="min-w-0"><div className="text-white font-semibold">#{o.order_number}{o.table_code?` · Стол ${o.table_code}`:''}</div><div className="text-xs text-slate-400 mt-0.5">{o.status} · {o.final_amount} TMT{o.production_started_at?' · готовится/приготовлено':''}</div></div>
           <div className="flex gap-2 shrink-0">
-            <button className="btn bg-slate-800 border border-slate-700 text-slate-200" onClick={()=>void openGuest(o)}><UserRound className="w-4 h-4 inline mr-1"/>Клиент</button>
-            <button className="btn bg-slate-800 border border-slate-700 text-slate-200" onClick={()=>void openSplit(o)}><SplitSquareHorizontal className="w-4 h-4 inline mr-1"/>Счёт</button>
-            {o.pending_closure?<span className="text-xs text-amber-300 self-center">Запрос на рассмотрении</span>:<button className="btn bg-red-600/20 border border-red-500/40 text-red-200" onClick={()=>openRefusal(o)}><Ban className="w-4 h-4 inline mr-1"/>ОТКАЗ</button>}
+            <button className="btn-secondary" onClick={()=>void openGuest(o)}><UserRound className="w-4 h-4 inline mr-1"/>Клиент</button>
+            <button className="btn-secondary" onClick={()=>void openSplit(o)}><SplitSquareHorizontal className="w-4 h-4 inline mr-1"/>Счёт</button>
+            {o.pending_closure?<span className="text-xs text-amber-300 self-center">Запрос на рассмотрении</span>:<button className="btn-danger" onClick={()=>openRefusal(o)}><Ban className="w-4 h-4 inline mr-1"/>ОТКАЗ</button>}
           </div>
         </div>)}</div>}
       </>:<>
@@ -205,8 +205,8 @@ export const WaiterPOSView: React.FC = () => {
             </div>
             <p className="text-[11px] text-slate-500">Если блюдо уже приготовлено, продукты не возвращаются на склад.</p>
           </div>
-          <div className="flex gap-2 justify-end"><button className="btn" disabled={refusalBusy} onClick={()=>setRefusal(null)}>Назад</button><button className="btn bg-red-500 text-slate-950 font-semibold" disabled={refusalBusy||!refusalReason.trim()||!refusalTreatment} onClick={()=>void submitRefusal()}>Отправить запрос</button></div>
+          <div className="flex gap-2 justify-end"><button className="btn" disabled={refusalBusy} onClick={()=>setRefusal(null)}>Назад</button><button className="btn-danger" disabled={refusalBusy||!refusalReason.trim()||!refusalTreatment} onClick={()=>void submitRefusal()}>Отправить запрос</button></div>
         </>}
       </>}
-    </div></div>}{modifierPicker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4"><div><h2 className="text-white text-xl font-bold">{modifierPicker.item.name_ru}</h2><p className="text-slate-400 text-sm">Выберите дополнительные параметры</p></div>{modifierPicker.groups.map((g:any)=><div key={g.id} className="space-y-2"><div className="flex justify-between text-sm"><strong className="text-white">{g.name_ru}</strong><span className="text-slate-400">{g.required?'обязательно':'необязательно'} · {g.min_select}–{g.max_select}</span></div><div className="grid grid-cols-2 gap-2">{(g.modifiers||[]).map((m:any)=><button key={m.id} aria-pressed={selectedModifiers.includes(m.id)} className={`p-3 rounded-lg border text-left ${selectedModifiers.includes(m.id)?'border-amber-400 bg-amber-500/10 text-white':'border-slate-700 text-slate-300'}`} onClick={()=>toggleModifier(g,m.id)}><div>{m.name_ru}</div><small>{Number(m.price_delta)>0?`+${dec(m.price_delta)}`:dec(m.price_delta)} TMT</small></button>)}</div></div>)}{pickerIssue&&<div className="text-[12px] text-amber-300">{pickerIssue}</div>}<p className="text-[11px] text-slate-500">Итоговую цену рассчитывает сервер при создании заказа.</p><div className="flex gap-2 justify-end"><button className="btn" onClick={()=>setModifierPicker(null)}>Отмена</button><button className="btn bg-amber-500 text-slate-950 disabled:opacity-50" disabled={Boolean(pickerIssue)} onClick={confirmModifiers}>Добавить</button></div></div></div>}</div>;
+    </div></div>}{modifierPicker&&<div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4"><div><h2 className="text-white text-xl font-bold">{modifierPicker.item.name_ru}</h2><p className="text-slate-400 text-sm">Выберите дополнительные параметры</p></div>{modifierPicker.groups.map((g:any)=><div key={g.id} className="space-y-2"><div className="flex justify-between text-sm"><strong className="text-white">{g.name_ru}</strong><span className="text-slate-400">{g.required?'обязательно':'необязательно'} · {g.min_select}–{g.max_select}</span></div><div className="grid grid-cols-2 gap-2">{(g.modifiers||[]).map((m:any)=><button key={m.id} aria-pressed={selectedModifiers.includes(m.id)} className={`p-3 rounded-lg border text-left ${selectedModifiers.includes(m.id)?'border-amber-400 bg-amber-500/10 text-white':'border-slate-700 text-slate-300'}`} onClick={()=>toggleModifier(g,m.id)}><div>{m.name_ru}</div><small>{Number(m.price_delta)>0?`+${dec(m.price_delta)}`:dec(m.price_delta)} TMT</small></button>)}</div></div>)}{pickerIssue&&<div className="text-[12px] text-amber-300">{pickerIssue}</div>}<p className="text-[11px] text-slate-500">Итоговую цену рассчитывает сервер при создании заказа.</p><div className="flex gap-2 justify-end"><button className="btn" onClick={()=>setModifierPicker(null)}>Отмена</button><button className="btn" disabled={Boolean(pickerIssue)} onClick={confirmModifiers}>Добавить</button></div></div></div>}</div>;
 };

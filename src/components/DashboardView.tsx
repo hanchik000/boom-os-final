@@ -91,7 +91,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
         <div className="flex items-center gap-3">
           <button
             onClick={fetchStats}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700"
+            className="btn-secondary"
             title="Refresh System Telemetry"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
@@ -100,7 +100,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
             <button
               id="btn-dash-run-tests"
               onClick={onOpenTestModal}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+              className="btn btn-sm"
             >
               <Sparkles className="w-4 h-4" />
               <span>Acceptance Tests</span>
@@ -275,7 +275,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate, onOpen
           <div className="text-2xl font-black text-white tracking-tight">
             {telemetry?.stats.auditLogsTotal ?? 0}
           </div>
-          <p className="text-xs text-slate-400 mt-1">Immutable records</p>
+          <p className="text-xs text-slate-400 mt-1">{language === 'ru' ? 'Записей в журнале действий' : 'Hereket žurnalyndaky ýazgylar'}</p>
         </div>
       </div>
 

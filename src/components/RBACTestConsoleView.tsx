@@ -321,7 +321,7 @@ export const RBACTestConsoleView: React.FC = () => {
                 type="submit"
                 id="btn-run-rbac-simulation"
                 disabled={isSimulating || !selectedUserId}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-lg shadow-amber-500/10 uppercase tracking-wider"
+                className="btn btn-sm w-full"
               >
                 {isSimulating ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />

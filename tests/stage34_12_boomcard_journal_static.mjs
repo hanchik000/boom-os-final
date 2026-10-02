@@ -87,7 +87,9 @@ ok('36. the client asks the server for filtered, paginated rows and computes not
 ok('37. the screen is permission-gated in navigation', /permission: 'boomcard\.journal\.view'/.test(sidebar));
 ok('38. and renders period, event-type, source and search filters plus pagination controls', /setStart/.test(view) && /setEventType/.test(view) && /setSource/.test(view) && /submitSearch/.test(view) && /setPage/.test(view));
 ok('39. every row has a detail drawer with its drill-down identifiers', /setDetail\(r\)/.test(view) && /detail\.source_id/.test(view) && /detail\.order_id/.test(view));
-ok('40. and the whole screen is bilingual', /"nav\.boomcardJournal": "Журнал BOOMCARD"/.test(read('src/translations/ru.ts')) && /"nav\.boomcardJournal": "BOOMCARD žurnaly"/.test(read('src/translations/tk.ts')));
+// Stage 40 renamed this entry to plain language. What matters here is that BOTH languages label
+// the screen -- not which word Stage 34.12 happened to choose for it.
+ok('40. and the whole screen is bilingual', /"nav\.boomcardJournal": "[^"]+"/.test(read('src/translations/ru.ts')) && /"nav\.boomcardJournal": "[^"]+"/.test(read('src/translations/tk.ts')));
 
 console.log(`Stage 34.12 static checks: ${checks}`);
 if (failures.length) { console.error(`\nFAILURES (${failures.length}):`); for (const f of failures) console.error(' - ' + f); process.exit(1); }

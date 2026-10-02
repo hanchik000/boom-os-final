@@ -3,6 +3,7 @@ import { Lock, Mail, KeyRound, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useBranding } from '../context/BrandingContext';
+import { Notice } from './ui';
 
 export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
@@ -48,10 +49,7 @@ export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
         </div>
 
         {error && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
+          <Notice kind="error">{error}</Notice>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -88,7 +86,7 @@ export const LoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-colors"
+            className="btn btn-sm w-full"
           >
             {loading ? 'Authenticating...' : `Sign In to ${branding.product_name}`}
           </button>

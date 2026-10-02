@@ -3,6 +3,8 @@ import { Percent, RefreshCw, Plus, Trash2, History, Coins, Send, Loader2 } from 
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { errorText } from '../humanErrors';
+import { LoadingState, Notice, Toolbar } from './ui';
 
 type Member = { user_id: string; percent: string };
 type Category = { category: string; percent: string; mode: 'COMMON' | 'INDIVIDUAL'; strategy: string; members: Member[] };
@@ -54,7 +56,7 @@ export const ServiceChargeView: React.FC = () => {
       setVersions(hist.versions || []);
       setLedger(led.ledger || []); setTotals(led.totals || []);
       setEmployees((users as any).users || []);
-    } catch (e: any) { setError(e?.message || 'Failed to load'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   }, [branchId]);
   useEffect(() => { void load(); }, [load]);
@@ -79,7 +81,7 @@ export const ServiceChargeView: React.FC = () => {
       await api.publishServiceCharge(branchId, { percent, takeaway_percent: takeaway, delivery_percent: delivery, categories });
       setNotice(ru ? 'Новая версия конфигурации опубликована. Прошлые заказы не пересчитываются.' : 'Täze wersiýa çap edildi. Öňki sargytlar gaýtadan hasaplanmaýar.');
       await load();
-    } catch (e: any) { setError(e?.message || 'Failed to publish'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
 
@@ -90,7 +92,7 @@ export const ServiceChargeView: React.FC = () => {
       const r = await api.distributeServiceCharge(branchId, new Date(distFrom).toISOString(), new Date(distTo).toISOString());
       setNotice((ru ? `Распределено строк: ${r.distributed.length}. Пропущено пулов: ${r.skipped.length}.` : `Paýlanan setirler: ${r.distributed.length}. Geçirilen pullar: ${r.skipped.length}.`));
       await load();
-    } catch (e: any) { setError(e?.message || 'Failed to distribute'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
 
@@ -102,23 +104,23 @@ export const ServiceChargeView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2"><Percent className="w-5 h-5 text-amber-400" /><h2 className="text-lg font-bold text-white">{ru ? 'Сервисный сбор' : 'Hyzmat ýygymy'}</h2></div>
-          <p className="text-sm text-slate-400 mt-1">{ru ? 'Распределение сервисного сбора — это не зарплата и не KPI. Оно перемещает только те деньги, которые заказ действительно собрал.' : 'Hyzmat ýygymynyň paýlanyşy aýlyk ýa-da KPI däldir. Ol diňe sargydyň hakykatda ýygnan puluny paýlaýar.'}</p>
-        </div>
-        <button onClick={() => void load()} className="p-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"><RefreshCw className="w-4 h-4" /></button>
-      </div>
+      {/* Stage 41: the page title and its description come from the shell header now -- this screen
+          used to repeat them in its own style. The refresh control keeps its place in the standard
+          toolbar, and it says what it does instead of being an unlabelled icon. */}
+      <Toolbar>
+        <button className="btn-secondary" onClick={() => void load()}><RefreshCw className="w-4 h-4" />{ru ? 'Обновить' : 'Täzele'}</button>
+      </Toolbar>
+      <Notice kind="info">{ru ? 'Распределение сервисного сбора — это не зарплата и не KPI. Оно перемещает только те деньги, которые заказ действительно собрал.' : 'Hyzmat ýygymynyň paýlanyşy aýlyk ýa-da KPI däldir. Ol diňe sargydyň hakykatda ýygnan puluny paýlaýar.'}</Notice>
 
       <div className="flex gap-2">
         {([['config', ru ? 'Конфигурация' : 'Konfigurasiýa'], ['history', ru ? 'История версий' : 'Wersiýa taryhy'], ['ledger', ru ? 'Начисления' : 'Hasaplamalar']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k as any)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${tab === k ? 'border-amber-400 bg-amber-500/10 text-white' : 'border-slate-700 text-slate-400'}`}>{label}</button>
+          <button key={k} onClick={() => setTab(k as any)} className={`boom-chip ${tab === k ? 'is-active' : ''}`}>{label}</button>
         ))}
       </div>
 
-      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
-      {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-3">{notice}</div>}
-      {loading && <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {error && <Notice kind="error">{error}</Notice>}
+      {notice && <Notice kind="success">{notice}</Notice>}
+      {loading && <LoadingState/>}
 
       {!loading && tab === 'config' && (
         <div className="space-y-5">
@@ -182,7 +184,7 @@ export const ServiceChargeView: React.FC = () => {
           {memberIssue && <div className="text-sm text-red-400">{ru ? `Индивидуальные начисления в категории ${catLabel(memberIssue.category)} превышают процент категории.` : `${catLabel(memberIssue.category)} kategoriýasyndaky şahsy hasaplamalar kategoriýanyň göteriminden köp.`}</div>}
 
           {canManage && (
-            <button className="btn bg-amber-500 text-slate-950 font-bold px-5 py-2.5 inline-flex items-center gap-2" disabled={busy || overAllocated || Boolean(memberIssue)} onClick={() => void publish()}>
+            <button className="btn" disabled={busy || overAllocated || Boolean(memberIssue)} onClick={() => void publish()}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}{ru ? 'Опубликовать новую версию' : 'Täze wersiýa çap etmek'}
             </button>
           )}
@@ -215,7 +217,7 @@ export const ServiceChargeView: React.FC = () => {
               <div className="flex flex-wrap gap-2 items-end">
                 <label className="space-y-1"><span className="block text-xs text-slate-400">{ru ? 'С' : 'Başlangyç'}</span><input type="datetime-local" className="field" value={distFrom} onChange={e => setDistFrom(e.target.value)} /></label>
                 <label className="space-y-1"><span className="block text-xs text-slate-400">{ru ? 'По' : 'Ahyry'}</span><input type="datetime-local" className="field" value={distTo} onChange={e => setDistTo(e.target.value)} /></label>
-                <button className="btn bg-amber-500 text-slate-950 font-semibold" disabled={busy || !distFrom || !distTo} onClick={() => void distribute()}>{ru ? 'Распределить' : 'Paýlamak'}</button>
+                <button className="btn" disabled={busy || !distFrom || !distTo} onClick={() => void distribute()}>{ru ? 'Распределить' : 'Paýlamak'}</button>
               </div>
               <p className="text-[11px] text-slate-500">{ru ? 'Пул, у которого все участники имеют нулевой вес, не распределяется вслепую — он остаётся пулом и показывается в отчёте.' : 'Ähli agzalarynyň agramy nol bolan pul körlük bilen paýlanmaýar — ol pul bolup galýar we hasabatda görkezilýär.'}</p>
             </div>

@@ -23,6 +23,8 @@ import {
   Lock,
   Plus
 } from 'lucide-react';
+import { errorText } from '../humanErrors';
+import { ConfirmDialog, Notice } from './ui';
 import { Franchise, Branch, User, FranchiseOverview } from '../types';
 import { api } from '../api';
 import { useLanguage } from '../context/LanguageContext';
@@ -58,6 +60,8 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
   const [unassignedBranches, setUnassignedBranches] = useState<Branch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [unlinkingBranchId, setUnlinkingBranchId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     if (!isOpen || !franchiseId) return;
@@ -94,7 +98,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
           // ignore
         }
       } catch (err: any) {
-        setError(err.message || 'Failed to load franchise overview');
+        setError(errorText(err));
       } finally {
         setIsLoading(false);
       }
@@ -118,16 +122,16 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
       setSelectedBranchId('');
       if (onFranchiseUpdated) onFranchiseUpdated();
     } catch (err: any) {
-      alert(err.message || 'Failed to assign branch');
+      setActionError(errorText(err));
     } finally {
       setIsAssigning(false);
     }
   };
 
+  // Stage 41: unlinking is confirmed inside BOOM OS, in the same dialog as every other irreversible
+  // action, instead of a browser confirm() box that looks like a different application.
   const handleUnlinkBranch = async (branchId: string) => {
     if (!franchiseId) return;
-    if (!confirm(language === 'ru' ? 'Отвязать филиал от данной франшизы?' : 'Şahamçany bu franşizadan aýyrmalymy?')) return;
-
     try {
       await api.unlinkBranchFromFranchise(franchiseId, branchId);
       const bRes = await api.getFranchiseBranches(franchiseId);
@@ -136,7 +140,9 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
       setUnassignedBranches(allB.branches.filter(b => b.franchise_id !== franchiseId));
       if (onFranchiseUpdated) onFranchiseUpdated();
     } catch (err: any) {
-      alert(err.message || 'Failed to unlink branch');
+      setActionError(errorText(err));
+    } finally {
+      setUnlinkingBranchId(null);
     }
   };
 
@@ -166,7 +172,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white tracking-tight">
-                  {franchise?.name || 'Loading Franchise...'}
+                  {franchise?.name || (language === 'ru' ? 'Загружаем…' : 'Ýüklenýär…')}
                 </h2>
                 {franchise && (
                   <span className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
@@ -191,7 +197,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="boom-modal-close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -272,7 +278,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                         {t('franchise.orders')}
                       </span>
-                      <div className="text-xl font-bold text-slate-400">N/A</div>
+                      <div className="text-xl font-bold text-slate-400">—</div>
                       <span className="text-[11px] text-amber-400 font-medium">
                         {t('module.notConnected')}
                       </span>
@@ -282,7 +288,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                       <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                         {t('franchise.financials')}
                       </span>
-                      <div className="text-xl font-bold text-slate-400">N/A</div>
+                      <div className="text-xl font-bold text-slate-400">—</div>
                       <span className="text-[11px] text-amber-400 font-medium">
                         {t('module.notConnected')}
                       </span>
@@ -383,7 +389,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                         <button
                           onClick={handleAssignBranch}
                           disabled={!selectedBranchId || isAssigning}
-                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition-colors flex items-center gap-1.5"
+                          className="btn btn-sm"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           <span>{t('common.confirm')}</span>
@@ -397,12 +403,12 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>
-                          <th className="py-3 px-4">Branch</th>
-                          <th className="py-3 px-4">Code</th>
-                          <th className="py-3 px-4">Address</th>
-                          <th className="py-3 px-4">Phone</th>
-                          <th className="py-3 px-4">Status</th>
-                          <th className="py-3 px-4 text-right">Actions</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Филиал' : 'Şahamça'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Код' : 'Kod'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Адрес' : 'Salgy'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Телефон' : 'Telefon'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Статус' : 'Ýagdaý'}</th>
+                          <th className="py-3 px-4 text-right">{language === 'ru' ? 'Действия' : 'Hereketler'}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -431,7 +437,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                               <td className="py-3 px-4 text-right">
                                 {hasPermission('franchises.edit') && (
                                   <button
-                                    onClick={() => handleUnlinkBranch(b.id)}
+                                    onClick={() => setUnlinkingBranchId(b.id)}
                                     className="text-xs text-rose-400 hover:text-rose-300 font-medium px-2 py-1 rounded hover:bg-rose-500/10 transition-colors"
                                   >
                                     {t('franchise.unlinkBranch')}
@@ -454,11 +460,11 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>
-                          <th className="py-3 px-4">Employee</th>
-                          <th className="py-3 px-4">Primary Branch</th>
-                          <th className="py-3 px-4">Role</th>
-                          <th className="py-3 px-4">Employment Status</th>
-                          <th className="py-3 px-4">Disciplinary</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Сотрудник' : 'Işgär'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Основной филиал' : 'Esasy şahamça'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Роль' : 'Rol'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Статус работы' : 'Iş ýagdaýy'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Замечания' : 'Belligler'}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -526,16 +532,16 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-lg mx-auto pt-2">
                     <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                      <span className="block text-[10px] uppercase font-bold text-slate-500">Orders Today</span>
-                      <span className="font-mono text-base font-bold text-slate-300">N/A</span>
+                      <span className="block text-[10px] uppercase font-bold text-slate-500">{language === 'ru' ? 'Заказов сегодня' : 'Şu gün sargyt'}</span>
+                      <span className="font-mono text-base font-bold text-slate-300">—</span>
                     </div>
                     <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                      <span className="block text-[10px] uppercase font-bold text-slate-500">Revenue Today</span>
-                      <span className="font-mono text-base font-bold text-slate-300">N/A</span>
+                      <span className="block text-[10px] uppercase font-bold text-slate-500">{language === 'ru' ? 'Выручка сегодня' : 'Şu gün girdeji'}</span>
+                      <span className="font-mono text-base font-bold text-slate-300">—</span>
                     </div>
                     <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                      <span className="block text-[10px] uppercase font-bold text-slate-500">Avg Check</span>
-                      <span className="font-mono text-base font-bold text-slate-300">N/A</span>
+                      <span className="block text-[10px] uppercase font-bold text-slate-500">{language === 'ru' ? 'Средний чек' : 'Ortaça çek'}</span>
+                      <span className="font-mono text-base font-bold text-slate-300">—</span>
                     </div>
                   </div>
                 </div>
@@ -607,10 +613,10 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>
-                          <th className="py-3 px-4">Date</th>
-                          <th className="py-3 px-4">Action</th>
-                          <th className="py-3 px-4">User</th>
-                          <th className="py-3 px-4">Details</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Дата' : 'Senesi'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Действие' : 'Hereket'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Пользователь' : 'Ulanyjy'}</th>
+                          <th className="py-3 px-4">{language === 'ru' ? 'Подробно' : 'Jikme-jik'}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
@@ -647,14 +653,27 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
           )}
         </div>
 
+        <ConfirmDialog
+          open={Boolean(unlinkingBranchId)}
+          title={language === 'ru' ? 'Отвязать филиал от франшизы?' : 'Şahamçany franşizadan aýyrmaly?'}
+          description={language === 'ru'
+            ? 'Филиал продолжит работать, но перестанет учитываться в отчётах этой франшизы. Его можно привязать снова.'
+            : 'Şahamça işlemegini dowam eder, ýöne bu franşizanyň hasabatlarynda görkezilmez. Ony täzeden birikdirip bolýar.'}
+          confirmLabel={language === 'ru' ? 'Отвязать' : 'Aýyr'}
+          onCancel={() => setUnlinkingBranchId(null)}
+          onConfirm={() => { if (unlinkingBranchId) void handleUnlinkBranch(unlinkingBranchId); }}
+        />
+        {actionError && <div className="px-6 pb-3"><Notice kind="error">{actionError}</Notice></div>}
+
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between">
-          <div className="text-xs text-slate-500 font-mono">
-            FRANCHISE_ID: {franchiseId}
+          {/* Stage 41: the franchise's own business code, not the internal record id. */}
+          <div className="text-xs text-slate-500">
+            {language === 'ru' ? 'Код франшизы' : 'Franşiza kody'}: <span className="font-mono text-slate-400">{franchise?.code || '—'}</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+            className="btn-secondary btn-sm"
           >
             {t('common.close')}
           </button>

@@ -33,7 +33,7 @@ export const CustomerMenuView: React.FC = () => {
         <p className="text-slate-400 mt-3">{lang==='ru'?'Например: «Нас 6 человек, бюджет 2000 манат» или «Бургеры без лука до 1000 манат».':'Mysal: «6 adam, 2000 manat» ýa-da «Sogansyz burger, 1000 manat çenli».'}</p>
         <div className="mt-5 flex gap-2">
           <input className="field flex-1 text-base" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>e.key==='Enter'&&runSearch()} placeholder={lang==='ru'?'Например: Нас 6 человек, бюджет 2000 манат':'Mysal: 6 adam, 2000 manat'}/>
-          <button className="btn px-5" onClick={runSearch} disabled={loading}><Search className="w-5 h-5"/></button>
+          <button className="btn" onClick={runSearch} disabled={loading}><Search className="w-5 h-5"/></button>
         </div>
       </div>
 

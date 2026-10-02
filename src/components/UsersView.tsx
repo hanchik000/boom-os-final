@@ -21,10 +21,13 @@ import { User, Branch, Role } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { EmployeeStatusModal } from './EmployeeStatusModal';
+import { errorText } from '../humanErrors';
+import { ConfirmDialog, EmptyState, LoadingState, Notice, SearchInput, Toolbar } from './ui';
 
 export const UsersView: React.FC = () => {
   const { user: currentUser, hasPermission, selectedBranchFilter } = useAuth();
   const { t, language } = useLanguage();
+  const ru = language === 'ru';
   const [users, setUsers] = useState<User[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -39,6 +42,7 @@ export const UsersView: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [actionError, setActionError] = useState('');
   const [statusUser, setStatusUser] = useState<User | null>(null);
   const [branchAccessUser, setBranchAccessUser] = useState<User | null>(null);
   const [branchAccessData, setBranchAccessData] = useState<{
@@ -128,7 +132,7 @@ export const UsersView: React.FC = () => {
       setIsCreateModalOpen(false);
       fetchAllData();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to create user.');
+      setFormError(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -144,7 +148,7 @@ export const UsersView: React.FC = () => {
       setEditingUser(null);
       fetchAllData();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to update user.');
+      setFormError(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -157,7 +161,7 @@ export const UsersView: React.FC = () => {
       setDeletingUser(null);
       fetchAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to deactivate user.');
+      setActionError(errorText(err));
     }
   };
 
@@ -224,10 +228,10 @@ export const UsersView: React.FC = () => {
         fetchAllData();
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to update branch access.');
+        setActionError(errorText(data));
       }
     } catch (err: any) {
-      alert(err.message || 'An error occurred while saving branch access.');
+      setActionError(errorText(err));
     } finally {
       setIsSavingBranchAccess(false);
     }
@@ -235,68 +239,45 @@ export const UsersView: React.FC = () => {
 
   return (
     <div id="view-users" className="p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-            <Users className="w-5 h-5 text-amber-400" />
-            <span>{t('ui.personnelDirectory')}</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Manage users, assign security roles, primary restaurant branch, and multi-branch authorities.
-          </p>
-        </div>
-
-        {hasPermission('users.create') && (
-          <button
-            id="btn-create-user-modal"
-            onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-colors"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>{t('ui.addNewStaff')}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-        <div className="relative sm:col-span-2">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
-          <input
-            id="input-user-search"
-            type="text"
-            placeholder="Search by name, email, or phone..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
-          />
-        </div>
-
+      {/* Stage 41: one page header for the whole system. The title and the one-line description now
+          come from the shell header -- what stood here was a second title plus an English paragraph
+          in a product whose interface is Russian and Turkmen. Search, filters and THE primary action
+          sit in the same toolbar as on every other list screen. */}
+      <Toolbar left={<>
+        <SearchInput id="input-user-search" value={searchTerm} onChange={setSearchTerm}
+          placeholder={ru ? 'Поиск по имени, почте или телефону…' : 'Ady, poçtasy ýa-da telefony boýunça gözleg…'} />
         <select
           id="select-user-role-filter"
+          aria-label={ru ? 'Роль' : 'Rol'}
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+          className="field w-auto"
         >
           <option value="">{t('ui.allRoles')}</option>
           {roles.map(r => (
             <option key={r.id} value={r.code}>{r.name} ({r.code})</option>
           ))}
         </select>
-
         <select
           id="select-user-status-filter"
+          aria-label={ru ? 'Статус' : 'Ýagdaý'}
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500/50"
+          className="field w-auto"
         >
           <option value="">{t('ui.allStatuses')}</option>
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="SUSPENDED">SUSPENDED</option>
-          <option value="INACTIVE">INACTIVE</option>
+          <option value="ACTIVE">{ru ? 'Работает' : 'Işleýär'}</option>
+          <option value="SUSPENDED">{ru ? 'Приостановлен' : 'Wagtlaýyn togtadylan'}</option>
+          <option value="INACTIVE">{ru ? 'Отключён' : 'Öçürilen'}</option>
         </select>
-      </div>
+      </>}>
+        {hasPermission('users.create') && (
+          <button id="btn-create-user-modal" className="btn" onClick={openCreateModal}>
+            <UserPlus className="w-4 h-4" />
+            <span>{t('ui.addNewStaff')}</span>
+          </button>
+        )}
+      </Toolbar>
 
       {/* Users Data Table */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -316,15 +297,11 @@ export const UsersView: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-500">
-                    Loading personnel directory...
-                  </td>
+                  <td colSpan={7}><LoadingState/></td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-500">
-                    No users matching criteria.
-                  </td>
+                  <td colSpan={7}><EmptyState title={ru ? 'Сотрудники не найдены.' : 'Işgär tapylmady.'} hint={ru ? 'Измените поиск или фильтры, либо добавьте сотрудника.' : 'Gözlegi ýa-da süzgüçleri üýtgediň, ýa-da işgär goşuň.'}/></td>
                 </tr>
               ) : (
                 users.map((u) => (
@@ -488,7 +465,7 @@ export const UsersView: React.FC = () => {
               </h3>
               <button
                 onClick={() => { setIsCreateModalOpen(false); setEditingUser(null); }}
-                className="text-slate-400 hover:text-white"
+                className="boom-modal-close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -496,10 +473,7 @@ export const UsersView: React.FC = () => {
 
             <form onSubmit={isCreateModalOpen ? handleCreateSubmit : handleEditSubmit} className="p-6 space-y-4 overflow-y-auto">
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{formError}</span>
-                </div>
+                <Notice kind="error">{formError}</Notice>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -652,7 +626,7 @@ export const UsersView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                  className="btn btn-sm"
                 >
                   {isSubmitting ? 'Saving...' : isCreateModalOpen ? 'Create Account' : 'Save Changes'}
                 </button>
@@ -678,7 +652,7 @@ export const UsersView: React.FC = () => {
               </div>
               <button
                 onClick={() => setBranchAccessUser(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white"
+                className="boom-modal-close"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -799,7 +773,7 @@ export const UsersView: React.FC = () => {
                   type="submit"
                   id="btn-save-branch-access"
                   disabled={isSavingBranchAccess}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                  className="btn btn-sm"
                 >
                   {isSavingBranchAccess ? 'Saving...' : 'Save Branch Assignment'}
                 </button>
@@ -809,46 +783,23 @@ export const UsersView: React.FC = () => {
         </div>
       )}
 
-      {/* Delete / Safe Terminate Confirmation Modal */}
-      {deletingUser && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
-            <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">{t('staff.terminate')}</h3>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                {language === 'ru'
-                  ? `Вы уверены, что хотите уволить и деактивировать сотрудника ${deletingUser.full_name} (${deletingUser.email})?`
-                  : `Hakykatdanam ${deletingUser.full_name} (${deletingUser.email}) işgärini işden boşadyp, hasapdan öçürmek isleýärsiňizmi?`}
-              </p>
-              <div className="mt-2.5 p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
-                <span className="text-amber-400 font-semibold block mb-0.5">
-                  {language === 'ru' ? 'Безопасное архивирование (Safe Soft Delete):' : 'Ynamly arhiwleşdiriş (Safe Soft Delete):'}
-                </span>
-                {language === 'ru'
-                  ? 'Сотрудник перейдет в статус TERMINATED, доступ к системе блокируется, а вся финансовая история, транзакции и аудит-лог сохраняются в базе данных.'
-                  : 'Işgär TERMINATED statusyna geçer, ulgama girmegi bökdeler, ähli taryhy we audit maglumatlary doly saklanar.'}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setDeletingUser(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-lg shadow-rose-500/20"
-              >
-                {t('staff.terminate')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Stage 41: the same confirmation shell as every other irreversible action. The wording keeps
+          the reassurance it already had -- history is preserved -- but drops the internal vocabulary
+          ("Safe Soft Delete", the TERMINATED status name) that meant nothing to the person reading it.
+          The action itself is unchanged: the server still performs its own archiving. */}
+      <ConfirmDialog
+        open={Boolean(deletingUser)}
+        title={ru ? 'Закрыть доступ сотруднику?' : 'Işgäriň elýeterliligini ýapmalymy?'}
+        description={deletingUser
+          ? (ru
+            ? `${deletingUser.full_name} (${deletingUser.email}) больше не сможет войти в систему. Заказы, платежи и история действий сотрудника сохраняются полностью.`
+            : `${deletingUser.full_name} (${deletingUser.email}) mundan beýläk ulgama girip bilmez. Işgäriň sargytlary, tölegleri we hereket taryhy doly saklanýar.`)
+          : undefined}
+        confirmLabel={ru ? 'Закрыть доступ' : 'Elýeterliligi ýap'}
+        onCancel={() => { setDeletingUser(null); setActionError(''); }}
+        onConfirm={() => { void handleDelete(); }}
+      />
+      {actionError && <div className="fixed bottom-6 right-6 z-50 max-w-sm"><Notice kind="error">{actionError}</Notice></div>}
 
       {/* Employee Status & History Modal */}
       <EmployeeStatusModal

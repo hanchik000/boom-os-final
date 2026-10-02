@@ -7,6 +7,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { NavTab } from './Sidebar';
+import { LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Live Operations -- "what is happening right now, what needs attention, what can I do about it."
@@ -102,14 +103,14 @@ export const LiveOperationsView: React.FC<Props> = ({ onNavigate }) => {
               {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           )}
-          <button className="btn text-xs flex items-center gap-1.5" disabled={loading} onClick={() => { setLoading(true); void load(); }}>
+          <button className="btn btn-sm" disabled={loading} onClick={() => { setLoading(true); void load(); }}>
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} {ru ? 'Обновить' : 'Täzele'}
           </button>
         </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
-      {loading && !data && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {loading && !data && <LoadingState/>}
 
       {data && (
         <>
@@ -135,8 +136,8 @@ export const LiveOperationsView: React.FC<Props> = ({ onNavigate }) => {
                   <div key={r.id} className="px-4 py-2 flex items-center justify-between gap-3 text-xs">
                     <div className="text-slate-300"><span className="text-white font-medium">#{r.order_number}</span> · {r.title_snapshot} × {r.requested_quantity} — <span className="text-slate-500">{r.reason}</span></div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button disabled={decisionBusy === r.id} onClick={() => void decide(r.id, true)} className="btn text-[10px] py-1 px-2 bg-emerald-500 text-slate-950 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {ru ? 'Одобрить' : 'Tassykla'}</button>
-                      <button disabled={decisionBusy === r.id} onClick={() => void decide(r.id, false)} className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-300 flex items-center gap-1"><XCircle className="w-3 h-3" /> {ru ? 'Отклонить' : 'Ret et'}</button>
+                      <button disabled={decisionBusy === r.id} onClick={() => void decide(r.id, true)} className="btn btn-sm"><CheckCircle2 className="w-3 h-3" /> {ru ? 'Одобрить' : 'Tassykla'}</button>
+                      <button disabled={decisionBusy === r.id} onClick={() => void decide(r.id, false)} className="btn-secondary btn-sm"><XCircle className="w-3 h-3" /> {ru ? 'Отклонить' : 'Ret et'}</button>
                     </div>
                   </div>
                 ))}

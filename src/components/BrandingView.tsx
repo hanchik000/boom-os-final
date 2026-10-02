@@ -78,12 +78,12 @@ export const BrandingView: React.FC = () => {
 
   return (
     <div className="cmd-center">
-      <div className="cmd-topbar">
-        <div>
-          <h1 className="cmd-title"><Palette className="inline w-5 h-5 text-amber-400 mr-2" />{t('БРЕНДИНГ', 'BRENDING')}</h1>
-          <p className="cmd-subtitle">{t('Единый источник правды для логотипа и названий во всех интерфейсах BOOM OS.', 'BOOM OS ähli interfeýsleri üçin logotipiň we atlaryň bitewi çeşmesi.')}</p>
-        </div>
-        <div className="cmd-toolbar">
+      {/* Stage 41: one page header for the whole system -- the title and its one-line description come
+          from the shell header now. This screen used to print its own title again, in capitals, in a
+          style only these four screens shared. */}
+      <div className="boom-toolbar">
+        <div className="boom-toolbar-left" />
+        <div className="boom-toolbar-right">
           <button className="cmd-refresh-btn boom-focusable" disabled={busy} onClick={() => void load()} aria-label={t('Обновить', 'Täzele')}>
             {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} {t('Обновить', 'Täzele')}
           </button>

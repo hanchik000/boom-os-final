@@ -3,6 +3,7 @@ import { Loader2, Wallet, Users, BriefcaseBusiness, Receipt, X } from 'lucide-re
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Credit / Receivables reports -- read-only rollups over the real credit_accounts /
@@ -122,11 +123,11 @@ export const CreditReportsView: React.FC = () => {
           <input type="date" className="field text-xs py-1" value={start} onChange={e => setStart(e.target.value)} />
           <span>—</span>
           <input type="date" className="field text-xs py-1" value={end} onChange={e => setEnd(e.target.value)} />
-          {(start || end) && <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-300" onClick={() => { setStart(''); setEnd(''); }}>{ru ? 'Сбросить' : 'Arassala'}</button>}
+          {(start || end) && <button className="btn-secondary btn-sm" onClick={() => { setStart(''); setEnd(''); }}>{ru ? 'Сбросить' : 'Arassala'}</button>}
         </div>
       )}
 
-      {loading && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {loading && <LoadingState/>}
       {error && <div className="text-red-400 text-sm">{error}</div>}
 
       {!loading && tab === 'overview' && overview && (
@@ -167,9 +168,9 @@ export const CreditReportsView: React.FC = () => {
                   <td className="px-3 py-2 text-right">{money(r.credit_issued)}</td>
                   <td className="px-3 py-2 text-right">{money(r.repayments)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" onClick={() => void openDetail(r.account_id)}>{ru ? 'История' : 'Taryh'}</button>
+                    <button className="btn-secondary btn-sm" onClick={() => void openDetail(r.account_id)}>{ru ? 'История' : 'Taryh'}</button>
                     {hasPermission('credit.repay') && (
-                      <button className="btn text-[10px] py-1 px-2 ml-1" disabled={Number(r.current_balance) <= 0} onClick={() => { setRepayFor(r); setRepayAmount(String(r.current_balance)); setRepayMethod('CASH'); setRepayError(''); }}>{ru ? 'Погасить' : 'Üz'}</button>
+                      <button className="btn btn-sm ml-1" disabled={Number(r.current_balance) <= 0} onClick={() => { setRepayFor(r); setRepayAmount(String(r.current_balance)); setRepayMethod('CASH'); setRepayError(''); }}>{ru ? 'Погасить' : 'Üz'}</button>
                     )}
                   </td>
                 </tr>
@@ -213,7 +214,7 @@ export const CreditReportsView: React.FC = () => {
       {(detailBusy || detail) && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-2xl max-h-[85vh] overflow-auto rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-3">
-            {detailBusy && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+            {detailBusy && <LoadingState/>}
             {detail && (
               <>
                 <div className="flex items-start justify-between">
@@ -275,8 +276,8 @@ export const CreditReportsView: React.FC = () => {
             {repayMethod === 'PAYROLL_DEDUCTION' && <div className="text-[10px] text-amber-400">{ru ? 'Удержание из зарплаты требует подтверждения менеджера.' : 'Aýlykdan tutmak dolandyryjynyň tassyklamagyny talap edýär.'}</div>}
             {repayError && <div className="text-red-400 text-xs">{repayError}</div>}
             <div className="flex gap-2 justify-end pt-1">
-              <button className="btn bg-slate-800 text-slate-200" disabled={repayBusy} onClick={() => setRepayFor(null)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-              <button className="btn bg-emerald-500 text-slate-950" disabled={repayBusy || !repayAmount} onClick={() => void doRepay()}>{repayBusy ? '…' : (ru ? 'Подтвердить' : 'Tassykla')}</button>
+              <button className="btn-secondary" disabled={repayBusy} onClick={() => setRepayFor(null)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
+              <button className="btn" disabled={repayBusy || !repayAmount} onClick={() => void doRepay()}>{repayBusy ? '…' : (ru ? 'Подтвердить' : 'Tassykla')}</button>
             </div>
           </div>
         </div>

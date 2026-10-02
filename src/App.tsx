@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { BrandingProvider, useBranding } from './context/BrandingContext';
 import { Sidebar, NavTab } from './components/Sidebar';
+import { TranslationKey } from './translations/ru';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { FranchisesView } from './components/FranchisesView';
@@ -67,121 +68,60 @@ function MainLayout() {
     );
   }
 
-  const getTabTitle = (tab: NavTab) => {
-    switch (tab) {
-      case 'dashboard':
-        return { 
-          title: t('nav.dashboard'), 
-          subtitle: language === 'ru' 
-            ? 'Централизованные операции, телеметрия и системная безопасность' 
-            : 'Merkezi amallar, telemetriýa we howpsuzlyk binýady' 
-        };
-      case 'organization':
-        return {
-          title: t('nav.organization'),
-          subtitle: language === 'ru' ? 'Единая структура HQ, франшиз, филиалов и сотрудников' : 'HQ, franşizalar, şahamçalar we işgärleriň ýeke-täk gurluşy'
-        };
-      case 'franchises':
-        return { 
-          title: t('franchise.title'), 
-          subtitle: language === 'ru'
-            ? 'Региональные юридические лица, холдинговая структура и филиалы'
-            : 'Sebit ýuridiki taraplary, holding gurluşy we şahamçalar'
-        };
-      case 'branches':
-        return { 
-          title: t('nav.branches'), 
-          subtitle: language === 'ru'
-            ? 'Сеть ресторанов, часовые пояса и изолированные области доступа'
-            : 'Restoranlar ulgamy, wagt guşaklyklary we aýratynlaşdyrylan rugsatlar'
-        };
-      case 'employees':
-        return { title: language === 'ru' ? 'Персонал' : 'Işgärler', subtitle: language === 'ru' ? 'Операционные профили, должности и структура сотрудников' : 'Işgärleriň iş profilleri, wezipeleri we gurluşy' };
-      case 'users':
-        return { 
-          title: t('staff.title'), 
-          subtitle: language === 'ru'
-            ? 'Управление штатом, статусы сотрудников и распределение ролей'
-            : 'Işgärler düzümi, işgär ýagdaýlary we rollary paýlamak'
-        };
-      case 'roles':
-        return { 
-          title: t('nav.roles'), 
-          subtitle: language === 'ru'
-            ? 'Ролевая модель доступа (RBAC) и матрица прав'
-            : 'Rollara esaslanan rugsat modeli (RBAC) we ygtyýarlyklar tablisasy'
-        };
-      case 'rbac':
-        return { 
-          title: t('nav.rbacTest'), 
-          subtitle: language === 'ru'
-            ? 'Интерактивная симуляция политик доступа ролей и филиалов'
-            : 'Rollaryň we şahamçalaryň rugsat syýasatynyň interaktiw barlagy'
-        };
-      case 'orderApprovals':
-        return { title: language === 'ru' ? 'Согласования заказов' : 'Sargyt tassyklamalary', subtitle: language === 'ru' ? 'Запросы официантов на удаление позиций с обязательным решением менеджера' : 'Ofisiantlaryň pozisiýa aýyrmak haýyşlaryny menejer tarapyndan tassyklamak' };
-      case 'menu':
-        return { title: 'Menu Engine', subtitle: language === 'ru' ? 'Категории, блюда, цены и модификаторы' : 'Kategoriýalar, tagamlar, bahalar we modifikatorlar' };
-      case 'operations':
-        return { title: language === 'ru' ? 'Операции' : 'Operasiýalar', subtitle: language === 'ru' ? 'Касса, платежи, подтверждение заказов и KDS' : 'Kassa, tölegler, sargyt tassyklamasy we KDS' };
-      case 'cashierPos':
-        return { title: t('nav.cashierPos'), subtitle: language === 'ru' ? 'Рабочее место кассира: заказы, оплата, чеки' : 'Kassir iş orny: sargytlar, töleg, çekler' };
-      case 'receiptSettings':
-        return { title: t('nav.receiptSettings'), subtitle: language === 'ru' ? 'Логотип, поля и формат печати чека по филиалу' : 'Şahamça boýunça logo, meýdanlar we çap formaty' };
-      case 'creditReports':
-        return { title: t('nav.creditReports'), subtitle: language === 'ru' ? 'Кредитные счета клиентов и сотрудников, задолженность и погашения' : 'Müşderi we işgär kredit hasaplary, bergi we üzülmeler' };
-      case 'commandCenter':
-        return { title: t('nav.commandCenter'), subtitle: language === 'ru' ? 'Продажи, касса, кухня, официанты, кассиры, склад и персонал в реальном времени' : 'Hakyky wagtda satuw, kassa, aşhana, ofisiantlar, kassirler, ammar we işgärler' };
-      case 'liveOperations':
-        return { title: t('nav.liveOperations'), subtitle: language === 'ru' ? 'Активные заказы, кухня, нагрузка официантов и кассиров прямо сейчас' : 'Häzirki wagtda işjeň sargytlar, aşhana, ofisiant we kassir ýüki' };
-      case 'customers':
-        return { title: t('nav.customers'), subtitle: language === 'ru' ? 'Единая карточка гостя: заказы, скидки, BOOMCARD, BOOMCOIN, BOOMBACK и кредит' : 'Bitewi myhman kartoçkasy: sargytlar, arzanladyşlar, BOOMCARD, BOOMCOIN, BOOMBACK we kredit' };
-      case 'boomcard':
-        return { title: t('nav.boomcard'), subtitle: language === 'ru' ? 'Жизненный цикл карты, льготы и личный кабинет гостя' : 'Kartyň ýaşaýyş sikli, ýeňillikler we myhmanyň şahsy kabineti' };
-      case 'serviceCharge':
-        return { title: t('nav.serviceCharge'), subtitle: language === 'ru' ? 'Процент обслуживания, распределение по категориям и история версий' : 'Hyzmat göterimi, kategoriýalar boýunça paýlanyş we wersiýa taryhy' };
-      case 'analytics':
-        return { title: t('nav.analytics'), subtitle: language === 'ru' ? 'Продажи, блюда, категории, время и матрица меню за период' : 'Döwür boýunça satuwlar, naharlar, kategoriýalar, wagt we menýu matrisasy' };
-      case 'boomcardJournal':
-        return { title: t('nav.boomcardJournal'), subtitle: language === 'ru' ? 'Единый журнал операций BOOMCOIN, BOOMBACK, завтраков, подарков и жизненного цикла карты' : 'BOOMCOIN, BOOMBACK, ertirlik, sowgat we kart ömür aýlawynyň ýeke-täk žurnaly' };
-      case 'posMedia': return { title: 'POS Media', subtitle: language === 'ru' ? 'Видео, изображения и анимации для POS-терминалов' : 'POS terminallary üçin wideo, surat we animasiýa' };
-      case 'menuMedia': return { title: t('nav.menuMedia'), subtitle: language === 'ru' ? 'Единая библиотека изображений, GIF и видео для меню' : 'Menýu üçin bitewi surat, GIF we wideo kitaphanasy' };
-      case 'visualCatalog': return { title: t('nav.visualCatalog'), subtitle: language === 'ru' ? 'Композиция премиального каталога без изменения Menu Engine' : 'Menu Engine-i üýtgetmän premium katalog kompozisiýasy' };
-      case 'promotions': return { title: t('nav.promotions'), subtitle: language === 'ru' ? 'Реальные акционные цены на реальные блюда, с автоматическим окончанием' : 'Hakyky naharlar üçin hakyky aksiýa bahalary, awtomatiki tamamlanma bilen' };
-      case 'foodCost':
-        return { title: t('nav.foodCost'), subtitle: language === 'ru' ? 'Рецепты, себестоимость, маржа и рентабельность меню' : 'Reseptler, baha, marja we menýu girdejililigi' };
-      case 'inventory':
-        return { title: language === 'ru' ? 'Склад и Inventory' : 'Ammar we Inventory', subtitle: language === 'ru' ? 'Остатки, рецептуры, поставщики и складские движения' : 'Galyndylar, reseptler, üpjün edijiler we ammar hereketleri' };
-      case 'settings':
-        return { 
-          title: t('nav.settings'), 
-          subtitle: language === 'ru'
-            ? 'Глобальные параметры холдинга, сессии и операционные флаги'
-            : 'Holdingiň global parametrleri, sessiýa we operasion sazlamalar'
-        };
-      case 'menuPreview':
-        return {
-          title: t('nav.menuPreview'),
-          subtitle: language === 'ru'
-            ? 'Реальный гостевой экран и QR-вход выбранного филиала, без отдельной копии меню'
-            : 'Saýlanan şahamçanyň hakyky myhman ekrany we QR girişi, menýunyň nusgasyz'
-        };
-      case 'branding':
-        return {
-          title: t('nav.branding'),
-          subtitle: language === 'ru'
-            ? 'Логотип и названия из system_settings — единый источник для всех интерфейсов'
-            : 'system_settings-den logotip we atlar — ähli interfeýsler üçin bitewi çeşme'
-        };
-      case 'audit':
-        return { 
-          title: t('nav.audit'), 
-          subtitle: language === 'ru'
-            ? 'Неизменяемый журнал всех системных событий и изменений'
-            : 'Ähli ulgam wakalarynyň we üýtgeşmeleriniň üýtgemeýän ýazgysy'
-        };
-    }
+  // Stage 41: ONE source for the page title. Before this the shell header had its own title map,
+  // so a screen could be called "Menu Engine" at the top while the navigation that led to it said
+  // "Блюда и цены", and "Склад и Inventory" / "POS Media" leaked internal vocabulary into the
+  // working interface. The title is now literally the navigation label, and the description is one
+  // short line saying what the screen is for -- both languages, from the existing translations.
+  const PAGE_KEYS: Record<NavTab, TranslationKey> = {
+    dashboard: 'nav.dashboard', organization: 'nav.organization', franchises: 'nav.franchises',
+    branches: 'nav.branches', employees: 'nav.employees', users: 'nav.users', roles: 'nav.roles',
+    rbac: 'nav.rbacTest', orderApprovals: 'nav.orderApprovals', menu: 'nav.menu',
+    operations: 'nav.operations', cashierPos: 'nav.cashierPos', receiptSettings: 'nav.receiptSettings',
+    creditReports: 'nav.creditReports', commandCenter: 'nav.commandCenter', liveOperations: 'nav.liveOperations',
+    customers: 'nav.customers', boomcard: 'nav.boomcard', serviceCharge: 'nav.serviceCharge',
+    analytics: 'nav.analytics', boomcardJournal: 'nav.boomcardJournal', posMedia: 'nav.posMedia',
+    menuMedia: 'nav.menuMedia', visualCatalog: 'nav.visualCatalog', promotions: 'nav.promotions',
+    foodCost: 'nav.foodCost', inventory: 'nav.inventory', settings: 'nav.settings',
+    menuPreview: 'nav.menuPreview', branding: 'nav.branding', audit: 'nav.audit',
   };
+  const PAGE_DESCRIPTIONS: Record<NavTab, [string, string]> = {
+    dashboard: ['Общее состояние сети за сегодня', 'Şu günki umumy ýagdaý'],
+    organization: ['Структура сети: франшизы, филиалы, сотрудники', 'Ulgamyň gurluşy: franşizalar, şahamçalar, işgärler'],
+    franchises: ['Юридические лица и их филиалы', 'Ýuridiki taraplar we olaryň şahamçalary'],
+    branches: ['Рестораны сети и их настройки', 'Ulgamyň restoranlary we sazlamalary'],
+    employees: ['Сотрудники, должности и коды официантов', 'Işgärler, wezipeler we ofisiant kodlary'],
+    users: ['Кто и куда может входить в систему', 'Ulgama kimiň nirä girip biljekdigi'],
+    roles: ['Наборы прав, которые выдаются сотрудникам', 'Işgärlere berilýän hukuk toplumlary'],
+    rbac: ['Проверка: что доступно конкретной роли', 'Barlag: belli bir rola näme elýeterli'],
+    orderApprovals: ['Запросы официантов, требующие решения менеджера', 'Menejeriň çözgüdini talap edýän ofisiant haýyşlary'],
+    menu: ['Категории, блюда, цены и состав', 'Kategoriýalar, tagamlar, bahalar we düzümi'],
+    operations: ['Заказы, оплата и кухня за смену', 'Çalşykdaky sargytlar, tölegler we aşhana'],
+    cashierPos: ['Рабочее место кассира: заказы, оплата, чеки', 'Kassir iş orny: sargytlar, töleg, çekler'],
+    receiptSettings: ['Что печатается на чеке филиала', 'Şahamçanyň çeginde näme çap edilýär'],
+    creditReports: ['Задолженность клиентов и погашения', 'Müşderileriň bergisi we üzülmeler'],
+    commandCenter: ['Продажи, касса, кухня и персонал за день', 'Günüň satuwy, kassasy, aşhanasy we işgärleri'],
+    liveOperations: ['Что происходит в зале прямо сейчас', 'Häzirki wagtda zalda näme bolup geçýär'],
+    customers: ['Карточка гостя: заказы, бонусы, кредит', 'Myhman kartoçkasy: sargytlar, bonuslar, kredit'],
+    boomcard: ['Карты лояльности и льготы гостей', 'Wepalylyk kartlary we myhman ýeňillikleri'],
+    serviceCharge: ['Процент обслуживания и его распределение', 'Hyzmat göterimi we onuň paýlanyşy'],
+    analytics: ['Продажи, блюда и категории за период', 'Döwür boýunça satuwlar, tagamlar we kategoriýalar'],
+    boomcardJournal: ['История начислений и списаний бонусов', 'Bonus hasaplamalarynyň we ýazylyşlarynyň taryhy'],
+    posMedia: ['Видео и изображения на экранах POS', 'POS ekranlaryndaky wideo we suratlar'],
+    menuMedia: ['Библиотека фото и видео для меню', 'Menýu üçin surat we wideo kitaphanasy'],
+    visualCatalog: ['Оформление гостевого меню', 'Myhman menýusynyň bezegi'],
+    promotions: ['Акционные цены и сроки их действия', 'Aksiýa bahalary we hereket möhletleri'],
+    foodCost: ['Рецепты, себестоимость и маржа блюд', 'Reseptler, önümçilik bahasy we marja'],
+    inventory: ['Остатки, поставщики и движения склада', 'Galyndylar, üpjün edijiler we ammar hereketleri'],
+    settings: ['Системные параметры сети', 'Ulgamyň sazlamalary'],
+    menuPreview: ['Меню глазами гостя и QR-вход', 'Menýu myhmanyň gözi bilen we QR giriş'],
+    branding: ['Логотип и названия во всех интерфейсах', 'Ähli interfeýslerde logotip we atlar'],
+    audit: ['Кто, что и когда изменил в системе', 'Ulgamda kim, näme we haçan üýtgetdi'],
+  };
+  const getTabTitle = (tab: NavTab) => ({
+    title: t(PAGE_KEYS[tab]),
+    subtitle: PAGE_DESCRIPTIONS[tab][language === 'ru' ? 0 : 1],
+  });
 
   const { title, subtitle } = getTabTitle(currentTab);
 

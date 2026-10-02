@@ -3,6 +3,7 @@ import { Loader2, BarChart3, LayoutGrid, Clock, Grid2x2, X } from 'lucide-react'
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 34.11 -- Food & Sales analytics for managers.
@@ -101,7 +102,7 @@ export const AnalyticsView: React.FC = () => {
         <input type="date" className="field text-xs py-1" value={start} onChange={e => setStart(e.target.value)} />
         <span>—</span>
         <input type="date" className="field text-xs py-1" value={end} onChange={e => setEnd(e.target.value)} />
-        {(start || end) && <button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-300" onClick={() => { setStart(''); setEnd(''); }}>{ru ? 'Сегодня' : 'Şu gün'}</button>}
+        {(start || end) && <button className="btn-secondary btn-sm" onClick={() => { setStart(''); setEnd(''); }}>{ru ? 'Сегодня' : 'Şu gün'}</button>}
         {tab === 'dishes' && (
           <div className="flex items-center gap-1.5 ml-2">
             <span className="text-[10px] uppercase tracking-wide text-slate-500">{ru ? 'Сортировка' : 'Tertip'}</span>
@@ -114,7 +115,7 @@ export const AnalyticsView: React.FC = () => {
         )}
       </div>
 
-      {loading && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {loading && <LoadingState/>}
       {error && <div className="text-red-400 text-sm">{error}</div>}
 
       {!loading && tab === 'sales' && sales && (
@@ -185,7 +186,7 @@ export const AnalyticsView: React.FC = () => {
                   <td className="px-3 py-2 text-right text-slate-400">{d.cost}</td>
                   <td className="px-3 py-2 text-right font-semibold text-emerald-400">{d.margin}</td>
                   <td className="px-3 py-2 text-right">{d.margin_percent ?? '—'}</td>
-                  <td className="px-3 py-2 text-right"><button className="btn text-[10px] py-1 px-2 bg-slate-800 text-slate-200" onClick={() => void openDish(d.menu_item_id)}>{ru ? 'Детали' : 'Jikme-jik'}</button></td>
+                  <td className="px-3 py-2 text-right"><button className="btn-secondary btn-sm" onClick={() => void openDish(d.menu_item_id)}>{ru ? 'Детали' : 'Jikme-jik'}</button></td>
                 </tr>
               ))}
               {!dishes.dishes.length && <tr><td colSpan={8} className="px-3 py-6 text-center text-slate-500">{ru ? 'Нет продаж за период' : 'Döwürde satuw ýok'}</td></tr>}
@@ -292,7 +293,7 @@ export const AnalyticsView: React.FC = () => {
       {(drillBusy || drill) && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl max-h-[85vh] overflow-auto rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-3">
-            {drillBusy && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+            {drillBusy && <LoadingState/>}
             {drill && (
               <>
                 <div className="flex items-start justify-between">

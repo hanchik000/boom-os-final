@@ -256,12 +256,12 @@ export const VisualCatalogView: React.FC = () => {
 
   return (
     <div className="cmd-center">
-      <div className="cmd-topbar">
-        <div>
-          <h1 className="cmd-title"><Layers3 className="inline w-5 h-5 text-amber-400 mr-2" />{t('ВИЗУАЛЬНЫЙ КАТАЛОГ И БАННЕРЫ', 'WIZUAL KATALOG WE BANNERLER')}</h1>
-          <p className="cmd-subtitle">{t('Композиция управляет только визуальным слоем. Меню, цены и доступность остаются в Menu Engine.', 'Kompozisiýa diňe wizual gatlagy dolandyrýar. Menýu, bahalar we elýeterlilik Menu Engine-de galýar.')}</p>
-        </div>
-        <div className="cmd-toolbar">
+      {/* Stage 41: one page header for the whole system -- the title and its one-line description come
+          from the shell header now. This screen used to print its own title again, in capitals, in a
+          style only these four screens shared. */}
+      <div className="boom-toolbar">
+        <div className="boom-toolbar-left" />
+        <div className="boom-toolbar-right">
           <select className="mb-input" style={{ maxWidth: 240 }} value={branchId} onChange={e => setBranchId(e.target.value)} aria-label={t('Филиал', 'Şahamça')}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}
           </select>

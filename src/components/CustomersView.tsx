@@ -3,6 +3,8 @@ import { Users, RefreshCw, Plus, Search, CreditCard, Coins, Wallet, Receipt } fr
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { errorText } from '../humanErrors';
+import { LoadingState, Notice, Toolbar } from './ui';
 
 // Stage 34.9 -- CRM. One customer record backs every surface: waiter POS, cashier POS, the BOOMCARD
 // cabinet, credit and this screen. A profile deliberately has no discount field: identifying a
@@ -28,7 +30,7 @@ export const CustomersView: React.FC = () => {
     if (!branchId) { setLoading(false); return; }
     setLoading(true); setError('');
     try { setCustomers((await api.getCustomers({ branch_id: branchId, search: search.trim() || undefined })).customers || []); }
-    catch (e: any) { setError(e?.message || 'Failed to load'); }
+    catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   }, [branchId, search]);
   useEffect(() => { void load(); }, [load]);
@@ -36,7 +38,7 @@ export const CustomersView: React.FC = () => {
   const open = async (id: string) => {
     setError('');
     try { const d = await api.getCrmCustomer(id); setSelected(d); setBirthDate(d.customer.birth_date || ''); }
-    catch (e: any) { setError(e?.message || 'Failed to load'); }
+    catch (e: any) { setError(errorText(e)); }
   };
   const create = async () => {
     if (busy || !newName.trim()) return;
@@ -44,14 +46,14 @@ export const CustomersView: React.FC = () => {
     try {
       const r = await api.createCustomer({ branch_id: branchId, name: newName.trim(), phone: newPhone.trim() || undefined });
       setNewName(''); setNewPhone(''); await load(); await open(r.customer.id);
-    } catch (e: any) { setError(e?.message || 'Failed to create'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
   const saveBirthDate = async () => {
     if (busy || !selected) return;
     setBusy(true); setError('');
     try { await api.updateCustomer(selected.customer.id, { birth_date: birthDate.trim() || null }); await open(selected.customer.id); }
-    catch (e: any) { setError(e?.message || 'Failed to save'); }
+    catch (e: any) { setError(errorText(e)); }
     finally { setBusy(false); }
   };
 
@@ -59,15 +61,15 @@ export const CustomersView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2"><Users className="w-5 h-5 text-amber-400" /><h2 className="text-lg font-bold text-white">{ru ? 'Клиенты' : 'Müşderiler'}</h2></div>
-          <p className="text-sm text-slate-400 mt-1">{ru ? 'Одна карточка гостя для всех экранов: POS официанта, касса, BOOMCARD, кредит и CRM. Привязка клиента не даёт скидку.' : 'Ähli ekranlar üçin bir myhman kartoçkasy: ofisiant POS, kassa, BOOMCARD, kredit we CRM. Müşderini baglamak arzanladyş bermeýär.'}</p>
-        </div>
-        <button onClick={() => void load()} className="p-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"><RefreshCw className="w-4 h-4" /></button>
-      </div>
+      {/* Stage 41: the page title and its description come from the shell header now -- this screen
+          used to repeat them in its own style. The refresh control keeps its place in the standard
+          toolbar, and it says what it does instead of being an unlabelled icon. */}
+      <Toolbar>
+        <button className="btn-secondary" onClick={() => void load()}><RefreshCw className="w-4 h-4" />{ru ? 'Обновить' : 'Täzele'}</button>
+      </Toolbar>
+      <Notice kind="info">{ru ? 'Одна карточка гостя для всех экранов: POS официанта, касса, BOOMCARD, кредит и CRM. Привязка клиента не даёт скидку.' : 'Ähli ekranlar üçin bir myhman kartoçkasy: ofisiant POS, kassa, BOOMCARD, kredit we CRM. Müşderini baglamak arzanladyş bermeýär.'}</Notice>
 
-      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
+      {error && <Notice kind="error">{error}</Notice>}
 
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="space-y-3">
@@ -81,12 +83,12 @@ export const CustomersView: React.FC = () => {
               <div className="text-sm font-semibold text-white">{ru ? 'Новый клиент' : 'Täze müşderi'}</div>
               <input className="field w-full" value={newName} onChange={e => setNewName(e.target.value)} placeholder={ru ? 'Имя (обязательно)' : 'At (hökmany)'} />
               <input className="field w-full" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder={ru ? 'Телефон (необязательно)' : 'Telefon (hökman däl)'} />
-              <button className="btn bg-amber-500 text-slate-950 font-semibold inline-flex items-center gap-1.5" disabled={busy || !newName.trim()} onClick={() => void create()}><Plus className="w-4 h-4" />{ru ? 'Создать' : 'Döretmek'}</button>
+              <button className="btn" disabled={busy || !newName.trim()} onClick={() => void create()}><Plus className="w-4 h-4" />{ru ? 'Создать' : 'Döretmek'}</button>
               <p className="text-[11px] text-slate-500">{ru ? 'Телефон необязателен, но именно он позволяет узнать гостя при следующем визите.' : 'Telefon hökman däl, ýöne dine ol myhmany indiki gezek tanamaga mümkinçilik berýär.'}</p>
             </div>
           )}
 
-          {loading ? <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div> : (
+          {loading ? <LoadingState/> : (
             <div className="space-y-2">
               {customers.map(c => (
                 <button key={c.id} onClick={() => void open(c.id)} className={`w-full text-left rounded-xl border p-3 ${selected?.customer?.id === c.id ? 'border-amber-500/40 bg-slate-900' : 'border-slate-800 bg-slate-900/50'}`}>
@@ -116,7 +118,7 @@ export const CustomersView: React.FC = () => {
             {canManage && (
               <div className="flex items-end gap-2">
                 <label className="space-y-1"><span className="block text-xs text-slate-400">{ru ? 'Дата рождения' : 'Doglan senesi'}</span><input className="field" value={birthDate} onChange={e => setBirthDate(e.target.value)} placeholder="YYYY-MM-DD" /></label>
-                <button className="btn bg-slate-800 text-slate-200 text-sm" disabled={busy} onClick={() => void saveBirthDate()}>{ru ? 'Сохранить' : 'Ýatda saklamak'}</button>
+                <button className="btn-secondary" disabled={busy} onClick={() => void saveBirthDate()}>{ru ? 'Сохранить' : 'Ýatda saklamak'}</button>
               </div>
             )}
 

@@ -15,6 +15,8 @@ import { User, EmploymentStatus, DisciplinaryStatus, EmployeeStatusHistory } fro
 import { api } from '../api';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
+import { errorText } from '../humanErrors';
+import { Notice } from './ui';
 
 interface EmployeeStatusModalProps {
   user: User | null;
@@ -107,7 +109,7 @@ export const EmployeeStatusModal: React.FC<EmployeeStatusModalProps> = ({
         setSuccessMessage(null);
       }, 3000);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update employee status');
+      setErrorMessage(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -178,7 +180,7 @@ export const EmployeeStatusModal: React.FC<EmployeeStatusModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="boom-modal-close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -216,10 +218,7 @@ export const EmployeeStatusModal: React.FC<EmployeeStatusModalProps> = ({
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[70vh]">
           {errorMessage && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
+            <Notice kind="error">{errorMessage}</Notice>
           )}
 
           {successMessage && (
@@ -341,14 +340,14 @@ export const EmployeeStatusModal: React.FC<EmployeeStatusModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
+                  className="btn-secondary btn-sm"
                 >
                   {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || isSelf}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-bold transition-colors shadow-lg shadow-amber-500/20"
+                  className="btn btn-sm"
                 >
                   {isSubmitting ? t('common.loading') : t('common.save')}
                 </button>

@@ -106,12 +106,12 @@ export const MediaLibraryView: React.FC = () => {
 
   return (
     <div className="cmd-center">
-      <div className="cmd-topbar">
-        <div>
-          <h1 className="cmd-title"><ImagePlus className="inline w-5 h-5 text-amber-400 mr-2" />{t('МЕДИА-БИБЛИОТЕКА', 'MEDIA KITAPHANASY')}</h1>
-          <p className="cmd-subtitle">{t('Единый источник изображений и видео для меню, блюд, баннеров и визуального каталога.', 'Menýu, naharlar, bannerler we wizual katalog üçin bitewi surat we wideo çeşmesi.')}</p>
-        </div>
-        <div className="cmd-toolbar">
+      {/* Stage 41: one page header for the whole system -- the title and its one-line description come
+          from the shell header now. This screen used to print its own title again, in capitals, in a
+          style only these four screens shared. */}
+      <div className="boom-toolbar">
+        <div className="boom-toolbar-left" />
+        <div className="boom-toolbar-right">
           <select className="mb-input" style={{ maxWidth: 220 }} value={branch} onChange={e => setBranch(e.target.value)} aria-label={t('Филиал', 'Şahamça')}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>

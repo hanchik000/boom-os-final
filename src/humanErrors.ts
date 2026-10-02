@@ -82,5 +82,16 @@ export function humanError(error: any, lang: Lang = 'ru'): string {
   return lang === 'tk' ? 'Bir zat ýalňyş boldy. Gaýtadan synanyşyň.' : 'Что-то пошло не так. Повторите попытку.';
 }
 
+/**
+ * Stage 41: the same sentence, for a screen that only has the thrown error and no language in
+ * scope. Views used to write `e?.message || 'Failed to load'`, so an operator could still be shown
+ * an English technical fallback the moment an error arrived without a message of its own.
+ */
+export function errorText(error: any): string {
+  let lang: Lang = 'ru';
+  try { if (localStorage.getItem('boom_os_language') === 'tk') lang = 'tk'; } catch { /* storage may be unavailable */ }
+  return humanError(error, lang);
+}
+
 /** The codes this module knows about -- exported so a guard can assert coverage. */
 export const HUMAN_ERROR_CODES = Object.keys(MESSAGES);

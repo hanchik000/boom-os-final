@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { complimentReasonLabel } from './CashierPOSView';
+import { LoadingState, Notice, Toolbar } from './ui';
 
 export const OrderApprovalsView: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -76,21 +77,21 @@ export const OrderApprovalsView: React.FC = () => {
 
   return (
     <div className="p-6 space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-amber-400" /><h2 className="text-lg font-bold text-white">{ru ? 'Подтверждения менеджера' : 'Menejer tassyklamalary'}</h2></div>
-          <p className="text-sm text-slate-400 mt-1">{ru ? 'Официант и кассир могут только запросить: решение принимает менеджер.' : 'Ofisiant we kassir diňe haýyş edip biler: karary menejer kabul edýär.'}</p>
-        </div>
-        <button onClick={load} className="p-2 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"><RefreshCw className="w-4 h-4" /></button>
-      </div>
+      {/* Stage 41: the page title and its description come from the shell header now -- this screen
+          used to repeat them in its own style. The refresh control keeps its place in the standard
+          toolbar, and it says what it does instead of being an unlabelled icon. */}
+      <Toolbar>
+        <button className="btn-secondary" onClick={() => load()}><RefreshCw className="w-4 h-4" />{ru ? 'Обновить' : 'Täzele'}</button>
+      </Toolbar>
+      <Notice kind="info">{ru ? 'Официант и кассир могут только запросить: решение принимает менеджер.' : 'Ofisiant we kassir diňe haýyş edip biler: karary menejer kabul edýär.'}</Notice>
 
-      {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
+      {error && <Notice kind="error">{error}</Notice>}
 
       {canClosure && (
         <section className="space-y-3">
           <div className="flex items-center gap-2"><Ban className="w-4 h-4 text-red-400" /><h3 className="text-sm font-bold text-white uppercase tracking-wide">{ru ? 'Отказ / Закрыто заведением' : 'Ret ediş / Kärhana tarapyndan ýapyldy'}</h3></div>
           <p className="text-xs text-slate-500">{ru ? 'Возврат денег не равен возврату ингредиентов: если блюдо уже приготовлено, продукты на склад не возвращаются.' : 'Pul gaýtarmak önümleri gaýtarmak däldir: tagam eýýäm taýýarlanan bolsa, önümler ammara gaýdyp gelmeýär.'}</p>
-          {loading ? <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div> : closures.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов на закрытие.' : 'Garaşylýan ýapyş haýyşy ýok.'}</div> : (
+          {loading ? <LoadingState/> : closures.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов на закрытие.' : 'Garaşylýan ýapyş haýyşy ýok.'}</div> : (
             <div className="space-y-3">
               {closures.map(c => <div key={c.id} className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start justify-between gap-4">
                 <div className="min-w-0 space-y-2">
@@ -118,7 +119,7 @@ export const OrderApprovalsView: React.FC = () => {
         <section className="space-y-3">
           <div className="flex items-center gap-2"><Gift className="w-4 h-4 text-sky-400" /><h3 className="text-sm font-bold text-white uppercase tracking-wide">{ru ? 'От заведения' : 'Kärhanadan'}</h3></div>
           <p className="text-xs text-slate-500">{ru ? 'Гость не платит за позицию, но её реальная себестоимость учитывается заведением. Одобрить может только один менеджер, и только один раз.' : 'Myhman pozisiýa üçin tölemeýär, ýöne onuň hakyky özüne düşýän bahasy hasaba alynýar. Diňe bir menejer we diňe bir gezek tassyklap biler.'}</p>
-          {loading ? <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div> : compliments.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов.' : 'Garaşylýan haýyş ýok.'}</div> : (
+          {loading ? <LoadingState/> : compliments.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов.' : 'Garaşylýan haýyş ýok.'}</div> : (
             <div className="space-y-3">
               {compliments.map(c => <div key={c.id} className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-start justify-between gap-4">
                 <div className="min-w-0 space-y-1.5">
@@ -144,7 +145,7 @@ export const OrderApprovalsView: React.FC = () => {
       {canRemoval && (
         <section className="space-y-3">
           <div className="flex items-center gap-2"><ClipboardCheck className="w-4 h-4 text-amber-400" /><h3 className="text-sm font-bold text-white uppercase tracking-wide">{ru ? 'Запросы на удаление позиций' : 'Haryt aýyrmak tassyklamalary'}</h3></div>
-          {loading ? <div className="text-sm text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div> : requests.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов.' : 'Garaşylýan haýyş ýok.'}</div> : (
+          {loading ? <LoadingState/> : requests.length === 0 ? <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 text-center text-slate-500 text-sm">{ru ? 'Нет ожидающих запросов.' : 'Garaşylýan haýyş ýok.'}</div> : (
             <div className="space-y-3">
               {requests.map(r => <div key={r.id} className="rounded-xl border border-slate-800 bg-slate-900 p-4 flex items-center justify-between gap-4">
                 <div className="min-w-0">

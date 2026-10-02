@@ -6,6 +6,7 @@ import './design-system/waiter-pos.css';
 import './design-system/cashier-pos.css';
 import './design-system/command-center.css';
 import './design-system/menu-builder.css';
+import './design-system/admin-ui.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -3,6 +3,8 @@ import { Save, Printer } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { Notice, Toolbar } from './ui';
+import { errorText } from '../humanErrors';
 
 // Receipt design settings for the CUSTOMER_RECEIPT print profile. Stored on the existing
 // print_profiles table (branch-scoped, config_json holds the design fields) -- no new model.
@@ -47,7 +49,7 @@ export const ReceiptSettingsView: React.FC = () => {
       setProfile(p);
       setWidth(p?.paper_width || 80);
       setCfg(p?.config_json ? { ...SYSTEM_DEFAULT_CONFIG, ...JSON.parse(p.config_json) } : SYSTEM_DEFAULT_CONFIG);
-    } catch (e: any) { setError(e?.message || 'Failed to load.'); }
+    } catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, [branchId]);
@@ -86,16 +88,14 @@ export const ReceiptSettingsView: React.FC = () => {
 
   return (
     <div className="p-6 max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-white text-xl font-bold flex items-center gap-2"><Printer className="w-5 h-5 text-amber-400" /> {ru ? 'Дизайн чека' : 'Çek dizaýny'}</h2>
-          <p className="text-slate-500 text-sm mt-1">{ru ? `Настройки применяются только к филиалу ${user?.branch_name || branchId}.` : `Sazlamalar diňe ${user?.branch_name || branchId} şahamçasyna degişli.`}</p>
-        </div>
-        <button className="btn bg-amber-500 text-slate-950 flex items-center gap-1.5" disabled={saving} onClick={() => void save()}>
+      {/* Stage 41: title from the shell header; the branch this applies to is stated next to the
+          save action, where it matters, instead of in a second page title. */}
+      <Toolbar left={<span className="text-xs text-slate-400">{ru ? `Настройки филиала: ${user?.branch_name || branchId}` : `Şahamça sazlamalary: ${user?.branch_name || branchId}`}</span>}>
+        <button className="btn" disabled={saving} onClick={() => void save()}>
           <Save className="w-4 h-4" /> {saving ? (ru ? 'Сохранение…' : 'Ýatda saklanýar…') : saved ? (ru ? 'Сохранено ✓' : 'Ýatda saklandy ✓') : (ru ? 'Сохранить' : 'Ýatda saklamak')}
         </button>
-      </div>
-      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-sm p-3">{error}</div>}
+      </Toolbar>
+      {error && <Notice kind="error">{error}</Notice>}
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="space-y-4">

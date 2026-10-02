@@ -3,6 +3,7 @@ import { Loader2, ChevronRight, Plus, X, Boxes, TrendingUp, ClipboardList, Scale
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Food Cost -- MENU -> RECIPE -> INGREDIENTS -> INVENTORY economic chain, read from the existing
@@ -122,7 +123,7 @@ export const FoodCostView: React.FC = () => {
         })}
       </div>
 
-      {loading && <div className="flex items-center gap-2 text-slate-400 text-sm"><Loader2 className="w-4 h-4 animate-spin" /> {ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>}
+      {loading && <LoadingState/>}
       {error && <div className="text-red-400 text-sm">{error}</div>}
 
       {/* ---- MENU ITEMS (food cost report) ---- */}
@@ -188,7 +189,7 @@ export const FoodCostView: React.FC = () => {
                           )}
 
                           {!recipeForm ? (
-                            <button className="btn text-xs flex items-center gap-1.5" onClick={detail.recipe ? startNewVersion : startNewRecipe}>
+                            <button className="btn btn-sm" onClick={detail.recipe ? startNewVersion : startNewRecipe}>
                               <Plus className="w-3.5 h-3.5" /> {detail.recipe ? (ru ? 'Новая версия рецепта' : 'Täze resept wersiýasy') : (ru ? 'Создать рецепт' : 'Resept döret')}
                             </button>
                           ) : (
@@ -215,8 +216,8 @@ export const FoodCostView: React.FC = () => {
                               <button className="text-[10px] text-amber-400" onClick={() => setRecipeForm({ ...recipeForm, lines: [...recipeForm.lines, { inventory_item_id: '', quantity: '' }] })}>+ {ru ? 'ингредиент' : 'ingredient'}</button>
                               {recipeError && <div className="text-red-400 text-xs">{recipeError}</div>}
                               <div className="flex gap-2">
-                                <button className="btn text-xs bg-slate-800" disabled={recipeBusy} onClick={() => setRecipeForm(null)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
-                                <button className="btn text-xs bg-emerald-500 text-slate-950" disabled={recipeBusy} onClick={() => void submitRecipe()}>{recipeBusy ? '…' : (ru ? 'Сохранить' : 'Ýatda sakla')}</button>
+                                <button className="btn-secondary btn-sm" disabled={recipeBusy} onClick={() => setRecipeForm(null)}>{ru ? 'Отмена' : 'Ýatyr'}</button>
+                                <button className="btn btn-sm" disabled={recipeBusy} onClick={() => void submitRecipe()}>{recipeBusy ? '…' : (ru ? 'Сохранить' : 'Ýatda sakla')}</button>
                               </div>
                             </div>
                           )}
@@ -308,7 +309,7 @@ export const FoodCostView: React.FC = () => {
               <input className="field text-xs" placeholder={ru ? 'Причина (необязательно)' : 'Sebäbi (hökmany däl)'} value={countForm.reason} onChange={e => setCountForm({ ...countForm, reason: e.target.value })} />
             </div>
             {countError && <div className="text-red-400 text-xs">{countError}</div>}
-            <button className="btn text-xs bg-emerald-500 text-slate-950" disabled={countBusy} onClick={() => void submitCount()}>{countBusy ? '…' : (ru ? 'Зафиксировать' : 'Belläp goý')}</button>
+            <button className="btn btn-sm" disabled={countBusy} onClick={() => void submitCount()}>{countBusy ? '…' : (ru ? 'Зафиксировать' : 'Belläp goý')}</button>
           </div>
           <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
             <table className="w-full text-xs">

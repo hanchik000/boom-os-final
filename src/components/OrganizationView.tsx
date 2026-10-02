@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Building2, ChevronDown, ChevronRight, Users, Layers3, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import { useLanguage } from '../context/LanguageContext';
+import { Notice, Toolbar } from './ui';
 
 type BranchNode = { id: string; name: string; code: string; status: string; franchise_id: string | null; employee_count: number };
 type FranchiseNode = { id: string; name: string; code: string; legal_name: string; status: string; branch_count: number; active_branch_count: number; branches: BranchNode[] };
@@ -33,15 +34,12 @@ export const OrganizationView: React.FC = () => {
     : { title: 'Guramaçylyk gurluşy', subtitle: 'Ýeke-täk BOOM HQ → Franşiza → Şahamça → Işgärler iýerarhiýasy', franchises: 'Franşiza', branches: 'Şahamça', employees: 'Işgär', unassigned: 'Franşizasyz şahamçalar', empty: 'Maglumat ýok', refresh: 'Täzele' };
 
   return <div id="organization-view" className="p-6 space-y-6 max-w-7xl mx-auto">
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <div className="flex items-center gap-2"><Layers3 className="w-5 h-5 text-amber-400" /><h2 className="text-lg font-bold text-white">{labels.title}</h2></div>
-        <p className="text-xs text-slate-400 mt-1">{labels.subtitle}</p>
-      </div>
-      <button onClick={load} disabled={loading} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-50"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{labels.refresh}</button>
-    </div>
+    {/* Stage 41: the page title comes from the shell header; this screen no longer prints its own. */}
+    <Toolbar>
+      <button onClick={load} disabled={loading} className="btn-secondary"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />{labels.refresh}</button>
+    </Toolbar>
 
-    {error && <div className="p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-xs text-red-300">{error}</div>}
+    {error && <Notice kind="error">{error}</Notice>}
 
     {!loading && !error && <div className="grid grid-cols-3 gap-3">
       <Stat label={labels.franchises} value={franchises.length} />

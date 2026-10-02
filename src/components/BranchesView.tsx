@@ -20,9 +20,12 @@ import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api';
 import { Branch } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { errorText } from '../humanErrors';
+import { ConfirmDialog, EmptyState, LoadingState, Notice, Toolbar } from './ui';
 
 export const BranchesView: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const ru = language === 'ru';
   const { user: currentUser, hasPermission } = useAuth();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +34,7 @@ export const BranchesView: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   // Stage 35.6 -- QR menu entry. The token/URL is resolved and regenerated server-side; this
   // screen only displays what the server returns.
   const [qrBranch, setQrBranch] = useState<Branch | null>(null);
@@ -123,7 +127,7 @@ export const BranchesView: React.FC = () => {
       }
       fetchBranches();
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save branch.');
+      setFormError(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -136,40 +140,33 @@ export const BranchesView: React.FC = () => {
       setDeletingBranch(null);
       fetchBranches();
     } catch (err: any) {
-      alert(err.message || 'Failed to deactivate branch.');
+      setDeleteError(errorText(err));
     }
   };
 
   return (
     <div id="view-branches" className="p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header & Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-amber-400" />
-            <span>{t('ui.restaurantLocations')}</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Multi-branch infrastructure. All system operations, staff roles, and future orders bind to branch identifiers.
-          </p>
-        </div>
-
+      {/* Stage 41: the page title lives in the shell header. What stood here was a second title and
+          an English paragraph about "branch identifiers" -- infrastructure vocabulary, in a language
+          the people using this screen do not work in. */}
+      <Toolbar>
         {hasPermission('branches.create') && (
-          <button
-            id="btn-create-branch-modal"
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-colors"
-          >
+          <button id="btn-create-branch-modal" className="btn" onClick={openCreate}>
             <Plus className="w-4 h-4" />
             <span>{t('ui.openNewBranch')}</span>
           </button>
         )}
-      </div>
+      </Toolbar>
 
       {/* Branches Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {loading ? (
-          <div className="col-span-3 py-12 text-center text-slate-500">{t('ui.loadingBranchNetwork')}</div>
+          <div className="col-span-full"><LoadingState/></div>
+        ) : branches.length === 0 ? (
+          <div className="col-span-full rounded-2xl border border-dashed border-slate-800"><EmptyState
+            title={ru ? 'Филиалов пока нет.' : 'Entek şahamça ýok.'}
+            hint={ru ? 'Филиал — это ресторан сети: свои столы, касса, склад и меню.' : 'Şahamça — ulgamyň restorany: öz stollary, kassasy, ammary we menýusy.'}
+            action={hasPermission('branches.create') ? <button className="btn" onClick={openCreate}><Plus className="w-4 h-4" />{t('ui.openNewBranch')}</button> : undefined}/></div>
         ) : (
           branches.map((b) => (
             <div
@@ -279,10 +276,7 @@ export const BranchesView: React.FC = () => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {formError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span>{formError}</span>
-                </div>
+                <Notice kind="error">{formError}</Notice>
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -382,7 +376,7 @@ export const BranchesView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 disabled:opacity-50"
+                  className="btn btn-sm"
                 >
                   {isSubmitting ? 'Saving...' : isCreateOpen ? 'Open Branch' : 'Save Changes'}
                 </button>
@@ -392,37 +386,22 @@ export const BranchesView: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      {deletingBranch && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
-            <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
-              <Trash2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-white">{t('ui.deactivateBranch')}</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Are you sure you want to deactivate <strong>{deletingBranch.name} ({deletingBranch.code})</strong>?
-                This location will be marked inactive and hidden from active frontline terminals.
-              </p>
-            </div>
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setDeletingBranch(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs shadow-lg shadow-rose-500/20"
-              >
-                Deactivate Branch
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Stage 41: the same confirmation every irreversible action in BOOM OS now uses -- it says in
+          plain words what happens, in both languages, instead of an English sentence and a browser
+          alert(). Deactivation itself is unchanged: it is still the server's soft-delete. */}
+      <ConfirmDialog
+        open={Boolean(deletingBranch)}
+        title={ru ? 'Отключить филиал?' : 'Şahamçany öçürmeli?'}
+        description={deletingBranch
+          ? (ru
+            ? `Филиал «${deletingBranch.name}» (${deletingBranch.code}) перестанет отображаться на кассах и терминалах. История заказов и отчёты сохраняются, филиал можно включить снова.`
+            : `«${deletingBranch.name}» (${deletingBranch.code}) şahamçasy kassalarda we terminallarda görkezilmez. Sargyt taryhy we hasabatlar saklanýar, şahamçany täzeden açyp bolýar.`)
+          : undefined}
+        confirmLabel={ru ? 'Отключить' : 'Öçür'}
+        onCancel={() => { setDeletingBranch(null); setDeleteError(''); }}
+        onConfirm={() => { void handleDelete(); }}
+      />
+      {deleteError && <div className="fixed bottom-6 right-6 z-50 max-w-sm"><Notice kind="error">{deleteError}</Notice></div>}
 
       {/* Stage 35.6 -- QR menu entry */}
       {qrBranch && (
@@ -434,31 +413,31 @@ export const BranchesView: React.FC = () => {
                   <QrCode className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">QR Menu — {qrBranch.name}</h3>
+                  <h3 className="text-base font-bold text-white">{ru ? 'QR-меню' : 'QR menýu'} — {qrBranch.name}</h3>
                   <p className="text-[11px] text-slate-500">{qrBranch.code}</p>
                 </div>
               </div>
-              <button onClick={() => setQrBranch(null)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+              <button onClick={() => setQrBranch(null)} className="boom-modal-close"><X className="w-4 h-4" /></button>
             </div>
             {qrInfo === null ? (
-              <div className="text-xs text-slate-400">Loading…</div>
+              <LoadingState/>
             ) : qrInfo.qr_url ? (
               <div className="space-y-2">
-                <p className="text-[11px] text-slate-500">This link resolves the branch server-side — print or encode it as a QR code. No branch id ever reaches the client from a scan.</p>
+                <p className="text-[11px] text-slate-500">{ru ? 'Распечатайте эту ссылку как QR-код на столе. Филиал определяется на сервере — гость не может подменить его сканированием.' : 'Bu salgyny stol üçin QR kod görnüşinde çap ediň. Şahamça serwerde kesgitlenýär — myhman ony skan arkaly çalşyp bilmeýär.'}</p>
                 <div className="flex items-center gap-2">
                   <input readOnly value={qrInfo.qr_url} className="flex-1 field text-xs" onFocus={e => e.currentTarget.select()} />
-                  <button onClick={() => void copyQrUrl()} className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300" title="Copy"><Copy className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => void copyQrUrl()} className="btn-secondary btn-sm" title={ru ? 'Скопировать ссылку' : 'Salgyny göçür'} aria-label={ru ? 'Скопировать ссылку' : 'Salgyny göçür'}><Copy className="w-3.5 h-3.5" /></button>
                 </div>
-                {qrCopied && <div className="text-[11px] text-emerald-400">Copied.</div>}
+                {qrCopied && <div className="text-[11px] text-emerald-400">{ru ? 'Ссылка скопирована.' : 'Salgy göçürildi.'}</div>}
               </div>
             ) : (
-              <p className="text-xs text-slate-400">No QR code has been generated for this branch yet.</p>
+              <p className="text-xs text-slate-400">{ru ? 'Для этого филиала QR-код ещё не создан.' : 'Bu şahamça üçin QR kod entek döredilmedi.'}</p>
             )}
             <div className="flex items-center justify-end gap-3 pt-1">
-              <button onClick={() => setQrBranch(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">Close</button>
-              <button onClick={() => void regenerateQr()} disabled={qrBusy} className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 disabled:opacity-60">
+              <button className="btn-secondary" onClick={() => setQrBranch(null)}>{t('common.close')}</button>
+              <button className="btn" onClick={() => void regenerateQr()} disabled={qrBusy}>
                 <RefreshCw className={`w-3.5 h-3.5 ${qrBusy ? 'animate-spin' : ''}`} />
-                {qrInfo?.qr_token ? 'Regenerate' : 'Generate'}
+                {qrInfo?.qr_token ? (ru ? 'Создать заново' : 'Täzeden döret') : (ru ? 'Создать QR-код' : 'QR kod döret')}
               </button>
             </div>
           </div>

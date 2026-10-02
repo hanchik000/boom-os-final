@@ -3,6 +3,7 @@ import { Check, X, Loader2, ImagePlus, Trash2, Rotate3d, Film, Info, Languages, 
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { ConfirmDialog } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 37 -- the full dish editor.
@@ -110,16 +111,28 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
     finally { setSaving(false); }
   }, [d, weightIssue, onSaved, onClose, ru]);
 
+  // Stage 41: unsaved changes are no longer thrown away silently. Clicking outside the editor, the
+  // close control or Cancel used to discard everything typed, with no warning -- on a form that can
+  // hold a whole dish record. The dirty check compares against the draft this editor opened with.
+  const dirty = useMemo(() => JSON.stringify(d) !== JSON.stringify(initial), [d, initial]);
+  const [confirmExit, setConfirmExit] = useState(false);
+  const requestClose = useCallback(() => { if (dirty) { setConfirmExit(true); } else { onClose(); } }, [dirty, onClose]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [requestClose]);
+
   const tab = (id: Section, icon: React.ReactNode, label: string) => (
     <button className={`mb-btn boom-focusable ${section === id ? 'gold' : ''}`} onClick={() => setSection(id)}>{icon} {label}</button>
   );
 
   return (
-    <div className="mb-modal" onClick={onClose}>
+    <div className="mb-modal" onClick={requestClose}>
       <div className="mb-modal-body" onClick={e => e.stopPropagation()} role="dialog" aria-label={t('Редактор блюда', 'Nahar redaktory')}>
         <div className="cmd-panel-head">
           <div className="cmd-panel-title">{d.name_ru || t('Блюдо', 'Nahar')}</div>
-          <button className="mb-icon boom-focusable" aria-label={t('Закрыть', 'Ýap')} onClick={onClose}><X className="w-4 h-4" /></button>
+          <button className="mb-icon boom-focusable" aria-label={t('Закрыть', 'Ýap')} onClick={requestClose}><X className="w-4 h-4" /></button>
         </div>
 
         <div className="mb-form-row" style={{ marginBottom: 10 }}>
@@ -262,11 +275,19 @@ export const MenuDishEditor: React.FC<Props> = ({ draft: initial, assets, catego
             <button className="mb-btn gold boom-focusable" disabled={saving || Boolean(weightIssue)} onClick={() => void save()}>
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} {t('Сохранить блюдо', 'Nahary ýatda sakla')}
             </button>
-            <button className="mb-btn boom-focusable" onClick={onClose}><X className="w-3 h-3" /> {t('Отмена', 'Goý bolsun')}</button>
+            <button className="mb-btn boom-focusable" onClick={requestClose}><X className="w-3 h-3" /> {t('Отмена', 'Goý bolsun')}</button>
             {weightIssue && <span className="mb-muted mb-note" style={{ color: 'var(--boom-danger)' }}>{weightIssue}</span>}
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmExit}
+        title={t('Есть несохранённые изменения.', 'Ýatda saklanmadyk üýtgeşmeler bar.')}
+        description={t('Если выйти сейчас, изменения этого блюда не сохранятся.', 'Häzir çyksaňyz, bu naharyň üýtgeşmeleri ýatda saklanmaz.')}
+        confirmLabel={t('Выйти без сохранения', 'Saklaman çyk')}
+        cancelLabel={t('Остаться', 'Galmak')}
+        onCancel={() => setConfirmExit(false)}
+        onConfirm={() => { setConfirmExit(false); onClose(); }}/>
     </div>
   );
 };

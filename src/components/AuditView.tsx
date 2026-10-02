@@ -13,12 +13,15 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { EmptyState, LoadingState, SearchInput, Toolbar } from './ui';
 import { api } from '../api';
 import { AuditLog, Branch } from '../types';
 import { useAuth } from '../context/AuthContext';
 
 export const AuditView: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const ru = language === 'ru';
+  const [moreFilters, setMoreFilters] = useState(false);
   const { selectedBranchFilter } = useAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState(0);
@@ -75,97 +78,55 @@ export const AuditView: React.FC = () => {
 
   return (
     <div id="view-audit" className="p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25 uppercase tracking-wider">
-              Immutable Ledger
-            </span>
-            <span className="text-slate-400 text-xs font-mono">• Append-Only Security Trail</span>
-          </div>
-          <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-            <History className="w-5 h-5 text-amber-400" />
-            <span>{t('ui.securityAuditTrail')}</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Strict record of who modified what, before/after values, client IP, user agent, and timestamp.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchLogs}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700"
-            title={t('ui.refreshLogs')}
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
-          </button>
-          <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
-            Total Records: <strong className="text-amber-400">{total}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Toolbar */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-        {/* Search */}
-        <div className="relative sm:col-span-1">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
-          <input
-            id="audit-search-input"
-            type="text"
-            placeholder="Search action or entity..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-          />
-        </div>
-
-        {/* Action Filter */}
+      {/* Stage 41: one page header (in the shell) and one toolbar. What stood here was a second title,
+          an English paragraph and two internal badges ("Immutable Ledger", "Append-Only Security
+          Trail") -- engineering vocabulary on a screen a manager opens to see who changed a price.
+          The rarely used date range moved behind "Дополнительные фильтры", per the same rule the rest
+          of the system follows: the common filters first, the rare ones one click away. */}
+      <Toolbar left={<>
+        <SearchInput id="audit-search-input" value={search} onChange={setSearch}
+          placeholder={ru ? 'Поиск по действию или объекту…' : 'Hereket ýa-da obýekt boýunça gözleg…'} />
         <select
           id="audit-action-filter"
+          aria-label={ru ? 'Тип действия' : 'Hereket görnüşi'}
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500 font-mono"
+          className="field w-auto"
         >
           <option value="">{t('ui.allActionTypes')}</option>
           {distinctActions.map((act) => (
             <option key={act} value={act}>{act}</option>
           ))}
         </select>
-
-        {/* Branch Filter */}
         <select
           id="audit-branch-filter"
+          aria-label={ru ? 'Филиал' : 'Şahamça'}
           value={branchFilter}
           onChange={(e) => setBranchFilter(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
+          className="field w-auto"
         >
           <option value="">{t('ui.allBranches')}</option>
           {branches.map((b) => (
             <option key={b.id} value={b.id}>{b.name} ({b.code})</option>
           ))}
         </select>
-
-        {/* Start Date */}
-        <input
-          id="audit-start-date"
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
-        />
-
-        {/* End Date */}
-        <input
-          id="audit-end-date"
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
-        />
-      </div>
+        <button type="button" id="audit-more-filters" className="btn-ghost btn-sm" aria-expanded={moreFilters}
+          onClick={() => setMoreFilters(v => !v)}>
+          {ru ? 'Дополнительные фильтры' : 'Goşmaça süzgüçler'}
+        </button>
+        {moreFilters && <>
+          <input id="audit-start-date" type="date" className="field w-auto" aria-label={ru ? 'С даты' : 'Senesinden'}
+            value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          <input id="audit-end-date" type="date" className="field w-auto" aria-label={ru ? 'По дату' : 'Senesine çenli'}
+            value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </>}
+      </>}>
+        <span className="text-xs text-slate-400">{ru ? 'Записей' : 'Ýazgy'}: <strong className="text-amber-400">{total}</strong></span>
+        <button className="btn-secondary" onClick={fetchLogs} title={t('ui.refreshLogs')}>
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-amber-400' : ''}`} />
+          {ru ? 'Обновить' : 'Täzele'}
+        </button>
+      </Toolbar>
 
       {/* Audit Logs Table */}
       <div className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -185,15 +146,11 @@ export const AuditView: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60 font-medium">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500">
-                    Loading security records...
-                  </td>
+                  <td colSpan={7}><LoadingState/></td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-slate-500">
-                    No audit records found matching criteria.
-                  </td>
+                  <td colSpan={7}><EmptyState title={ru ? 'Записей за этот период нет.' : 'Bu döwür üçin ýazgy ýok.'} hint={ru ? 'Здесь появляется каждое изменение: кто, что и когда изменил.' : 'Bu ýerde her üýtgeşme görkezilýär: kim, näme we haçan üýtgetdi.'}/></td>
                 </tr>
               ) : (
                 logs.map((log) => (
@@ -272,7 +229,7 @@ export const AuditView: React.FC = () => {
                 <FileCode className="w-4 h-4 text-amber-400" />
                 <h3 className="text-base font-bold text-white">{t('ui.auditDetails')}</h3>
               </div>
-              <button onClick={() => setSelectedLog(null)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setSelectedLog(null)} className="boom-modal-close">
                 <X className="w-5 h-5" />
               </button>
             </div>

@@ -20,10 +20,16 @@ import {
   FileText
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Franchise, Branch } from '../types';
+import { errorText } from '../humanErrors';
+import { EmptyState, LoadingState } from './ui';
 
 export const FranchisesView: React.FC = () => {
   const { hasPermission, token } = useAuth();
+  // Stage 41: this screen spoke English only, in a product whose interface is Russian and Turkmen.
+  const { language } = useLanguage();
+  const ru = language === 'ru';
   const [franchises, setFranchises] = useState<Franchise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -176,7 +182,7 @@ export const FranchisesView: React.FC = () => {
 
       const data = await res.json();
       if (!res.ok) {
-        setFormError(data.message || 'Failed to save franchise');
+        setFormError(errorText(data));
         setIsSubmitting(false);
         return;
       }
@@ -184,14 +190,14 @@ export const FranchisesView: React.FC = () => {
       setIsCreateModalOpen(false);
       setIsEditModalOpen(false);
       setEditingFranchise(null);
-      setActionSuccessMessage(isEdit ? 'Franchise updated successfully.' : 'Franchise created successfully.');
+      setActionSuccessMessage(isEdit ? (ru ? 'Франшиза сохранена.' : 'Franşiza ýatda saklandy.') : (ru ? 'Франшиза добавлена.' : 'Franşiza goşuldy.'));
       setTimeout(() => setActionSuccessMessage(null), 4000);
       fetchFranchises();
       if (selectedFranchise && selectedFranchise.id === data.franchise?.id) {
         setSelectedFranchise(data.franchise);
       }
     } catch (err: any) {
-      setFormError(err.message || 'An unexpected error occurred');
+      setFormError(errorText(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -264,21 +270,21 @@ export const FranchisesView: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <Layers className="w-5 h-5 text-amber-400" />
-            <span className="text-xs font-mono font-bold text-amber-400 tracking-wider uppercase">
-              Operational Hierarchy Matrix
+            <span className="text-xs font-bold text-amber-400 tracking-wider uppercase">
+              {ru ? 'Структура сети' : 'Ulgamyň gurluşy'}
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-sm font-semibold text-slate-200">
             <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
-              FRANCHISE (Holding)
+              {ru ? 'Франшиза' : 'Franşiza'}
             </span>
             <ArrowRight className="w-4 h-4 text-slate-500" />
             <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/30">
-              BRANCH (Location)
+              {ru ? 'Филиал' : 'Şahamça'}
             </span>
             <ArrowRight className="w-4 h-4 text-slate-500" />
             <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-              EMPLOYEES (Role & Scope)
+              {ru ? 'Сотрудники' : 'Işgärler'}
             </span>
           </div>
         </div>
@@ -302,23 +308,23 @@ export const FranchisesView: React.FC = () => {
             <input
               type="text"
               id="search-franchises-input"
-              placeholder="Search by name, code, legal entity or contact..."
+              placeholder={ru ? 'Поиск по названию, коду или контакту…' : 'Ady, kody ýa-da aragatnaşygy boýunça gözleg…'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50"
             />
           </div>
 
-          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-xs">
-            {(['ALL', 'ACTIVE', 'INACTIVE'] as const).map((st) => (
+          {/* Stage 41: the same segmented selector used for filters and sub-tabs on every screen,
+              and the options say what they mean instead of showing the stored status value. */}
+          <div className="flex items-center gap-1">
+            {([['ALL', ru ? 'Все' : 'Ählisi'], ['ACTIVE', ru ? 'Работают' : 'Işleýär'], ['INACTIVE', ru ? 'Отключены' : 'Öçürilen']] as const).map(([st, label]) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                  statusFilter === st ? 'bg-amber-500/20 text-amber-300 font-semibold' : 'text-slate-400 hover:text-slate-200'
-                }`}
+                className={`boom-chip ${statusFilter === st ? 'is-active' : ''}`}
               >
-                {st}
+                {label}
               </button>
             ))}
           </div>
@@ -328,10 +334,10 @@ export const FranchisesView: React.FC = () => {
           <button
             id="btn-register-franchise"
             onClick={handleOpenCreate}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors shadow-lg shadow-amber-500/10"
+            className="btn btn-sm"
           >
             <Plus className="w-4 h-4" />
-            <span>Register Franchise</span>
+            <span>{ru ? 'Добавить франшизу' : 'Franşiza goş'}</span>
           </button>
         )}
       </div>
@@ -343,8 +349,8 @@ export const FranchisesView: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-slate-200">Registered Franchises</h3>
-                <p className="text-xs text-slate-400">Regional legal entities and holding company units</p>
+                <h3 className="text-sm font-bold text-slate-200">{ru ? 'Франшизы' : 'Franşizalar'}</h3>
+                <p className="text-xs text-slate-400">{ru ? 'Юридические лица сети и их филиалы' : 'Ulgamyň ýuridiki taraplary we şahamçalary'}</p>
               </div>
               <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">
                 {franchises.length} total
@@ -352,11 +358,11 @@ export const FranchisesView: React.FC = () => {
             </div>
 
             {isLoading ? (
-              <div className="p-8 text-center text-xs text-slate-500 font-mono">LOADING FRANCHISE DATA...</div>
+              <LoadingState/>
             ) : franchises.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500">
-                No franchises found matching your criteria.
-              </div>
+              <EmptyState
+                title={ru ? 'Франшизы не найдены.' : 'Franşiza tapylmady.'}
+                hint={ru ? 'Франшиза объединяет филиалы одного юридического лица.' : 'Franşiza bir ýuridiki tarapyň şahamçalaryny birleşdirýär.'}/>
             ) : (
               <div className="divide-y divide-slate-800/80">
                 {franchises.map((f) => {
@@ -399,7 +405,7 @@ export const FranchisesView: React.FC = () => {
                                 : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                             }`}
                           >
-                            <span>Manage Hierarchy</span>
+                            <span>{ru ? 'Структура' : 'Gurluş'}</span>
                             <ExternalLink className="w-3 h-3" />
                           </button>
 
@@ -419,15 +425,15 @@ export const FranchisesView: React.FC = () => {
                       {/* Metrics bar */}
                       <div className="grid grid-cols-3 gap-2 p-2 bg-slate-950/60 rounded-lg border border-slate-800/80 text-xs">
                         <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-mono block">Branches</span>
+                          <span className="text-[10px] text-slate-500 uppercase font-mono block">{ru ? 'Филиалы' : 'Şahamçalar'}</span>
                           <span className="font-mono font-bold text-blue-400">{f.branch_count || 0}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-mono block">Employees</span>
+                          <span className="text-[10px] text-slate-500 uppercase font-mono block">{ru ? 'Сотрудники' : 'Işgärler'}</span>
                           <span className="font-mono font-bold text-emerald-400">{f.employee_count || 0}</span>
                         </div>
                         <div>
-                          <span className="text-[10px] text-slate-500 uppercase font-mono block">Contact</span>
+                          <span className="text-[10px] text-slate-500 uppercase font-mono block">{ru ? 'Контакты' : 'Aragatnaşyk'}</span>
                           <span className="text-slate-300 truncate block">{f.contact_name}</span>
                         </div>
                       </div>
@@ -454,9 +460,9 @@ export const FranchisesView: React.FC = () => {
                   </div>
                   <button
                     onClick={() => setSelectedFranchise(null)}
-                    className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded bg-slate-800"
+                    className="btn-secondary btn-sm"
                   >
-                    Close
+                    {ru ? 'Закрыть' : 'Ýap'}
                   </button>
                 </div>
 
@@ -464,38 +470,26 @@ export const FranchisesView: React.FC = () => {
                 <div className="flex items-center gap-2 mt-4 border-b border-slate-800/80 pb-2">
                   <button
                     onClick={() => setActiveSubTab('branches')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                      activeSubTab === 'branches'
-                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`boom-chip ${activeSubTab === 'branches' ? 'is-active' : ''}`}
                   >
                     <Building className="w-3.5 h-3.5" />
-                    <span>Branches ({franchiseBranches.length})</span>
+                    <span>{ru ? 'Филиалы' : 'Şahamçalar'} ({franchiseBranches.length})</span>
                   </button>
 
                   <button
                     onClick={() => setActiveSubTab('employees')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                      activeSubTab === 'employees'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`boom-chip ${activeSubTab === 'employees' ? 'is-active' : ''}`}
                   >
                     <Users className="w-3.5 h-3.5" />
-                    <span>Employees ({franchiseEmployees.length})</span>
+                    <span>{ru ? 'Сотрудники' : 'Işgärler'} ({franchiseEmployees.length})</span>
                   </button>
 
                   <button
                     onClick={() => setActiveSubTab('details')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors ${
-                      activeSubTab === 'details'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
+                    className={`boom-chip ${activeSubTab === 'details' ? 'is-active' : ''}`}
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>Legal & Contact Info</span>
+                    <span>{ru ? 'Юридические данные и контакты' : 'Ýuridiki maglumatlar we aragatnaşyk'}</span>
                   </button>
                 </div>
               </div>
@@ -503,7 +497,7 @@ export const FranchisesView: React.FC = () => {
               {/* Sub-tab Body */}
               <div className="p-4">
                 {isSubLoading ? (
-                  <div className="p-8 text-center text-xs text-slate-500 font-mono">LOADING HIERARCHY...</div>
+                  <div className="p-8 text-center text-xs text-slate-500 font-mono">{ru ? 'Загружаем структуру…' : 'Gurluş ýüklenýär…'}</div>
                 ) : activeSubTab === 'branches' ? (
                   <div className="space-y-4">
                     {/* Add Branch to Franchise form */}
@@ -529,14 +523,14 @@ export const FranchisesView: React.FC = () => {
                           className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-xs rounded transition-colors flex items-center gap-1"
                         >
                           <Link className="w-3 h-3" />
-                          <span>Link Branch</span>
+                          <span>{ru ? 'Привязать филиал' : 'Şahamçany birikdir'}</span>
                         </button>
                       </div>
                     )}
 
                     {franchiseBranches.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-500">
-                        No branches assigned to this franchise yet.
+                        {ru ? 'К этой франшизе пока не привязан ни один филиал.' : 'Bu franşiza entek hiç bir şahamça birikdirilmedi.'}
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -577,7 +571,7 @@ export const FranchisesView: React.FC = () => {
                                   id={`btn-unlink-branch-${branch.code}`}
                                   onClick={() => handleRemoveBranch(branch.id)}
                                   className="p-1.5 rounded bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
-                                  title="Unlink branch from franchise"
+                                  title={ru ? 'Отвязать филиал от франшизы' : 'Şahamçany franşizadan aýyr'}
                                 >
                                   <Unlink className="w-3.5 h-3.5" />
                                 </button>
@@ -592,7 +586,7 @@ export const FranchisesView: React.FC = () => {
                   <div className="space-y-3">
                     {franchiseEmployees.length === 0 ? (
                       <div className="p-6 text-center text-xs text-slate-500">
-                        No employees currently assigned to branches within this franchise.
+                        {ru ? 'В филиалах этой франшизы пока нет сотрудников.' : 'Bu franşizanyň şahamçalarynda entek işgär ýok.'}
                       </div>
                     ) : (
                       <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
@@ -626,7 +620,7 @@ export const FranchisesView: React.FC = () => {
                                     Primary: {emp.primary_branch_name}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] text-slate-500">No primary branch</span>
+                                  <span className="text-[10px] text-slate-500">{ru ? 'Основной филиал не выбран' : 'Esasy şahamça saýlanmadyk'}</span>
                                 )}
 
                                 {emp.has_all_branches ? (
@@ -650,31 +644,31 @@ export const FranchisesView: React.FC = () => {
                   <div className="space-y-4 text-xs">
                     <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 space-y-2">
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Legal Entity Name</span>
+                        <span className="text-slate-400">{ru ? 'Юридическое лицо' : 'Ýuridiki tarap'}</span>
                         <span className="text-slate-200 font-semibold">{selectedFranchise.legal_name}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Franchise Code</span>
+                        <span className="text-slate-400">{ru ? 'Код франшизы' : 'Franşiza kody'}</span>
                         <span className="font-mono text-amber-400 font-bold">{selectedFranchise.code}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Primary Contact Person</span>
+                        <span className="text-slate-400">{ru ? 'Контактное лицо' : 'Aragatnaşyk şahsy'}</span>
                         <span className="text-slate-200 font-semibold">{selectedFranchise.contact_name}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Contact Phone</span>
+                        <span className="text-slate-400">{ru ? 'Телефон' : 'Telefon'}</span>
                         <span className="text-slate-200 font-mono">{selectedFranchise.phone}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Contact Email</span>
+                        <span className="text-slate-400">{ru ? 'Электронная почта' : 'E-poçta'}</span>
                         <span className="text-slate-200 font-mono">{selectedFranchise.email}</span>
                       </div>
                       <div className="flex justify-between py-1 border-b border-slate-800/60">
-                        <span className="text-slate-400">Registered Address</span>
+                        <span className="text-slate-400">{ru ? 'Юридический адрес' : 'Ýuridiki salgy'}</span>
                         <span className="text-slate-200 text-right">{selectedFranchise.address}</span>
                       </div>
                       <div className="flex justify-between py-1">
-                        <span className="text-slate-400">Operational Status</span>
+                        <span className="text-slate-400">{ru ? 'Статус работы' : 'Iş ýagdaýy'}</span>
                         <span
                           className={`font-bold ${
                             selectedFranchise.status === 'ACTIVE' ? 'text-emerald-400' : 'text-rose-400'
@@ -687,22 +681,22 @@ export const FranchisesView: React.FC = () => {
 
                     {hasPermission('franchises.update') && (
                       <div className="flex items-center justify-between pt-2">
+                        {/* Stage 41: switching a franchise off is a destructive action and now looks
+                            like every other one; switching it back on is an ordinary secondary action. */}
                         <button
                           onClick={() => handleToggleStatus(selectedFranchise)}
-                          className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
-                            selectedFranchise.status === 'ACTIVE'
-                              ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
-                              : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                          }`}
+                          className={selectedFranchise.status === 'ACTIVE' ? 'btn-danger btn-sm' : 'btn-secondary btn-sm'}
                         >
-                          {selectedFranchise.status === 'ACTIVE' ? 'Deactivate Franchise' : 'Activate Franchise'}
+                          {selectedFranchise.status === 'ACTIVE'
+                            ? (ru ? 'Отключить франшизу' : 'Franşizany öçür')
+                            : (ru ? 'Включить франшизу' : 'Franşizany aç')}
                         </button>
 
                         <button
                           onClick={() => handleOpenEdit(selectedFranchise)}
-                          className="px-3 py-1.5 rounded bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 transition-colors"
+                          className="btn btn-sm"
                         >
-                          Edit Details
+                          {ru ? 'Изменить данные' : 'Maglumatlary üýtget'}
                         </button>
                       </div>
                     )}
@@ -745,24 +739,24 @@ export const FranchisesView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Franchise Name *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Название франшизы' : 'Franşizanyň ady'} <span className="boom-req">*</span></label>
                   <input
                     type="text"
                     id="input-franchise-name"
                     required
-                    placeholder="e.g. Ashgabat Franchise"
+                    placeholder={ru ? 'например, Ашхабадская франшиза' : 'meselem, Aşgabat franşizasy'}
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Franchise Code *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Код франшизы' : 'Franşiza kody'} <span className="boom-req">*</span></label>
                   <input
                     type="text"
                     id="input-franchise-code"
                     required
-                    placeholder="e.g. ASH-001"
+                    placeholder={ru ? 'например, ASH-001' : 'meselem, ASH-001'}
                     value={formData.code}
                     onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 font-mono uppercase focus:outline-none focus:border-amber-500"
@@ -771,12 +765,12 @@ export const FranchisesView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1 font-medium">Legal Entity Name *</label>
+                <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Юридическое лицо' : 'Ýuridiki tarap'} <span className="boom-req">*</span></label>
                 <input
                   type="text"
                   id="input-franchise-legal"
                   required
-                  placeholder="e.g. BOOMBURGER Ashgabat CJSC"
+                  placeholder={ru ? 'например, BOOMBURGER Ашхабад ЗАО' : 'meselem, BOOMBURGER Aşgabat ÝGPJ'}
                   value={formData.legal_name}
                   onChange={(e) => setFormData({ ...formData, legal_name: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
@@ -785,24 +779,24 @@ export const FranchisesView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Primary Contact Person *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Контактное лицо' : 'Aragatnaşyk şahsy'} <span className="boom-req">*</span></label>
                   <input
                     type="text"
                     id="input-franchise-contact"
                     required
-                    placeholder="e.g. Contact Person"
+                    placeholder={ru ? 'например, Иван Петров' : 'meselem, Aman Amanow'}
                     value={formData.contact_name}
                     onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Contact Phone *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Телефон' : 'Telefon'} <span className="boom-req">*</span></label>
                   <input
                     type="text"
                     id="input-franchise-phone"
                     required
-                    placeholder="e.g. +993 (12) 45-67-89"
+                    placeholder="+993 (12) 45-67-89"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
@@ -812,7 +806,7 @@ export const FranchisesView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Contact Email *</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Электронная почта' : 'E-poçta'} <span className="boom-req">*</span></label>
                   <input
                     type="email"
                     id="input-franchise-email"
@@ -824,26 +818,26 @@ export const FranchisesView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1 font-medium">Status</label>
+                  <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Статус' : 'Ýagdaý'}</label>
                   <select
                     id="select-franchise-status"
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="ACTIVE">ACTIVE</option>
-                    <option value="INACTIVE">INACTIVE</option>
+                    <option value="ACTIVE">{ru ? 'Работает' : 'Işleýär'}</option>
+                    <option value="INACTIVE">{ru ? 'Отключена' : 'Öçürilen'}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1 font-medium">Headquarters / Registered Address *</label>
+                <label className="block text-slate-400 mb-1 font-medium">{ru ? 'Юридический адрес' : 'Ýuridiki salgy'} <span className="boom-req">*</span></label>
                 <textarea
                   id="input-franchise-address"
                   required
                   rows={2}
-                  placeholder="Official registered address..."
+                  placeholder={ru ? 'например, г. Ашхабад, ул. …' : 'meselem, Aşgabat ş., … köçesi'}
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded text-slate-200 focus:outline-none focus:border-amber-500"
@@ -865,7 +859,7 @@ export const FranchisesView: React.FC = () => {
                   type="submit"
                   id="btn-submit-franchise"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold rounded transition-colors"
+                  className="btn"
                 >
                   {isSubmitting ? 'Saving...' : isEditModalOpen ? 'Update Franchise' : 'Create Franchise'}
                 </button>

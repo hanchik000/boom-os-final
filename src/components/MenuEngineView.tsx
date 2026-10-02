@@ -109,12 +109,12 @@ export const MenuEngineView: React.FC = () => {
   return (
     <div className="cmd-center">
       {/* ---- TOP ---- */}
-      <div className="cmd-topbar">
-        <div>
-          <h1 className="cmd-title"><UtensilsCrossed className="inline w-5 h-5 text-amber-400 mr-2" />{t('MENU BUILDER', 'MENÝU GURUJY')}</h1>
-          <p className="cmd-subtitle">{t('Категории, блюда, цены, модификаторы, конструктор и фото — всё из ADMIN.', 'Kategoriýalar, naharlar, bahalar, modifikatorlar we suratlar — ADMIN-den.')}</p>
-        </div>
-        <div className="cmd-toolbar">
+      {/* Stage 41: one page header for the whole system -- the title and its one-line description come
+          from the shell header now. This screen used to print its own title again, in capitals, in a
+          style only these four screens shared. */}
+      <div className="boom-toolbar">
+        <div className="boom-toolbar-left" />
+        <div className="boom-toolbar-right">
           <select className="cmd-branch-select boom-focusable" value={branchId} onChange={e => { setBranchId(e.target.value); setSelected(null); }}>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
@@ -145,7 +145,7 @@ export const MenuEngineView: React.FC = () => {
                   <input className="mb-input mb-input-sm" value={cat.sort_order} onChange={e => setCat({ ...cat, sort_order: e.target.value })} placeholder="#" />
                   <button className="mb-btn gold boom-focusable" disabled={!cat.name_ru.trim() || !cat.name_tk.trim() || saving === 'cat'}
                     onClick={() => void run('cat', () => api.createMenuCategory({ ...cat, branch_id: branchId }), () => setCat({ name_ru: '', name_tk: '', sort_order: '0' }))}>
-                    {saving === 'cat' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Создать', 'Döret')}
+                    {saving === 'cat' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Добавить категорию', 'Kategoriýa goş')}
                   </button>
                 </div>
               </div>
@@ -168,7 +168,7 @@ export const MenuEngineView: React.FC = () => {
                   <input className="mb-input mb-span2" value={item.description_tk} onChange={e => setItem({ ...item, description_tk: e.target.value })} placeholder={t('Описание TK', 'Beýany TK')} />
                   <button className="mb-btn gold mb-span2 boom-focusable" disabled={!item.category_id || !item.sku.trim() || !item.name_ru.trim() || !item.name_tk.trim() || !item.price.trim() || saving === 'item'}
                     onClick={() => void run('item', () => api.createMenuItem({ ...item, branch_id: branchId }), () => setItem({ ...item, sku: '', name_ru: '', name_tk: '', description_ru: '', description_tk: '', price: '' }))}>
-                    {saving === 'item' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Создать блюдо', 'Nahar döret')}
+                    {saving === 'item' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Добавить блюдо', 'Nahar goş')}
                   </button>
                 </div>
               </div>
@@ -259,7 +259,7 @@ export const MenuEngineView: React.FC = () => {
                     <label className="mb-cb mb-span2"><input type="checkbox" checked={group.required} onChange={e => setGroup({ ...group, required: e.target.checked })} /> {t('Обязательная группа', 'Hökmany topar')}</label>
                     <button className="mb-btn gold mb-span2 boom-focusable" disabled={!group.name_ru.trim() || !group.name_tk.trim() || saving === 'grp'}
                       onClick={() => void run('grp', () => api.createModifierGroup(selectedItem.id, { ...group, branch_id: branchId }), async () => { setGroup({ name_ru: '', name_tk: '', name_en: '', min_select: '0', max_select: '1', required: false, sort_order: '0' }); await loadModifiers(selectedItem.id); })}>
-                      {saving === 'grp' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Создать группу', 'Topar döret')}
+                      {saving === 'grp' ? <Loader2 className="w-3 h-3 animate-spin" /> : t('Добавить группу', 'Topar goş')}
                     </button>
                   </div>
                 )}
