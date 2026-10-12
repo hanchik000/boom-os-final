@@ -220,3 +220,12 @@
 .boom-chip:focus-visible { outline: none; box-shadow: var(--boom-focus-ring); }
 .boom-chip.is-active { border-color: rgba(245,158,11,.55); background: var(--boom-gold-soft); color: var(--boom-text); }
 @media (pointer: coarse) { .boom-chip { min-height: 2.5rem; } }
+
+/* ---------------------------------------------------------------------------
+   Stage 44: the phone navigation trigger.
+   A Tailwind `md:hidden` loses here, because this stylesheet is registered after the utilities
+   and `.btn-secondary` sets its own display -- so the button stayed visible on a desktop. The
+   breakpoint is declared next to the button's own styles instead, where nothing can outrank it.
+   --------------------------------------------------------------------------- */
+.boom-nav-trigger { display: inline-flex; padding-left: 10px; padding-right: 10px; }
+@media (min-width: 768px) { .boom-nav-trigger { display: none; } }

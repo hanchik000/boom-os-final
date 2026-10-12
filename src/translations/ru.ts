@@ -45,6 +45,7 @@ export const ru = {
   "nav.menuMedia": "Фото и видео",
   "nav.visualCatalog": "Оформление меню",
 
+  "nav.menuButton": "Меню",
   "nav.kitchen": "Кухня",
   "nav.expo": "Выдача",
   "nav.kitchenLoad": "Нагрузка кухни",

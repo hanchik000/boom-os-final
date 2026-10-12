@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCheck, PackageCheck, RefreshCw, RotateCcw, TriangleAlert, Users2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
 import { errorText } from '../humanErrors';
-import { LoadingState, Modal, Notice } from './ui';
+import { agoFragment, timeAgoLabel } from '../freshness';
+import { EmptyState, LoadingState, Modal, Notice } from './ui';
 import { QUICK_RU, QUICK_TK } from './KitchenStationView';
 
 // ----------------------------------------------------------------------------------------------
@@ -22,7 +24,8 @@ export const ExpoView: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  // Stage 44: same branch rule as the kitchen screen -- see useBranchScope.
+  const { branchId, setBranchId, branches } = useBranchScope();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -32,17 +35,44 @@ export const ExpoView: React.FC = () => {
   const [overrideReason, setOverrideReason] = useState('');
   const [returning, setReturning] = useState<{ order: any; task: any } | null>(null);
   const [returnReason, setReturnReason] = useState('');
+  // Stage 44: the pass must never look live when it is not -- same freshness convention as the
+  // kitchen screen and the manager command centre.
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
 
   const load = useCallback(async (silent = false) => {
     if (!branchId) { setLoading(false); return; }
     if (!silent) setLoading(true);
-    try { setOrders((await api.getExpoBoard(branchId)).orders || []); setError(''); }
+    try { setOrders((await api.getExpoBoard(branchId)).orders || []); setError(''); setLastUpdatedAt(Date.now()); }
     catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   }, [branchId]);
 
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { const t = window.setInterval(() => { void load(true); }, REFRESH_MS); return () => window.clearInterval(t); }, [load]);
+  // Stage 44: polling pauses while the tab is hidden and reads once immediately on return.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => { void load(true); }, REFRESH_MS); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else { void load(true); start(); }
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [load]);
+
+  // Stage 44: the "N назад" ticker -- display only, paused while the tab is hidden, never fetches.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => setTick(x => x + 1), 1000); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) stop(); else start(); };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   const act = async (fn: () => Promise<any>, message?: string) => {
     if (busy) return;
@@ -63,7 +93,16 @@ export const ExpoView: React.FC = () => {
     return <div className="p-8 text-slate-400">{ru ? 'У вас нет доступа к экрану выдачи.' : 'Beriş ekranyna elýeterliligiňiz ýok.'}</div>;
   }
   if (!branchId) {
-    return <div className="p-8 text-slate-400">{ru ? 'Экран выдачи работает в филиале — у вашей учётной записи он не выбран.' : 'Beriş ekrany şahamçada işleýär — hasabyňyzda şahamça saýlanmadyk.'}</div>;
+    return (
+      <div className="p-8">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Экран выдачи показывает заказы одного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Beriş ekrany bir şahamçanyň sargytlaryny görkezýär. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
   }
 
   const canOverride = hasPermission('kitchen.expo.override');
@@ -72,9 +111,26 @@ export const ExpoView: React.FC = () => {
   return (
     <div className="kitchen-screen boom-reduced-motion-safe" id="expo-view">
       <div className="kt-stations">
+        {branches.length > 1 && (
+          <label className="kt-station-tab" id="expo-branch-pick">
+            <span className="kt-station-name">
+              <select
+                className="kt-branch-select"
+                aria-label={ru ? 'Филиал' : 'Şahamça'}
+                value={branchId}
+                onChange={e => setBranchId(e.target.value)}
+              >
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </span>
+            <span className="kt-station-meta">{ru ? 'филиал' : 'şahamça'}</span>
+          </label>
+        )}
         <button className="kt-station-tab" onClick={() => void load()} aria-label={ru ? 'Обновить' : 'Täzele'}>
           <span className="kt-station-name"><RefreshCw className="w-5 h-5" /></span>
-          <span className="kt-station-meta">{ru ? 'обновить' : 'täzele'}</span>
+          <span className="kt-station-meta" id="expo-last-updated" aria-live="polite" data-tick={tick}>
+            {lastUpdatedAt ? timeAgoLabel(lastUpdatedAt, ru) : (ru ? 'обновить' : 'täzele')}
+          </span>
         </button>
         <div className="kt-load-tile" style={{ flex: '0 1 200px' }}>
           <div className="kt-load-label">{ru ? 'Полностью готовы' : 'Doly taýýar'}</div>
@@ -86,7 +142,14 @@ export const ExpoView: React.FC = () => {
         </div>
       </div>
 
-      {error && <Notice kind="error">{error}</Notice>}
+      {/* Stage 44: a failed refresh keeps the last real board and says how old it is. */}
+      {error && lastUpdatedAt && (
+        <div className="kt-stale" id="expo-stale">
+          {ru ? 'Не удалось обновить экран выдачи.' : 'Beriş ekranyny täzeläp bolmady.'}{' '}
+          {ru ? `Показаны данные от ${agoFragment(lastUpdatedAt, true)}.` : `${agoFragment(lastUpdatedAt, false)} maglumatlar görkezilýär.`}
+        </div>
+      )}
+      {error && !lastUpdatedAt && <Notice kind="error">{error}</Notice>}
       {notice && <Notice kind="success">{notice}</Notice>}
 
       {loading && !orders.length ? <LoadingState /> : orders.length === 0 ? (

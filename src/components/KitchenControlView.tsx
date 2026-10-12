@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { BellRing, CheckCheck, Gauge, RefreshCw, Settings2, TriangleAlert } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
 import { errorText } from '../humanErrors';
+import { agoFragment, timeAgoLabel } from '../freshness';
 import { EmptyState, LoadingState, Modal, Notice, Toolbar } from './ui';
 import { QUICK_RU, QUICK_TK } from './KitchenStationView';
 
@@ -18,11 +20,12 @@ import { QUICK_RU, QUICK_TK } from './KitchenStationView';
 const REFRESH_MS = 30000;
 
 export const KitchenControlView: React.FC = () => {
-  const { user, hasPermission, selectedBranchFilter } = useAuth();
+  const { hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const [branches, setBranches] = useState<any[]>([]);
-  const [branchId, setBranchId] = useState(user?.branch_id || '');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  const { branchId, setBranchId, branches } = useBranchScope();
   const [load, setLoad] = useState<any | null>(null);
   const [alerts, setAlerts] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,20 +41,13 @@ export const KitchenControlView: React.FC = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [savedLimits, setSavedLimits] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (!hasPermission('branches.view')) return;
-    api.getBranches({ status: 'ACTIVE' }).then(r => {
-      setBranches(r.branches || []);
-      setBranchId(prev => prev || (selectedBranchFilter !== 'ALL' ? selectedBranchFilter : r.branches?.[0]?.id) || '');
-    }).catch(() => undefined);
-  }, [hasPermission, selectedBranchFilter]);
 
   const refresh = useCallback(async (silent = false) => {
     if (!branchId) { setLoading(false); return; }
     if (!silent) setLoading(true);
     try {
       const [l, a] = await Promise.all([api.getKitchenLoad(branchId), hasPermission('kitchen.alerts.view') ? api.getKitchenAlerts(branchId) : Promise.resolve(null)]);
-      setLoad(l); setAlerts(a); setError('');
+      setLoad(l); setAlerts(a); setError(''); setLastUpdatedAt(Date.now());
       if (hasPermission('kitchen.thresholds.manage')) {
         try {
           const [cats, th] = await Promise.all([api.getMenuAdmin(branchId), api.getKitchenThresholds(branchId)]);
@@ -70,7 +66,31 @@ export const KitchenControlView: React.FC = () => {
   }, [branchId, hasPermission]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { const t = window.setInterval(() => { void refresh(true); }, REFRESH_MS); return () => window.clearInterval(t); }, [refresh]);
+  // Stage 44: polling pauses while the tab is hidden and reads once immediately on return, and the
+  // screen states how old its numbers are -- a manager acts on these figures.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => { void refresh(true); }, REFRESH_MS); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else { void refresh(true); start(); }
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, [refresh]);
+
+  // Stage 44: the "N назад" ticker -- display only, paused while the tab is hidden, never fetches.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => setTick(x => x + 1), 1000); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) stop(); else start(); };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   const act = async (fn: () => Promise<any>, message?: string) => {
     if (busy) return;
@@ -104,6 +124,20 @@ export const KitchenControlView: React.FC = () => {
     return <div className="p-8 text-slate-400">{ru ? 'У вас нет доступа к данным кухни.' : 'Aşhana maglumatlaryna elýeterliligiňiz ýok.'}</div>;
   }
 
+  // Stage 44: with no branch this screen rendered nothing at all and explained nothing.
+  if (!branchId) {
+    return (
+      <div className="p-8">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Загрузка кухни считается по одному филиалу. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Aşhananyň ýüki bir şahamça boýunça hasaplanýar. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="kitchen-screen boom-reduced-motion-safe" id="kitchen-control-view">
       <Toolbar left={branches.length > 1 ? (
@@ -114,10 +148,20 @@ export const KitchenControlView: React.FC = () => {
         {hasPermission('kitchen.thresholds.manage') && (
           <button className="btn-secondary" onClick={() => setLimitsOpen(true)}><Settings2 className="w-4 h-4" />{ru ? 'Пределы задержки' : 'Gijä galma çäkleri'}</button>
         )}
+        <span className="kt-last-updated" id="kitchen-control-last-updated" aria-live="polite" data-tick={tick}>
+          {lastUpdatedAt ? timeAgoLabel(lastUpdatedAt, ru) : ''}
+        </span>
         <button className="btn-secondary" onClick={() => void refresh()}><RefreshCw className="w-4 h-4" />{ru ? 'Обновить' : 'Täzele'}</button>
       </Toolbar>
 
-      {error && <Notice kind="error">{error}</Notice>}
+      {/* Stage 44: a failed refresh keeps the last real numbers on screen and dates them. */}
+      {error && load && (
+        <div className="kt-stale" id="kitchen-control-stale">
+          {ru ? 'Не удалось обновить данные кухни.' : 'Aşhananyň maglumatlaryny täzeläp bolmady.'}{' '}
+          {lastUpdatedAt ? (ru ? `Показаны данные от ${agoFragment(lastUpdatedAt, true)}.` : `${agoFragment(lastUpdatedAt, false)} maglumatlar görkezilýär.`) : ''}
+        </div>
+      )}
+      {error && !load && <Notice kind="error">{error}</Notice>}
       {notice && <Notice kind="success">{notice}</Notice>}
 
       {loading && !load ? <LoadingState /> : !load ? null : (

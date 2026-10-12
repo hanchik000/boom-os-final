@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Save, Printer } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
-import { Notice, Toolbar } from './ui';
+import { EmptyState, Notice, Toolbar } from './ui';
 import { errorText } from '../humanErrors';
 
 // Receipt design settings for the CUSTOMER_RECEIPT print profile. Stored on the existing
@@ -27,7 +28,9 @@ export const ReceiptSettingsView: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  // Stage 44: receipt settings belong to a branch. An account without one now works on the branch
+  // chosen in the header (see useBranchScope) and can switch branches here.
+  const { branchId, setBranchId, branches } = useBranchScope();
   const canEdit = hasPermission('print.manage');
 
   const [profile, setProfile] = useState<any | null>(null);
@@ -76,7 +79,16 @@ export const ReceiptSettingsView: React.FC = () => {
   if (!canEdit) {
     return <div className="p-6 text-slate-400">{ru ? 'У вас нет доступа к настройкам чеков.' : 'Çek sazlamalaryna girişiňiz ýok.'}</div>;
   }
-  if (!branchId) return <div className="p-6 text-slate-400">{ru ? 'У вас нет назначенного филиала. Настройки чека задаются для конкретного филиала.' : 'Size şahamça bellenmedi. Çek sazlamalary anyk şahamça üçin kesgitlenýär.'}</div>;
+  if (!branchId) return (
+    <div className="p-6">
+      <EmptyState
+        title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+        hint={ru
+          ? 'Настройки чека задаются для конкретного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+          : 'Çek sazlamalary anyk şahamça üçin kesgitlenýär. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+      />
+    </div>
+  );
   if (loading) return <div className="p-6 text-slate-500">{ru ? 'Загрузка…' : 'Ýüklenýär…'}</div>;
 
   const Toggle = ({ k, label }: { k: string; label: string }) => (
@@ -90,7 +102,16 @@ export const ReceiptSettingsView: React.FC = () => {
     <div className="p-6 max-w-5xl space-y-6">
       {/* Stage 41: title from the shell header; the branch this applies to is stated next to the
           save action, where it matters, instead of in a second page title. */}
-      <Toolbar left={<span className="text-xs text-slate-400">{ru ? `Настройки филиала: ${user?.branch_name || branchId}` : `Şahamça sazlamalary: ${user?.branch_name || branchId}`}</span>}>
+      <Toolbar left={branches.length > 1 ? (
+        <select
+          className="field w-56"
+          aria-label={ru ? 'Филиал' : 'Şahamça'}
+          value={branchId}
+          onChange={e => setBranchId(e.target.value)}
+        >
+          {branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}
+        </select>
+      ) : <span className="text-xs text-slate-400">{ru ? `Настройки филиала: ${user?.branch_name || branchId}` : `Şahamça sazlamalary: ${user?.branch_name || branchId}`}</span>}>
         <button className="btn" disabled={saving} onClick={() => void save()}>
           <Save className="w-4 h-4" /> {saving ? (ru ? 'Сохранение…' : 'Ýatda saklanýar…') : saved ? (ru ? 'Сохранено ✓' : 'Ýatda saklandy ✓') : (ru ? 'Сохранить' : 'Ýatda saklamak')}
         </button>

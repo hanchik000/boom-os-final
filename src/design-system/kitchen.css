@@ -165,3 +165,15 @@
   .kt-btn { min-height: 56px; font-size: 16px; }
   .kt-station-tab { min-height: 64px; }
 }
+
+/* Stage 44: branch choice for someone who oversees more than one kitchen. Reuses the station tab
+   so the bar keeps one shape. */
+.kt-branch-select{background:transparent;border:0;color:inherit;font:inherit;font-weight:800;max-width:170px;padding:0}
+.kt-branch-select:focus-visible{outline:2px solid var(--boom-gold);outline-offset:3px;border-radius:6px}
+.kt-branch-select option{background:#0f172a;color:#e2e8f0}
+
+/* Stage 44: the board is old but still the truth -- loud enough to notice from a step back, not
+   so loud that it hides the queue underneath. */
+.kt-stale{margin:0 0 12px;padding:12px 16px;border-radius:12px;border:1px solid rgba(245,158,11,.4);
+  background:rgba(245,158,11,.12);color:#fcd34d;font-size:15px;font-weight:750}
+.kt-last-updated{font-size:12px;font-weight:700;color:var(--boom-text-muted);white-space:nowrap}

@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Loader2, Wallet, Users, BriefcaseBusiness, Receipt, X } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
-import { LoadingState } from './ui';
+import { EmptyState, LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Credit / Receivables reports -- read-only rollups over the real credit_accounts /
@@ -25,7 +26,7 @@ export const CreditReportsView: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  const { branchId, setBranchId, branches } = useBranchScope();
 
   const [tab, setTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(false);
@@ -95,9 +96,36 @@ export const CreditReportsView: React.FC = () => {
     { id: 'OVER_LIMIT', label: ru ? 'Сверх лимита' : 'Çäkden aşa' },
   ];
 
+  // Stage 44: without a branch this screen rendered an empty shell and explained nothing. The
+  // shared rule chooses the branch (see useBranchScope); when there is genuinely none to show, the
+  // screen says so and says where to choose one.
+  if (!branchId) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Долги и возвраты считаются по кассам и гостям конкретного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Bergiler we gaýtarmalar anyk şahamçanyň kassalary we myhmanlary boýunça hasaplanýar. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex gap-2">
+        {branches.length > 1 && (
+          <select
+            id="credit-branch-pick"
+            className="field w-56 text-xs"
+            aria-label={ru ? 'Филиал' : 'Şahamça'}
+            value={branchId}
+            onChange={e => setBranchId(e.target.value)}
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}
+          </select>
+        )}
         {tabs.map(tb => {
           const Icon = tb.icon;
           return (
@@ -140,7 +168,7 @@ export const CreditReportsView: React.FC = () => {
       )}
 
       {!loading && (tab === 'customers' || tab === 'staff') && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -182,7 +210,7 @@ export const CreditReportsView: React.FC = () => {
       )}
 
       {!loading && tab === 'cashiers' && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>

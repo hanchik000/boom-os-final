@@ -399,7 +399,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
                   )}
 
                   {/* Branches Table */}
-                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
+                  <div className="rounded-xl border border-slate-800 overflow-x-auto bg-slate-950/40">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>
@@ -456,7 +456,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
               {/* TAB 3: EMPLOYEES */}
               {activeTab === 'employees' && (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
+                  <div className="rounded-xl border border-slate-800 overflow-x-auto bg-slate-950/40">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>
@@ -609,7 +609,7 @@ export const FranchiseDetailModal: React.FC<FranchiseDetailModalProps> = ({
               {/* TAB 8: ACTIVITY LOG */}
               {activeTab === 'activity' && (
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-950/40">
+                  <div className="rounded-xl border border-slate-800 overflow-x-auto bg-slate-950/40">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                         <tr>

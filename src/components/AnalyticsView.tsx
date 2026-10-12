@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, BarChart3, LayoutGrid, Clock, Grid2x2, X } from 'lucide-react';
 import { api } from '../api';
-import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
-import { LoadingState } from './ui';
+import { EmptyState, LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Stage 34.11 -- Food & Sales analytics for managers.
@@ -20,10 +20,9 @@ import { LoadingState } from './ui';
 type Tab = 'sales' | 'dishes' | 'categories' | 'time' | 'matrix';
 
 export const AnalyticsView: React.FC = () => {
-  const { user } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  const { branchId, setBranchId, branches } = useBranchScope();
 
   const [tab, setTab] = useState<Tab>('sales');
   const [loading, setLoading] = useState(false);
@@ -84,9 +83,36 @@ export const AnalyticsView: React.FC = () => {
     ? ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][n]
     : ['', 'Du', 'Si', 'Ça', 'Pe', 'An', 'Şe', 'Ýe'][n]) || String(n);
 
+  // Stage 44: without a branch this screen rendered an empty shell and explained nothing. The
+  // shared rule chooses the branch (see useBranchScope); when there is genuinely none to show, the
+  // screen says so and says where to choose one.
+  if (!branchId) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Аналитика считается по заказам конкретного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Analitika anyk şahamçanyň sargytlary boýunça hasaplanýar. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex flex-wrap gap-2">
+        {branches.length > 1 && (
+          <select
+            id="analytics-branch-pick"
+            className="field w-56 text-xs"
+            aria-label={ru ? 'Филиал' : 'Şahamça'}
+            value={branchId}
+            onChange={e => setBranchId(e.target.value)}
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}
+          </select>
+        )}
         {tabs.map(tb => {
           const Icon = tb.icon;
           return (
@@ -158,7 +184,7 @@ export const AnalyticsView: React.FC = () => {
       )}
 
       {!loading && tab === 'dishes' && dishes && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -196,7 +222,7 @@ export const AnalyticsView: React.FC = () => {
       )}
 
       {!loading && tab === 'categories' && categories && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -262,7 +288,7 @@ export const AnalyticsView: React.FC = () => {
               ? `Каждое блюдо показано относительно медианы по количеству (${matrix.medians.units_sold}) и по марже (${matrix.medians.margin_percent}%). Оценку делает управляющий — система не называет блюда лучшими или худшими.`
               : `Her nahar sany (${matrix.medians.units_sold}) we marža (${matrix.medians.margin_percent}%) mediany bilen deňeşdirilýär. Baha bermek dolandyryjynyňky — ulgam nahary iň gowy ýa iň erbet diýip atlandyrmaýar.`}
           </div>
-          <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+          <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-800/60 text-slate-400">
                 <tr>

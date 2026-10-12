@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, ChevronRight, Plus, X, Boxes, TrendingUp, ClipboardList, Scale } from 'lucide-react';
 import { api } from '../api';
-import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
-import { LoadingState } from './ui';
+import { EmptyState, LoadingState } from './ui';
 
 // ---------------------------------------------------------------------------------------------
 // Food Cost -- MENU -> RECIPE -> INGREDIENTS -> INVENTORY economic chain, read from the existing
@@ -17,10 +17,9 @@ function qtyFmt(v: any) { const n = Number(v ?? 0); return Number.isFinite(n) ? 
 type Tab = 'menu' | 'ingredients' | 'profitability' | 'counts';
 
 export const FoodCostView: React.FC = () => {
-  const { user } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  const { branchId, setBranchId, branches } = useBranchScope();
 
   const [tab, setTab] = useState<Tab>('menu');
   const [loading, setLoading] = useState(false);
@@ -110,9 +109,36 @@ export const FoodCostView: React.FC = () => {
 
   const foodCostColor = (pct: string | null) => { if (pct === null) return 'text-slate-500'; const n = Number(pct); return n > 40 ? 'text-red-400' : n > 30 ? 'text-amber-400' : 'text-emerald-400'; };
 
+  // Stage 44: without a branch this screen rendered an empty shell and explained nothing. The
+  // shared rule chooses the branch (see useBranchScope); when there is genuinely none to show, the
+  // screen says so and says where to choose one.
+  if (!branchId) {
+    return (
+      <div className="p-6">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Себестоимость и food cost считаются по складу и рецептам конкретного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Öz bahasy we food cost anyk şahamçanyň ammary we reseptleri boýunça hasaplanýar. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex gap-2">
+        {branches.length > 1 && (
+          <select
+            id="foodcost-branch-pick"
+            className="field w-56 text-xs"
+            aria-label={ru ? 'Филиал' : 'Şahamça'}
+            value={branchId}
+            onChange={e => setBranchId(e.target.value)}
+          >
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name} · {b.code}</option>)}
+          </select>
+        )}
         {tabs.map(tb => {
           const Icon = tb.icon;
           return (
@@ -128,7 +154,7 @@ export const FoodCostView: React.FC = () => {
 
       {/* ---- MENU ITEMS (food cost report) ---- */}
       {!loading && tab === 'menu' && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -235,7 +261,7 @@ export const FoodCostView: React.FC = () => {
 
       {/* ---- INGREDIENTS ---- */}
       {!loading && tab === 'ingredients' && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -266,7 +292,7 @@ export const FoodCostView: React.FC = () => {
 
       {/* ---- PROFITABILITY ---- */}
       {!loading && tab === 'profitability' && profitability && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>
@@ -311,7 +337,7 @@ export const FoodCostView: React.FC = () => {
             {countError && <div className="text-red-400 text-xs">{countError}</div>}
             <button className="btn btn-sm" disabled={countBusy} onClick={() => void submitCount()}>{countBusy ? '…' : (ru ? 'Зафиксировать' : 'Belläp goý')}</button>
           </div>
-          <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+          <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-800/60 text-slate-400">
                 <tr>

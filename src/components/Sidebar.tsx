@@ -48,9 +48,12 @@ interface SidebarProps {
   onSelectTab: (tab: NavTab) => void;
   onOpenTestModal: () => void;
   acceptanceTestsEnabled?: boolean;
+  /** Stage 44: on a phone the sidebar is a drawer; these say whether it is open and how to close it. */
+  drawerOpen?: boolean;
+  onCloseDrawer?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpenTestModal, acceptanceTestsEnabled = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpenTestModal, acceptanceTestsEnabled = false, drawerOpen = false, onCloseDrawer }) => {
   const { user, logout, hasPermission } = useAuth();
   const { t } = useLanguage();
   const { branding } = useBranding();
@@ -169,7 +172,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
   ];
 
   return (
-    <aside id="boom-sidebar" className="w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col justify-between select-none">
+    <>
+    {/* Stage 44: the backdrop exists only while the drawer is open on a phone, and tapping it closes
+        the drawer. At tablet width and above it is never rendered at all. */}
+    {drawerOpen && (
+      <div id="boom-nav-backdrop" className="fixed inset-0 z-40 bg-slate-950/70 md:hidden" role="presentation"
+        onClick={() => onCloseDrawer?.()} />
+    )}
+    <aside id="boom-sidebar" data-drawer-open={drawerOpen ? 'true' : 'false'}
+      className={`w-64 flex-shrink-0 bg-slate-900 border-r border-slate-800 flex flex-col justify-between select-none
+        max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-50 max-md:w-[min(17rem,85vw)] max-md:overflow-y-auto
+        max-md:transition-transform ${drawerOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'}`}>
       {/* Brand Header -- Stage 36: rendered from the ONE branding source of truth
           (system_settings BRANDING_*), never a hardcoded literal. */}
       <div>
@@ -364,5 +377,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
         )}
       </div>
     </aside>
+    </>
   );
 };

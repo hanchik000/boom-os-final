@@ -6,6 +6,7 @@ import {
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { agoFragment, timeAgoLabel } from '../freshness';
 import { NavTab } from './Sidebar';
 
 // ---------------------------------------------------------------------------------------------
@@ -35,24 +36,8 @@ function computeRange(preset: Preset, customStart: string, customEnd: string): {
 // are entirely unchanged.
 const REFRESH_MS = 30000;
 
-// Stage 35.9 -- "N назад" / "N ago". A tiny, local, presentation-only helper -- it formats a
-// client-side timestamp of the last SUCCESSFUL fetch, never a server value, and never feeds back
-// into any request or calculation. `agoFragment` is the bare relative-time text (reused by both
-// the header's "Обновлено N назад" and the stale banner's "данные от N"); `timeAgoLabel` adds the
-// "Обновлено"/full-sentence wrapper for the header indicator.
-function agoFragment(ms: number, ru: boolean): string {
-  const seconds = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (seconds < 5) return ru ? 'только что' : 'häzir';
-  if (seconds < 60) return ru ? `${seconds} сек назад` : `${seconds} sek öň`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return ru ? `${minutes} мин назад` : `${minutes} min öň`;
-  const hours = Math.floor(minutes / 60);
-  return ru ? `${hours} ч назад` : `${hours} sag öň`;
-}
-function timeAgoLabel(ms: number, ru: boolean): string {
-  const frag = agoFragment(ms, ru);
-  return ru ? `Обновлено ${frag}` : `${frag} täzelendi`;
-}
+// Stage 44: the "N назад" wording moved to src/freshness.ts, because the kitchen, the pass and
+// the kitchen control screens now show the same indicator. Same behaviour, one source.
 
 export const ManagerCommandCenterView: React.FC<Props> = ({ onNavigate }) => {
   const { user } = useAuth();

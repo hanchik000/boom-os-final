@@ -146,7 +146,7 @@ export const BoomcardJournalView: React.FC = () => {
       {error && <div className="text-red-400 text-sm">{error}</div>}
 
       {!loading && (
-        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden">
+        <div className="rounded-xl bg-slate-900 border border-slate-800 overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-800/60 text-slate-400">
               <tr>

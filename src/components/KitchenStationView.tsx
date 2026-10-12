@@ -2,9 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ChefHat, CheckCheck, CircleDot, Clock, HandHelping, Play, RefreshCw, Users2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useLanguage } from '../context/LanguageContext';
 import { errorText } from '../humanErrors';
-import { ConfirmDialog, LoadingState, Modal, Notice } from './ui';
+import { agoFragment, timeAgoLabel } from '../freshness';
+import { ConfirmDialog, EmptyState, LoadingState, Modal, Notice } from './ui';
 
 // ----------------------------------------------------------------------------------------------
 // Stage 42 -- the station screen.
@@ -36,7 +38,9 @@ export const KitchenStationView: React.FC = () => {
   const { user, hasPermission } = useAuth();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  // Stage 44: a cook has their own branch; an owner has none, and for them this screen used to be
+  // a dead end. The shared rule in useBranchScope decides which kitchen is shown.
+  const { branchId, setBranchId, branches } = useBranchScope();
   const [stations, setStations] = useState<any[]>([]);
   const [stationId, setStationId] = useState<string>('');
   const [queue, setQueue] = useState<any | null>(null);
@@ -50,6 +54,12 @@ export const KitchenStationView: React.FC = () => {
   const [helpReason, setHelpReason] = useState('STAFF');
   const [helpComment, setHelpComment] = useState('');
   const [confirmReady, setConfirmReady] = useState<any | null>(null);
+  // Stage 44: a kitchen screen stays open all shift, so the cook has to be able to tell живой
+  // board from a frozen one. `lastUpdatedAt` is written only after a successful read, the ticker
+  // re-renders the label, and a failed refresh leaves the board standing with a stale notice over
+  // it instead of blanking it. Same convention as the manager command centre (Stage 35.9).
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
 
   const loadStations = useCallback(async () => {
     if (!branchId) { setLoading(false); return; }
@@ -65,8 +75,10 @@ export const KitchenStationView: React.FC = () => {
     if (!branchId || !stationId) return;
     if (!silent) setLoading(true);
     try {
-      setQueue(await api.getKitchenQueue(branchId, stationId));
+      const r = await api.getKitchenQueue(branchId, stationId);
+      setQueue(r);
       setError('');
+      setLastUpdatedAt(Date.now());
     } catch (e: any) { setError(errorText(e)); }
     finally { setLoading(false); }
   }, [branchId, stationId]);
@@ -75,10 +87,31 @@ export const KitchenStationView: React.FC = () => {
   useEffect(() => { void loadQueue(); }, [loadQueue]);
   // The kitchen screen is left open all shift, so it refreshes itself. Reading the queue is also
   // what recomputes the forecast server-side; the alert dedupe key makes that safe to repeat.
+  // Stage 44: polling pauses while the tab is hidden and reads once immediately on return, so a
+  // screen that was in the background never shows yesterday's queue as if it were current.
   useEffect(() => {
-    const t = window.setInterval(() => { void loadQueue(true); }, REFRESH_MS);
-    return () => window.clearInterval(t);
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => { void loadQueue(true); }, REFRESH_MS); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else { void loadQueue(true); start(); }
+    };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [loadQueue]);
+
+  // Stage 44: the "N назад" ticker -- display only, paused while the tab is hidden, never fetches.
+  useEffect(() => {
+    let timer: number | null = null;
+    const start = () => { if (timer === null) timer = window.setInterval(() => setTick(x => x + 1), 1000); };
+    const stop = () => { if (timer !== null) { window.clearInterval(timer); timer = null; } };
+    const onVisibility = () => { if (document.hidden) stop(); else start(); };
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
 
   const act = async (fn: () => Promise<any>, message?: string) => {
     if (busy) return;
@@ -104,7 +137,16 @@ export const KitchenStationView: React.FC = () => {
     return <div className="p-8 text-slate-400">{ru ? 'У вас нет доступа к экрану кухни.' : 'Aşhana ekranyna elýeterliligiňiz ýok.'}</div>;
   }
   if (!branchId) {
-    return <div className="p-8 text-slate-400">{ru ? 'Экран кухни работает в филиале — у вашей учётной записи он не выбран.' : 'Aşhana ekrany şahamçada işleýär — hasabyňyzda şahamça saýlanmadyk.'}</div>;
+    return (
+      <div className="p-8">
+        <EmptyState
+          title={ru ? 'Филиал не выбран.' : 'Şahamça saýlanmadyk.'}
+          hint={ru
+            ? 'Экран кухни показывает заказы одного филиала. Выберите филиал в шапке страницы или попросите администратора привязать вашу учётную запись к филиалу.'
+            : 'Aşhana ekrany bir şahamçanyň sargytlaryny görkezýär. Sahypanyň ýokarsynda şahamçany saýlaň ýa-da hasabyňyzy şahamça baglamagy administratordan soraň.'}
+        />
+      </div>
+    );
   }
 
   const card = (task: any) => {
@@ -183,6 +225,23 @@ export const KitchenStationView: React.FC = () => {
   return (
     <div className="kitchen-screen boom-reduced-motion-safe" id="kitchen-station-view">
       <div className="kt-stations">
+        {/* Stage 44: only shown to someone who may look at more than one branch -- a cook sees
+            their own kitchen and nothing to choose. */}
+        {branches.length > 1 && (
+          <label className="kt-station-tab" id="kt-branch-pick">
+            <span className="kt-station-name">
+              <select
+                className="kt-branch-select"
+                aria-label={ru ? 'Филиал' : 'Şahamça'}
+                value={branchId}
+                onChange={e => { setBranchId(e.target.value); setStationId(''); }}
+              >
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </span>
+            <span className="kt-station-meta">{ru ? 'филиал' : 'şahamça'}</span>
+          </label>
+        )}
         {stations.map(s => (
           <button
             key={s.id}
@@ -202,9 +261,13 @@ export const KitchenStationView: React.FC = () => {
           <span className="kt-station-name">{ru ? 'Требует назначения' : 'Bellemeli'}</span>
           <span className="kt-station-meta">{ru ? 'без цеха' : 'bölümsiz'}</span>
         </button>
+        {/* Stage 44: the refresh control also says how old the board is, so nobody cooks from a
+            frozen screen. The label reflects the last SUCCESSFUL read only. */}
         <button className="kt-station-tab" onClick={() => void loadQueue()} aria-label={ru ? 'Обновить' : 'Täzele'}>
           <span className="kt-station-name"><RefreshCw className="w-5 h-5" /></span>
-          <span className="kt-station-meta">{ru ? 'обновить' : 'täzele'}</span>
+          <span className="kt-station-meta" id="kt-last-updated" aria-live="polite" data-tick={tick}>
+            {lastUpdatedAt ? timeAgoLabel(lastUpdatedAt, ru) : (ru ? 'обновить' : 'täzele')}
+          </span>
         </button>
         {hasPermission('kitchen.help.request') && (
           <button id="kt-help" className="kt-station-tab" onClick={() => setHelpOpen(true)}>
@@ -214,7 +277,16 @@ export const KitchenStationView: React.FC = () => {
         )}
       </div>
 
-      {error && <Notice kind="error">{error}</Notice>}
+      {/* Stage 44: a failed refresh with a board already on screen is a stale notice, not an
+          empty screen -- the cook keeps the last real queue and is told how old it is. A failure
+          with nothing to show yet stays the hard error. */}
+      {error && queue && (
+        <div className="kt-stale" id="kt-stale">
+          {ru ? 'Не удалось обновить очередь.' : 'Nobaty täzeläp bolmady.'}{' '}
+          {lastUpdatedAt ? (ru ? `Показаны данные от ${agoFragment(lastUpdatedAt, true)}.` : `${agoFragment(lastUpdatedAt, false)} maglumatlar görkezilýär.`) : ''}
+        </div>
+      )}
+      {error && !queue && <Notice kind="error">{error}</Notice>}
       {notice && <Notice kind="success">{notice}</Notice>}
 
       {load && (

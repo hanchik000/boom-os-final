@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Shield, Globe, Landmark } from 'lucide-react';
+import { Building2, Shield, Globe, Landmark, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api';
@@ -9,9 +9,11 @@ interface HeaderProps {
   title: string;
   subtitle?: string;
   onOpenLoginModal: () => void;
+  /** Stage 44: opens the navigation drawer. Only shown at phone width, where the sidebar is hidden. */
+  onOpenNav?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
+export const Header: React.FC<HeaderProps> = ({ title, subtitle, onOpenNav }) => {
   const { 
     user, 
     selectedBranchFilter, 
@@ -51,15 +53,27 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
 
 
   return (
-    <header id="boom-header" className="h-16 px-6 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between z-10">
-      <div>
-        <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+    <header id="boom-header" className="min-h-16 px-4 sm:px-6 py-2 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap z-10">
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Stage 44: the only way to the navigation on a phone, where the sidebar is a drawer. */}
+        <button
+          id="btn-open-nav"
+          type="button"
+          className="btn-secondary btn-sm boom-nav-trigger"
+          aria-label={t('nav.menuButton')}
+          onClick={() => onOpenNav?.()}
+        >
+          <Menu className="w-4 h-4" />
+        </button>
+        <div className="min-w-0">
+          <h1 className="text-lg font-bold text-white tracking-tight flex items-center gap-2 truncate">
           {title}
-        </h1>
-        {subtitle && <p className="text-xs text-slate-400 font-medium">{subtitle}</p>}
+          </h1>
+          {subtitle && <p className="text-xs text-slate-400 font-medium truncate max-sm:hidden">{subtitle}</p>}
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
         {/* Language Switcher RU | TK */}
         <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-xs font-bold">
           <button
@@ -93,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
         {user && franchises.length > 0 && (
           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
             <Landmark className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-slate-400 font-medium">{t('header.franchiseFilter')}:</span>
+            <span className="text-slate-400 font-medium max-sm:hidden">{t('header.franchiseFilter')}:</span>
             <select
               id="franchise-scope-select"
               value={selectedFranchiseFilter}
@@ -122,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
         {user && visibleBranches.length > 0 && (
           <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs">
             <Building2 className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-slate-400 font-medium">{t('header.branchFilter')}:</span>
+            <span className="text-slate-400 font-medium max-sm:hidden">{t('header.branchFilter')}:</span>
             <select
               id="branch-scope-select"
               value={selectedBranchFilter}
@@ -142,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle }) => {
         )}
 
         {/* System Health Heartbeat */}
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-medium">
+        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-medium">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
           <span className="font-mono text-[11px]">KERNEL ACTIVE</span>
         </div>

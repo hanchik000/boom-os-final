@@ -58,6 +58,19 @@ function MainLayout() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const { branding } = useBranding();
 
+  // Stage 44: ADMIN had no phone layout at all. The 256px sidebar never collapsed, so on
+  // a 390px screen the working area was 134px wide and every screen's content was squeezed out of
+  // view. Below the tablet breakpoint the sidebar is now a drawer: closed by default, opened from
+  // the header, and closed again by choosing a destination, by Escape or by tapping beside it.
+  // Nothing changes at tablet width and above.
+  const [navOpen, setNavOpen] = useState(false);
+  React.useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -132,18 +145,22 @@ function MainLayout() {
 
   const { title, subtitle } = getTabTitle(currentTab);
 
+  // Stage 44: ADMIN on a phone. Until now the sidebar was 256px of fixed width at every size, so on
+ 
   return (
     // Stage 40 defect fix: the admin shell never carried `boom-reduced-motion-safe`, so its
     // Tailwind transitions kept animating for someone who asked the OS for reduced motion -- the
     // customer menu honoured the setting and the working interface did not. Reuses the existing
     // convention from tokens.css rather than inventing a second one.
     <div className="boom-reduced-motion-safe min-h-screen flex bg-slate-950 text-slate-100 font-sans antialiased selection:bg-amber-500 selection:text-slate-950">
-      {/* Sidebar */}
+      {/* Sidebar -- a column on a desktop, a drawer on a phone. */}
       <Sidebar
         currentTab={currentTab}
-        onSelectTab={(tab) => setCurrentTab(tab)}
+        onSelectTab={(tab) => { setCurrentTab(tab); setNavOpen(false); }}
         onOpenTestModal={() => setIsTestModalOpen(true)}
         acceptanceTestsEnabled={acceptanceTestsEnabled}
+        drawerOpen={navOpen}
+        onCloseDrawer={() => setNavOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -153,6 +170,7 @@ function MainLayout() {
           title={title}
           subtitle={subtitle}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          onOpenNav={() => setNavOpen(true)}
         />
 
         {/* Scrollable View Container */}
