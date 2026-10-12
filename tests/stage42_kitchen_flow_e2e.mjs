@@ -126,10 +126,12 @@ ok('D2. the station reports its load in remaining minutes, not in a count of ord
   JSON.stringify(grillAfter.load));
 
 // ------------------------------------------------------------------ E. delays and notifications
-// Lateness is measured against the elapsed share of the expected time, so the limits are set very
-// low and the suite waits a moment: the delay is then real elapsed time, not a faked timestamp.
-await must('/api/kitchen/thresholds', { method: 'PUT', token: manager.token, body: { branch_id: B, warning_ratio: 0.001, late_ratio: 0.002, critical_ratio: 0.003, escalate_minutes: 1 } }, 'thresholds');
-await new Promise(r => setTimeout(r, 4000));
+// Lateness is measured against the elapsed share of the expected time, so the limits are set to the
+// SMALLEST the server will store (a ratio is DECIMAL(5,2): anything smaller would be saved as 0.00,
+// meaning "late from the first second", which Stage 43 refuses) and the suite then waits that share
+// of the grill's 16 minutes out. The delay is real elapsed time, never a faked timestamp.
+await must('/api/kitchen/thresholds', { method: 'PUT', token: manager.token, body: { branch_id: B, warning_ratio: 0.1, late_ratio: 0.1, critical_ratio: 0.1, escalate_minutes: 5 } }, 'thresholds');
+await new Promise(r => setTimeout(r, 100_000));
 const delayed = (await must(`/api/kitchen/queue?branch_id=${B}&station_id=${byCode.GRILL.id}`, { token: cook.token }, 'grill queue delayed'));
 const delayedTask = delayed.tasks.find(t => t.id === grillTask.id);
 ok('E1. an item past its limit is marked late on the station screen', ['LATE', 'CRITICAL'].includes(delayedTask.delay_state), delayedTask.delay_state);
