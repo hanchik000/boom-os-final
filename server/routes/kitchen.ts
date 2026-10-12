@@ -11,8 +11,8 @@ import { query, queryOne, transaction } from '../db';
 import { authenticateToken, requirePermission, insertAuditLog } from '../auth';
 import { getWaiterSession } from './waiters';
 import {
-  COMMENT_KINDS, HELP_REASONS, TASK_TRANSITIONS, ensureBranchStations, evaluateDelays,
-  recalculateForOrder, recalculateStationForecast, routeOrderTasks, stationLoad,
+  COMMENT_KINDS, HELP_REASONS, TASK_TRANSITIONS, applyServeTogether, ensureBranchStations, evaluateDelays,
+  recalculateCoordinatedOrder, recalculateForOrder, recalculateStationForecast, routeOrderTasks, stationLoad,
   syncOrderStatusFromTasks, thresholdsFor,
 } from '../kitchen';
 
@@ -415,6 +415,13 @@ router.post('/comments', async (req: Request, res: Response, next) => {
         `INSERT INTO kitchen_comments (id,branch_id,order_id,order_item_id,kind,text,author_user_id,author_role,source,after_start,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
         [id, order.branch_id, order.id, orderItemId, kind, text, actor.userId, actor.role, actor.source, afterStart, ts]);
+      // Stage 43: "подать вместе" is the one note that changes HOW the kitchen plans, so it is
+      // applied to the order's tasks and the stations are re-paced to the slowest of them. It still
+      // changes nothing about what was ordered or what it costs.
+      if (kind === 'SERVE_TOGETHER') {
+        await applyServeTogether(tx, order.id);
+        await recalculateCoordinatedOrder(tx, order.id);
+      }
       if (afterStart) {
         const { raiseAlert } = await import('../kitchen');
         await raiseAlert(tx, {
@@ -476,10 +483,12 @@ router.get('/expo', authenticateToken, requirePermission('kitchen.expo.view'), a
       orders.set(t.order_id, {
         order_id: t.order_id, order_number: t.order_number, order_type: t.order_type, order_status: t.order_status,
         table_code: t.table_code, waiter_name: t.waiter_name, items: [], all_ready: true, forecast_ready_at: null as string | null,
+        serve_together: false, coordinated_ready_at: null as string | null,
       });
     }
     const o = orders.get(t.order_id)!;
     o.items.push(t);
+    if (t.serve_together) { o.serve_together = true; o.coordinated_ready_at = t.coordinated_ready_at || o.coordinated_ready_at; }
     if (t.status !== 'READY' && t.status !== 'SERVED') o.all_ready = false;
     if (t.forecast_ready_at && (!o.forecast_ready_at || t.forecast_ready_at > o.forecast_ready_at)) o.forecast_ready_at = t.forecast_ready_at;
   }
@@ -688,36 +697,56 @@ router.post('/alerts/:id/ack', authenticateToken, requirePermission('kitchen.ale
 /** The delay thresholds of a branch, and of one station when it needs its own. */
 router.get('/thresholds', authenticateToken, requirePermission('kds.view'), async (req, res) => {
   const branchId = scopeBranch(req, res); if (!branchId) return;
-  const rows = await query<any>(`SELECT t.*, s.code AS station_code FROM kitchen_thresholds t LEFT JOIN kitchen_stations s ON s.id=t.station_id WHERE t.branch_id=?`, [branchId]);
+  const rows = await query<any>(
+    `SELECT t.*, s.code AS station_code, mc.name_ru AS category_name_ru, mc.name_tk AS category_name_tk
+       FROM kitchen_thresholds t
+       LEFT JOIN kitchen_stations s ON s.id=t.station_id
+       LEFT JOIN menu_categories mc ON mc.id=t.category_id
+      WHERE t.branch_id=?`, [branchId]);
   res.json({ branch_id: branchId, thresholds: rows, effective: await thresholdsFor(branchId, null) });
 });
 
 router.put('/thresholds', authenticateToken, requirePermission('kitchen.thresholds.manage'), async (req, res) => {
   const branchId = scopeBranch(req, res); if (!branchId) return;
   const stationId = req.body?.station_id ? String(req.body.station_id) : null;
+  // Stage 43: a limit may now be set for a whole dish category -- "a steak may take three times its
+  // norm, a drink may not" -- without editing every dish.
+  const categoryId = req.body?.category_id ? String(req.body.category_id) : null;
   const warning = num(req.body?.warning_ratio, 0.8), late = num(req.body?.late_ratio, 1), critical = num(req.body?.critical_ratio, 1.5);
   const escalate = Math.max(0, Math.min(120, Math.round(num(req.body?.escalate_minutes, 5))));
-  if (!(warning > 0 && warning <= late && late <= critical && critical <= 5)) {
+  // The ratios are stored as DECIMAL(5,2), so anything below 0.005 would be SAVED as 0.00 -- which
+  // silently means "late from the first second". The input is therefore held to what the column can
+  // actually keep: two decimals, and never small enough to round away.
+  const RATIO_MIN = 0.1, RATIO_MAX = 5;
+  const storable = (v: number) => Number.isFinite(v) && v >= RATIO_MIN && v <= RATIO_MAX && Math.abs(v * 100 - Math.round(v * 100)) < 1e-9;
+  if (![warning, late, critical].every(storable)) {
+    return bad(res, 'INVALID_THRESHOLDS', `Each limit is between ${RATIO_MIN} and ${RATIO_MAX} of the expected time, with at most two decimals.`, { warning, late, critical });
+  }
+  if (!(warning <= late && late <= critical)) {
     return bad(res, 'INVALID_THRESHOLDS', 'Warning must be at or below the delay limit, and that at or below the critical limit.', { warning, late, critical });
   }
   if (stationId) {
     const st = await queryOne<any>('SELECT id FROM kitchen_stations WHERE id=? AND branch_id=?', [stationId, branchId]);
     if (!st) return bad(res, 'STATION_NOT_IN_BRANCH', 'That station is not in this branch.');
   }
+  if (categoryId) {
+    const cat = await queryOne<any>('SELECT id,branch_id FROM menu_categories WHERE id=?', [categoryId]);
+    if (!cat || (cat.branch_id && cat.branch_id !== branchId)) return bad(res, 'CATEGORY_NOT_IN_BRANCH', 'That category is not in this branch.');
+  }
   const ts = nowIso();
   await transaction(async (tx) => {
     const existing = await tx.queryOne<any>(
-      `SELECT id FROM kitchen_thresholds WHERE branch_id=? AND ${stationId ? 'station_id=?' : 'station_id IS NULL'} AND category_id IS NULL`,
-      stationId ? [branchId, stationId] : [branchId]);
+      `SELECT id FROM kitchen_thresholds WHERE branch_id=? AND ${stationId ? 'station_id=?' : 'station_id IS NULL'} AND ${categoryId ? 'category_id=?' : 'category_id IS NULL'}`,
+      [branchId, ...(stationId ? [stationId] : []), ...(categoryId ? [categoryId] : [])]);
     if (existing) {
       await tx.execute(`UPDATE kitchen_thresholds SET warning_ratio=CAST(? AS numeric),late_ratio=CAST(? AS numeric),critical_ratio=CAST(? AS numeric),escalate_minutes=?,updated_by=?,updated_at=? WHERE id=?`,
         [String(warning), String(late), String(critical), escalate, req.user!.id, ts, existing.id]);
     } else {
       await tx.execute(`INSERT INTO kitchen_thresholds (id,branch_id,station_id,category_id,warning_ratio,late_ratio,critical_ratio,escalate_minutes,updated_by,created_at,updated_at)
-        VALUES (?,?,?,NULL,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),?,?,?,?)`,
-        [`kth_${crypto.randomUUID()}`, branchId, stationId, String(warning), String(late), String(critical), escalate, req.user!.id, ts, ts]);
+        VALUES (?,?,?,?,CAST(? AS numeric),CAST(? AS numeric),CAST(? AS numeric),?,?,?,?)`,
+        [`kth_${crypto.randomUUID()}`, branchId, stationId, categoryId, String(warning), String(late), String(critical), escalate, req.user!.id, ts, ts]);
     }
-    await insertAuditLog(tx.execute, { userId: req.user!.id, branchId, action: 'KITCHEN_THRESHOLDS_UPDATED', entityType: 'KITCHEN_THRESHOLD', entityId: stationId || branchId, newValues: { station_id: stationId, warning, late, critical, escalate }, req });
+    await insertAuditLog(tx.execute, { userId: req.user!.id, branchId, action: 'KITCHEN_THRESHOLDS_UPDATED', entityType: 'KITCHEN_THRESHOLD', entityId: categoryId || stationId || branchId, newValues: { station_id: stationId, category_id: categoryId, warning, late, critical, escalate }, req });
   });
   res.json({ success: true, thresholds: await query<any>('SELECT * FROM kitchen_thresholds WHERE branch_id=?', [branchId]) });
 });

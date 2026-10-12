@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CheckCheck, PackageCheck, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { CheckCheck, PackageCheck, RefreshCw, RotateCcw, TriangleAlert, Users2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -136,6 +136,15 @@ export const ExpoView: React.FC = () => {
                   </div>
                 ))}
 
+                {o.serve_together && (
+                  <div className="kt-note">
+                    <Users2 className="w-4 h-4 shrink-0" />
+                    <span>
+                      {ru ? 'Официант просил подать вместе' : 'Ofisiant bilelikde bermegi sorady'}
+                      {o.coordinated_ready_at && !o.all_ready && <b> — {ru ? 'ориентир' : 'gözükdiriji'} {hhmm(o.coordinated_ready_at)}</b>}
+                    </span>
+                  </div>
+                )}
                 <div className="kt-times">
                   {o.forecast_ready_at && !o.all_ready && <span><b>{ru ? 'Прогноз полной готовности' : 'Doly taýýarlyk çaklamasy'}:</b> {hhmm(o.forecast_ready_at)}</span>}
                   {handed && <span><b>{ru ? 'Передан' : 'Berildi'}:</b> {hhmm((o.handovers || [])[0]?.created_at)}</span>}

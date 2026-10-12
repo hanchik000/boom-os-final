@@ -33,6 +33,10 @@ export const KitchenControlView: React.FC = () => {
   const [resolution, setResolution] = useState('');
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [limits, setLimits] = useState({ warning_ratio: '0.8', late_ratio: '1', critical_ratio: '1.5', escalate_minutes: '5' });
+  // Stage 43: a limit can be set for the branch, for one station, or for a whole dish category.
+  const [limitScope, setLimitScope] = useState<{ kind: 'BRANCH' | 'STATION' | 'CATEGORY'; id: string }>({ kind: 'BRANCH', id: '' });
+  const [categories, setCategories] = useState<any[]>([]);
+  const [savedLimits, setSavedLimits] = useState<any[]>([]);
 
   useEffect(() => {
     if (!hasPermission('branches.view')) return;
@@ -48,6 +52,13 @@ export const KitchenControlView: React.FC = () => {
     try {
       const [l, a] = await Promise.all([api.getKitchenLoad(branchId), hasPermission('kitchen.alerts.view') ? api.getKitchenAlerts(branchId) : Promise.resolve(null)]);
       setLoad(l); setAlerts(a); setError('');
+      if (hasPermission('kitchen.thresholds.manage')) {
+        try {
+          const [cats, th] = await Promise.all([api.getMenuAdmin(branchId), api.getKitchenThresholds(branchId)]);
+          setCategories(cats.categories || []);
+          setSavedLimits(th.thresholds || []);
+        } catch { /* the load screen still works without the limits editor */ }
+      }
       if (l?.thresholds) {
         setLimits({
           warning_ratio: String(l.thresholds.warning_ratio), late_ratio: String(l.thresholds.late_ratio),
@@ -73,6 +84,7 @@ export const KitchenControlView: React.FC = () => {
   const alertTitle = (a: any) => {
     if (a.type === 'HELP_REQUEST') return ru ? 'Запрос помощи' : 'Kömek haýyşy';
     if (a.type === 'PROBLEM') return ru ? 'Проблема в цехе' : 'Bölümde mesele';
+    if (a.type === 'DELAY_ESCALATED') return ru ? 'Напоминание: заказ всё ещё не готов' : 'Ýatlatma: sargyt henizem taýýar däl';
     if (a.type === 'DELAY_CRITICAL') return ru ? 'Критическая задержка' : 'Kritiki gijä galma';
     if (a.type === 'DELAY_LATE') return ru ? 'Задержка' : 'Gijä galma';
     if (a.type === 'DELAY_WARNING') return ru ? 'Скоро задержка' : 'Ýakynda gijä galma';
@@ -259,16 +271,48 @@ export const KitchenControlView: React.FC = () => {
           <button className="btn-secondary" onClick={() => setLimitsOpen(false)}>{ru ? 'Отмена' : 'Goý bolsun'}</button>
           <button className="btn" disabled={busy}
             onClick={() => { setLimitsOpen(false); void act(() => api.setKitchenThresholds({
-              branch_id: branchId, warning_ratio: Number(limits.warning_ratio), late_ratio: Number(limits.late_ratio),
+              branch_id: branchId,
+              station_id: limitScope.kind === 'STATION' ? limitScope.id : null,
+              category_id: limitScope.kind === 'CATEGORY' ? limitScope.id : null,
+              warning_ratio: Number(limits.warning_ratio), late_ratio: Number(limits.late_ratio),
               critical_ratio: Number(limits.critical_ratio), escalate_minutes: Number(limits.escalate_minutes),
             }), ru ? 'Пределы сохранены.' : 'Çäkler saklandy.'); }}>
             {ru ? 'Сохранить' : 'Sakla'}
           </button>
         </>}
       >
+        <label className="block mb-3">
+          <span className="boom-label">{ru ? 'Для чего эти пределы' : 'Bu çäkler näme üçin'}</span>
+          <select className="field" value={`${limitScope.kind}:${limitScope.id}`}
+            onChange={e => { const [kind, id] = e.target.value.split(':'); setLimitScope({ kind: kind as any, id: id || '' }); }}>
+            <option value="BRANCH:">{ru ? 'Весь филиал (по умолчанию)' : 'Tutuş şahamça (deslapky)'}</option>
+            {(load?.stations || []).map((s2: any) => (
+              <option key={s2.station.id} value={`STATION:${s2.station.id}`}>
+                {ru ? `Цех: ${s2.station.name_ru}` : `Bölüm: ${s2.station.name_tk}`}
+              </option>
+            ))}
+            {categories.map((c: any) => (
+              <option key={c.id} value={`CATEGORY:${c.id}`}>
+                {ru ? `Категория: ${c.name_ru}` : `Kategoriýa: ${c.name_tk}`}
+              </option>
+            ))}
+          </select>
+          <span className="boom-help">
+            {ru
+              ? 'Самая точная настройка побеждает: цех+категория, затем категория, затем цех, затем филиал.'
+              : 'Iň takyk sazlama ýeňýär: bölüm+kategoriýa, soňra kategoriýa, soňra bölüm, soňra şahamça.'}
+          </span>
+        </label>
+        {Boolean(savedLimits.length) && (
+          <div className="kt-station-meta" style={{ marginBottom: 10 }}>
+            {ru ? 'Уже настроено' : 'Eýýäm düzülen'}: {savedLimits.map((t: any) =>
+              `${t.category_name_ru ? (ru ? t.category_name_ru : t.category_name_tk) : t.station_code || (ru ? 'филиал' : 'şahamça')} ×${Number(t.late_ratio)}`
+            ).join(' · ')}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           {([['warning_ratio', ru ? 'Предупреждение' : 'Duýduryş'], ['late_ratio', ru ? 'Задержка' : 'Gijä galma'],
-             ['critical_ratio', ru ? 'Критично' : 'Kritiki'], ['escalate_minutes', ru ? 'Эскалация, мин' : 'Eskalasiýa, min']] as const).map(([key, label]) => (
+             ['critical_ratio', ru ? 'Критично' : 'Kritiki'], ['escalate_minutes', ru ? 'Напоминать каждые, мин' : 'Her näçe minutda ýatlatmaly']] as const).map(([key, label]) => (
             <label key={key} className="block">
               <span className="boom-label">{label}</span>
               <input className="field" type="number" step="0.1" min="0" value={(limits as any)[key]}

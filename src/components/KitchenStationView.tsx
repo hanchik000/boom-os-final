@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ChefHat, CheckCheck, CircleDot, Clock, HandHelping, Play, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChefHat, CheckCheck, CircleDot, Clock, HandHelping, Play, RefreshCw, Users2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -130,6 +130,17 @@ export const KitchenStationView: React.FC = () => {
             </span>
           </div>
         ))}
+        {task.serve_together && (
+          <div className="kt-note">
+            <Users2 className="w-4 h-4 shrink-0" />
+            <span>
+              {ru ? 'Подать вместе со всем заказом' : 'Ähli sargyt bilen bilelikde beriň'}
+              {task.coordinated_ready_at && task.status !== 'READY' && (
+                <b> — {ru ? 'начинать в' : 'başlamaly'} {hhmm(task.forecast_start_at)}, {ru ? 'отдать в' : 'bermeli'} {hhmm(task.coordinated_ready_at)}</b>
+              )}
+            </span>
+          </div>
+        )}
         <div className="kt-times">
           <span><b>{ru ? 'Принят' : 'Kabul'}:</b> {hhmm(task.created_at)}</span>
           {task.status !== 'READY' && left !== null && (

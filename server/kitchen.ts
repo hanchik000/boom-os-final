@@ -141,6 +141,23 @@ export async function routeOrderTasks(tx: TxClient, order: { id: string; branch_
   return { created, unassigned };
 }
 
+/**
+ * Stage 43: mark an order's kitchen work as "must leave together".
+ *
+ * The declaration itself is the waiter's existing SERVE_TOGETHER note -- there is no second place
+ * to say it and nothing is added to the order's own row. This copies that fact onto the tasks so
+ * the forecast can pace the stations to each other instead of each one racing on its own.
+ */
+export async function applyServeTogether(tx: TxClient, orderId: string): Promise<boolean> {
+  const note = await tx.queryOne<any>(
+    `SELECT id FROM kitchen_comments WHERE order_id=? AND kind='SERVE_TOGETHER' LIMIT 1`, [orderId]);
+  if (!note) return false;
+  const r = await tx.execute(
+    `UPDATE kds_item_tasks SET serve_together=true, updated_at=? WHERE order_id=? AND serve_together=false`,
+    [nowIso(), orderId]);
+  return r.changes > 0;
+}
+
 // ---------------------------------------------------------------------------------- FORECASTING
 /**
  * How long this dish actually takes on this station, measured from finished work.
@@ -237,7 +254,50 @@ export async function recalculateStationForecast(tx: TxClient, branchId: string,
               forecast_start_at=?, forecast_ready_at=?, updated_at=? WHERE id=?`,
       [u.exp.minutes.toFixed(2), u.exp.source, u.exp.confidence, u.exp.samples, u.start, u.ready, ts, u.id]);
   }
+  // An order that must be served together is paced to its SLOWEST station, so the fast ones are
+  // told to start later instead of plating food that then stands under a lamp.
+  for (const orderId of new Set(open.filter(t => t.serve_together).map(t => t.order_id))) {
+    await recalculateCoordinatedOrder(tx, String(orderId));
+  }
   return updates.length;
+}
+
+/**
+ * Stage 43: pace one "serve together" order.
+ *
+ * The binding moment is the LATEST forecast among the order's unfinished tasks -- the slowest
+ * station decides. Every other task is then told to start at that moment minus its own expected
+ * time. Two rules keep this honest:
+ *   - a start time is never pushed into the past: a task that cannot make the target starts now;
+ *   - the station's own estimate (forecast_ready_at) is left exactly as it was, and the shared
+ *     target is written to a SEPARATE column, so a plan and an estimate are never confused.
+ * An item already being cooked is not re-paced -- it is in the pan.
+ */
+export async function recalculateCoordinatedOrder(tx: TxClient, orderId: string): Promise<string | null> {
+  const tasks = await tx.query<any>(
+    `SELECT * FROM kds_item_tasks WHERE order_id=? AND status IN ('QUEUED','ACCEPTED','IN_PROGRESS','READY')`, [orderId]);
+  const live = tasks.filter(t => t.status !== 'READY');
+  if (!live.length) return null;
+  const targets = tasks
+    .map(t => (t.status === 'READY' ? t.ready_at : t.forecast_ready_at))
+    .filter(Boolean)
+    .map(x => new Date(String(x)).getTime())
+    .filter(n => Number.isFinite(n));
+  if (!targets.length) return null;
+  const targetMs = Math.max(...targets);
+  const target = new Date(targetMs).toISOString();
+  const ts = nowIso();
+  const now = Date.now();
+  for (const t of tasks) {
+    const expected = num(t.expected_minutes, num(t.standard_minutes, FALLBACK_MINUTES));
+    const startMs = t.status === 'IN_PROGRESS' || t.status === 'READY'
+      ? (t.started_at ? new Date(t.started_at).getTime() : now)
+      : Math.max(now, targetMs - expected * 60000);
+    await tx.execute(
+      `UPDATE kds_item_tasks SET coordinated_ready_at=?, forecast_start_at=?, updated_at=? WHERE id=?`,
+      [target, new Date(startMs).toISOString(), ts, t.id]);
+  }
+  return target;
 }
 
 /** Recompute every station touched by an order, plus the unassigned queue. */
@@ -254,11 +314,19 @@ const DEFAULT_THRESHOLDS: Thresholds = { warning_ratio: 0.8, late_ratio: 1, crit
  * The thresholds in force for one task: the most specific configured row wins -- station, then the
  * branch default, then the built-in default. Nothing here invents a limit of its own.
  */
-export async function thresholdsFor(branchId: string, stationId: string | null): Promise<Thresholds> {
+export async function thresholdsFor(branchId: string, stationId: string | null, categoryId: string | null = null): Promise<Thresholds> {
   const rows = await query<any>(
-    `SELECT * FROM kitchen_thresholds WHERE branch_id=? AND (station_id=? OR station_id IS NULL)
-      ORDER BY station_id NULLS LAST`, [branchId, stationId]);
-  const row = rows.find(r => r.station_id === stationId) || rows.find(r => r.station_id === null);
+    `SELECT * FROM kitchen_thresholds
+      WHERE branch_id=? AND (station_id=? OR station_id IS NULL) AND (category_id=? OR category_id IS NULL)`,
+    [branchId, stationId, categoryId]);
+  // Stage 43: the most specific configured row wins -- this station AND this category, then the
+  // category alone, then the station alone, then the branch default, then the built-in default.
+  // A category limit is what lets a kitchen say "a steak may take three times its norm, a drink
+  // may not" without touching every dish.
+  const row = rows.find(r => r.station_id === stationId && r.category_id === categoryId && stationId && categoryId)
+    || rows.find(r => r.category_id === categoryId && categoryId && !r.station_id)
+    || rows.find(r => r.station_id === stationId && stationId && !r.category_id)
+    || rows.find(r => !r.station_id && !r.category_id);
   if (!row) return DEFAULT_THRESHOLDS;
   return {
     warning_ratio: num(row.warning_ratio, DEFAULT_THRESHOLDS.warning_ratio),
@@ -266,6 +334,15 @@ export async function thresholdsFor(branchId: string, stationId: string | null):
     critical_ratio: num(row.critical_ratio, DEFAULT_THRESHOLDS.critical_ratio),
     escalate_minutes: num(row.escalate_minutes, DEFAULT_THRESHOLDS.escalate_minutes),
   };
+}
+
+/** How far past the critical limit a task is, in minutes. Zero when it is not critical. */
+export function minutesPastCritical(task: any, th: Thresholds, at = Date.now()): number {
+  const expected = num(task.expected_minutes, num(task.standard_minutes, FALLBACK_MINUTES));
+  if (expected <= 0) return 0;
+  const from = task.started_at || task.created_at;
+  const elapsed = (at - new Date(from).getTime()) / 60000;
+  return Math.max(0, elapsed - expected * th.critical_ratio);
 }
 
 /** How late a task is right now, as a state rather than a number of seconds. */
@@ -305,18 +382,42 @@ export async function raiseAlert(tx: TxClient, a: {
  * the kitchen screens are read and when a status changes, so there is no polling job; the dedupe
  * key keeps it idempotent however often that happens.
  */
-export async function evaluateDelays(tx: TxClient, branchId: string): Promise<{ changed: number; alerts: number }> {
+export async function evaluateDelays(tx: TxClient, branchId: string): Promise<{ changed: number; alerts: number; escalations: number }> {
   const open = await tx.query<any>(
-    `SELECT t.*, s.name_ru AS station_name_ru, s.name_tk AS station_name_tk, o.order_number
-       FROM kds_item_tasks t LEFT JOIN kitchen_stations s ON s.id=t.station_id JOIN orders o ON o.id=t.order_id
+    `SELECT t.*, s.name_ru AS station_name_ru, s.name_tk AS station_name_tk, o.order_number, mi.category_id
+       FROM kds_item_tasks t
+       LEFT JOIN kitchen_stations s ON s.id=t.station_id
+       JOIN orders o ON o.id=t.order_id
+       LEFT JOIN menu_items mi ON mi.id=t.menu_item_id
       WHERE t.branch_id=? AND t.status IN ('QUEUED','ACCEPTED','IN_PROGRESS')`, [branchId]);
   const ts = nowIso();
-  let changed = 0, alerts = 0;
+  let changed = 0, alerts = 0, escalations = 0;
   const cache = new Map<string, Thresholds>();
   for (const task of open) {
-    const key = String(task.station_id);
-    if (!cache.has(key)) cache.set(key, await thresholdsFor(branchId, task.station_id));
-    const state = delayStateOf(task, cache.get(key)!);
+    // Stage 43: the limits in force for THIS task -- its station and its dish category, with the
+    // branch default behind them.
+    const key = `${task.station_id}|${task.category_id}`;
+    if (!cache.has(key)) cache.set(key, await thresholdsFor(branchId, task.station_id, task.category_id || null));
+    const th = cache.get(key)!;
+    const state = delayStateOf(task, th);
+    // Stage 43: a critical delay that nobody has resolved is repeated, not announced once and
+    // forgotten. The round is derived from how far past the limit the task is, so the reminder
+    // fires at most once per escalate_minutes and the dedupe key makes a re-read harmless.
+    if (state === 'CRITICAL' && th.escalate_minutes > 0) {
+      const round = Math.floor(minutesPastCritical(task, th) / th.escalate_minutes);
+      if (round > num(task.escalation_round, 0)) {
+        const raised = await raiseAlert(tx, {
+          branchId, stationId: task.station_id, orderId: task.order_id, taskId: task.id,
+          type: 'DELAY_ESCALATED', severity: 'CRITICAL', audience: 'BRANCH_MANAGER',
+          reason: `round ${round}`,
+          messageRu: `Заказ №${task.order_number}: «${task.title_snapshot}» всё ещё не готов — задержка критическая уже ${Math.round(round * th.escalate_minutes)} мин.`,
+          messageTk: `Sargyt №${task.order_number}: «${task.title_snapshot}» henizem taýýar däl — kritiki gijä galma eýýäm ${Math.round(round * th.escalate_minutes)} min.`,
+          dedupeKey: `escalate:${task.id}:${round}`,
+        });
+        await tx.execute('UPDATE kds_item_tasks SET escalation_round=?, updated_at=? WHERE id=?', [round, ts, task.id]);
+        if (raised) { escalations++; alerts++; }
+      }
+    }
     if (state === task.delay_state) continue;
     await tx.execute('UPDATE kds_item_tasks SET delay_state=?, updated_at=? WHERE id=?', [state, ts, task.id]);
     changed++;
@@ -334,7 +435,7 @@ export async function evaluateDelays(tx: TxClient, branchId: string): Promise<{ 
     });
     if (raised) alerts++;
   }
-  return { changed, alerts };
+  return { changed, alerts, escalations };
 }
 
 // ---------------------------------------------------------------------------------- AGGREGATION

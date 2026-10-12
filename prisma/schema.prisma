@@ -376,6 +376,7 @@ model MenuCategory {
   @@index([deleted_at], map: "idx_menu_categories_deleted_at")
   @@map("menu_categories")
   station_routes KitchenCategoryRoute[]
+  kitchen_thresholds KitchenThreshold[]
 }
 
 model MenuItem {
@@ -2003,6 +2004,13 @@ model KdsItemTask {
   cancelled_at         String?
   delay_state          String   @default("NONE")
   delay_reason         String?
+  // Stage 43: the order's items must leave the kitchen together, and the shared target the
+  // stations are paced to. The flag comes from the waiter's existing SERVE_TOGETHER note.
+  serve_together       Boolean  @default(false)
+  coordinated_ready_at String?
+  // Stage 43: how many times this task's critical delay has already been escalated, which is what
+  // makes a repeating reminder idempotent.
+  escalation_round     Int      @default(0)
   reassigned_from      String?
   reassign_reason      String?
   created_at           String
@@ -2016,6 +2024,8 @@ model KdsItemTask {
   alerts               KitchenAlert[]
 
   @@unique([order_item_id, station_id], map: "kds_item_tasks_item_station_key")
+  @@index([order_id, serve_together], map: "idx_kds_item_tasks_serve_together")
+  @@index([branch_id, delay_state, escalation_round], map: "idx_kds_item_tasks_escalation")
   @@index([branch_id, station_id, status, created_at], map: "idx_kds_item_tasks_station_queue")
   @@index([order_id], map: "idx_kds_item_tasks_order")
   @@index([station_id, menu_item_id, ready_at], map: "idx_kds_item_tasks_history")
@@ -2039,8 +2049,10 @@ model KitchenThreshold {
 
   branch           Branch          @relation(fields: [branch_id], references: [id], onDelete: Cascade)
   station          KitchenStation? @relation(fields: [station_id], references: [id], onDelete: Cascade)
+  category         MenuCategory?   @relation(fields: [category_id], references: [id], onDelete: Cascade)
 
   @@unique([branch_id, station_id, category_id], map: "kitchen_thresholds_scope_key")
+  @@index([branch_id, category_id], map: "idx_kitchen_thresholds_category")
   @@map("kitchen_thresholds")
 }
 

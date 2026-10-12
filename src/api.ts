@@ -394,7 +394,7 @@ export const api = {
   resolveKitchenAlert: (id:string, resolution?:string) =>
     request<{ success:boolean }>(`/api/kitchen/alerts/${encodeURIComponent(id)}/ack`, { method:'POST', body: JSON.stringify({ resolution }) }),
   getKitchenThresholds: (branch_id:string) => request<{ branch_id:string; thresholds:any[]; effective:any }>(`/api/kitchen/thresholds?branch_id=${encodeURIComponent(branch_id)}`),
-  setKitchenThresholds: (data:{ branch_id:string; station_id?:string|null; warning_ratio:number; late_ratio:number; critical_ratio:number; escalate_minutes:number }) =>
+  setKitchenThresholds: (data:{ branch_id:string; station_id?:string|null; category_id?:string|null; warning_ratio:number; late_ratio:number; critical_ratio:number; escalate_minutes:number }) =>
     request<{ success:boolean; thresholds:any[] }>('/api/kitchen/thresholds', { method:'PUT', body: JSON.stringify(data) }),
   routeOrderToKitchen: (orderId:string) => request<{ created:number; unassigned:number }>(`/api/kitchen/orders/${encodeURIComponent(orderId)}/route`, { method:'POST', body:'{}' }),
   // The waiter device sends its kitchen notes over its own session, like every other POS call.
