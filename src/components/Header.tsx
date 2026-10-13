@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Shield, Globe, Landmark, Menu } from 'lucide-react';
+import { Building2, Shield, Globe, Landmark, Menu, LogIn } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api';
@@ -13,7 +13,7 @@ interface HeaderProps {
   onOpenNav?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ title, subtitle, onOpenNav }) => {
+export const Header: React.FC<HeaderProps> = ({ title, subtitle, onOpenNav, onOpenLoginModal }) => {
   const { 
     user, 
     selectedBranchFilter, 
@@ -23,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, onOpenNav }) =>
     hasPermission
   } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const ru = language === 'ru';
   const [branches, setBranches] = useState<Branch[]>([]);
   const [franchises, setFranchises] = useState<Franchise[]>([]);
 
@@ -153,6 +154,15 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, onOpenNav }) =>
               ))}
             </select>
           </div>
+        )}
+
+        {/* The way in. Without an account the navigation shows almost nothing and every panel
+            reads zero, so a signed-out person needs this button in front of them -- App already
+            passed the handler down, but nothing ever rendered it. */}
+        {!user && (
+          <button id="btn-open-login" type="button" className="btn btn-sm" onClick={onOpenLoginModal}>
+            <LogIn className="w-4 h-4" /> {ru ? 'Войти' : 'Gir'}
+          </button>
         )}
 
         {/* System Health Heartbeat */}

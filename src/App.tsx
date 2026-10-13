@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { BrandingProvider, useBranding } from './context/BrandingContext';
@@ -56,6 +56,12 @@ function MainLayout() {
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const acceptanceTestsEnabled = import.meta.env.VITE_ENABLE_ACCEPTANCE_TESTS === 'true';
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  // Stage 45: a signed-out person used to land on a shell with an empty navigation, zeros in
+  // every tile and no way to sign in at all -- the handler existed, nothing rendered it. The
+  // first screen is now the sign-in form, and the header keeps a button to reopen it.
+  useEffect(() => {
+    if (!isLoading && !user) setIsLoginModalOpen(true);
+  }, [isLoading, user]);
   const { branding } = useBranding();
 
   // Stage 44: ADMIN had no phone layout at all. The 256px sidebar never collapsed, so on
