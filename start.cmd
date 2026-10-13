@@ -15,7 +15,15 @@ if errorlevel 1 (
 )
 
 echo [1/3] Configuration
-call node scripts\setup-env.mjs
+REM Only .env generation needs Node, and the point of this path is that Docker is the single
+REM install -- so without Node on PATH the same script runs inside the same image the build uses.
+where node >nul 2>&1
+if errorlevel 1 (
+  echo ^(Node is not installed locally -- running the configuration step inside Docker^)
+  docker run --rm -v "%cd%:/app" -w /app node:20-alpine node scripts/setup-env.mjs
+) else (
+  call node scripts\setup-env.mjs
+)
 if errorlevel 1 exit /b 1
 
 echo.

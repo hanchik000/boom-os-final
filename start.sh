@@ -14,7 +14,15 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "[1/3] Configuration"
-node scripts/setup-env.mjs
+# Only .env generation needs Node, and the whole point of this path is that Docker is the single
+# install -- so when Node is not on PATH, run the same script inside the same image the build uses.
+if command -v node >/dev/null 2>&1; then
+  node scripts/setup-env.mjs
+else
+  echo "(Node is not installed locally -- running the configuration step inside Docker)"
+  docker run --rm -v "$PWD:/app" -w /app --user "$(id -u):$(id -g)" \
+    node:20-alpine node scripts/setup-env.mjs
+fi
 
 echo
 echo "[2/3] Build and start (first run downloads images and compiles -- several minutes)"
