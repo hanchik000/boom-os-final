@@ -58,7 +58,10 @@ if (migrate.status !== 0) {
     console.error(`  docker run -d --name boom-pg -p 5432:5432 \\
     -e POSTGRES_USER=${env.POSTGRES_USER} -e POSTGRES_PASSWORD=${env.POSTGRES_PASSWORD} \\
     -e POSTGRES_DB=${env.POSTGRES_DB} postgres:15-alpine\n`);
-    console.error('or point DATABASE_URL in .env at a PostgreSQL you already run, then try again.');
+    console.error('or install PostgreSQL (https://www.postgresql.org/download/windows/) and put the');
+    console.error('password you chose during setup into DATABASE_URL in .env, then run this again.');
+    console.error('\nThe database itself does not need to be created by hand: prisma migrate deploy');
+    console.error('creates it on first run.');
   }
   process.exit(migrate.status ?? 1);
 }

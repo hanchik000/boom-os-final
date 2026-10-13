@@ -28,12 +28,17 @@ start.cmd           # Windows cmd.exe
 PowerShell does not run a file from the current directory without the `.\` prefix; it reports
 "is not recognized as the name of a cmdlet" and suggests the prefixed form.
 
-Both use Docker. Without Docker for the application -- install, generate, migrate, build, start
-against a PostgreSQL you already run:
+Both use Docker. Without Docker at all: install Node 20+ and PostgreSQL 15+ (the usual Windows installers),
+then install, generate, migrate, build and start with
 
 ```
+npm install
 npm run up:local
 ```
+
+Put the password chosen during the PostgreSQL setup into `DATABASE_URL` in `.env`. The database
+itself does not need to be created by hand -- `prisma migrate deploy` creates it on first run,
+verified on a clean server.
 
 The command prints the owner e-mail and password it configured. Open http://localhost:3000.
 
