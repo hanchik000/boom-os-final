@@ -51,6 +51,17 @@ process.stdout.write(migrate.stdout || '');
 if (migrate.status !== 0) {
   process.stderr.write(migrate.stderr || '');
   const out = `${migrate.stdout || ''}${migrate.stderr || ''}`;
+  if (/P1000|Authentication failed against database server/i.test(out)) {
+    // The likeliest mistake on a hand-installed PostgreSQL: the user in DATABASE_URL is not the
+    // one chosen during setup, or the password has a character that breaks a URL.
+    console.error('\nPostgreSQL answered, but refused these credentials.');
+    console.error('Fix the DATABASE_URL line in .env -- it reads:\n');
+    console.error('  postgresql://USER:PASSWORD@localhost:5432/DATABASE?schema=public\n');
+    console.error('USER is usually "postgres" and PASSWORD is the one you chose while installing');
+    console.error('PostgreSQL. If that password contains @ : / ? # or a space, either change it to');
+    console.error('letters and digits only, or percent-encode it (@ becomes %40).');
+    process.exit(migrate.status ?? 1);
+  }
   if (/P1001|Can't reach database server|ECONNREFUSED/i.test(out)) {
     const env = fileEnv;
     console.error('\nPostgreSQL is not reachable at the address in DATABASE_URL.');
