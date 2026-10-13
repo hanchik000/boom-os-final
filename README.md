@@ -21,8 +21,12 @@ stack:
 
 ```
 ./start.sh          # macOS / Linux
-start.cmd           # Windows
+.\start.cmd         # Windows PowerShell (the default terminal in VS Code)
+start.cmd           # Windows cmd.exe
 ```
+
+PowerShell does not run a file from the current directory without the `.\` prefix; it reports
+"is not recognized as the name of a cmdlet" and suggests the prefixed form.
 
 Both use Docker. Without Docker for the application -- install, generate, migrate, build, start
 against a PostgreSQL you already run:
