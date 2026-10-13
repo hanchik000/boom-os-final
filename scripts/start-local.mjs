@@ -9,13 +9,20 @@ import path from 'node:path';
 
 const root = process.cwd();
 const step = (n, text) => console.log(`\n[${n}] ${text}`);
+// On Windows npm and npx are .cmd files, which spawn can only start through the shell. An
+// absolute path must NOT go through it: node.exe normally lives in "C:\\Program Files\\nodejs",
+// and cmd.exe splits that at the space, so the run dies with
+// '"C:\\Program" is not recognized as an internal or external command'. Observed on a real
+// Windows 11 machine, not imagined.
+const needsShell = cmd => process.platform === 'win32' && !path.isAbsolute(cmd);
+
 const run = (cmd, args, opts = {}) => {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: process.platform === 'win32', ...opts });
+  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: needsShell(cmd), ...opts });
   if (r.status !== 0) process.exit(r.status ?? 1);
   return r;
 };
 const quiet = (cmd, args) =>
-  spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' });
+  spawnSync(cmd, args, { encoding: 'utf8', shell: needsShell(cmd) });
 
 // dotenv never overwrites a variable that is already in the environment. So a leftover
 // BOOTSTRAP_OWNER_PASSWORD, DATABASE_URL or JWT_SECRET in the terminal silently wins over .env,
@@ -46,7 +53,7 @@ const childEnv = { ...process.env, ...fileEnv };
 step('3/5', 'Database schema');
 run('npx', ['prisma', 'generate'], { env: childEnv });
 const migrate = spawnSync('npx', ['prisma', 'migrate', 'deploy'],
-  { encoding: 'utf8', shell: process.platform === 'win32', env: childEnv });
+  { encoding: 'utf8', shell: needsShell('npx'), env: childEnv });
 process.stdout.write(migrate.stdout || '');
 if (migrate.status !== 0) {
   process.stderr.write(migrate.stderr || '');
