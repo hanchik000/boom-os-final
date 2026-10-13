@@ -28,6 +28,11 @@ start.cmd           # Windows cmd.exe
 PowerShell does not run a file from the current directory without the `.\` prefix; it reports
 "is not recognized as the name of a cmdlet" and suggests the prefixed form.
 
+PowerShell also refuses to run `npm` itself when script execution is disabled -- `npm` is the
+script `npm.ps1`, and the error is "cannot be loaded because running scripts is disabled on this
+system" (`PSSecurityException`). Either call `npm.cmd install` instead of `npm install`, or switch
+the VS Code terminal to Command Prompt, where both work unchanged.
+
 Both use Docker. Without Docker at all: install Node 20+ and PostgreSQL 15+ (the usual Windows installers),
 then install, generate, migrate, build and start with
 
