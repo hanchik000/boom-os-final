@@ -13,9 +13,33 @@ BOOM OS is the central operating system foundation for the BOOMBURGER restaurant
 
 PostgreSQL is the only runtime application database. The distributable baseline contains no SQLite/JSON business-data backups and no demo-data importer.
 
+## Quick start
+
+One command, from a fresh clone to a running system. It writes `.env` with generated secrets
+(never overwriting values that are already there), builds, applies migrations and starts the
+stack:
+
+```
+./start.sh          # macOS / Linux
+start.cmd           # Windows
+```
+
+Both use Docker. Without Docker for the application -- install, generate, migrate, build, start
+against a PostgreSQL you already run:
+
+```
+npm run up:local
+```
+
+The command prints the owner e-mail and password it configured. Open http://localhost:3000.
+
+Note: `dotenv` never overrides a variable that is already exported in your shell, so a leftover
+`DATABASE_URL`, `JWT_SECRET` or `BOOTSTRAP_OWNER_PASSWORD` there would silently win over `.env`.
+`npm run up:local` reports this and uses the file's values for the server it starts.
+
 ## Local development
 
-1. Copy `.env.example` to `.env` and set real local values.
+1. Copy `.env.example` to `.env` and set real local values (or run `npm run setup`).
 2. Start PostgreSQL and Redis.
 3. Run `npm install`.
 4. Run `npm run prisma:generate`.

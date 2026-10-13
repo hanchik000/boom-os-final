@@ -4,6 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "setup": "node scripts/setup-env.mjs",
+    "up:local": "node scripts/start-local.mjs",
+    "up": "node scripts/setup-env.mjs && docker compose up -d --build",
+    "down": "docker compose down",
+    "logs": "docker compose logs -f api",
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
