@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
-import { createServer as createViteServer } from 'vite';
 import { initDatabase, getDb, queryOne } from './server/db';
 import { config } from './server/config';
 import { checkRedis } from './server/redis';
@@ -246,6 +245,10 @@ async function startServer() {
 
   // 4. Vite Dev Server vs Production Static Asset Serving
   if (process.env.NODE_ENV !== 'production') {
+    // Loaded only in development, and only when that branch is reached. A static import would
+    // make Vite -- with rollup and esbuild behind it -- a runtime requirement of the production
+    // server, which has no use for any of them: the client is already built into dist/.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
