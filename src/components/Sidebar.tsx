@@ -10,7 +10,6 @@ import {
   Building,
   Sliders,
   History,
-  Lock,
   LogOut,
   ChevronRight,
   Sparkles,
@@ -164,13 +163,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
   const [openSection, setOpenSection] = useState<string>(() => sectionOf(currentTab));
   useEffect(() => { setOpenSection(sectionOf(currentTab)); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [currentTab]);
 
-  const futureModules = [
-    { name: 'Boomcard & Coin' },
-    { name: 'CRM & Guests' },
-    { name: 'Finance Ledger' },
-    { name: 'Executive Analytics' }
-  ];
-
   return (
     <>
     {/* Stage 44: the backdrop exists only while the drawer is open on a phone, and tapping it closes
@@ -299,27 +291,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onSelectTab, onOpe
           </div>
         )}
 
-        {/* Future Modules Section (Architectural readiness, strict phase 1 boundary) */}
-        <div className="px-3 pt-2">
-          <div className="px-3 py-1.5 flex items-center justify-between text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-            <span>Future Modules</span>
-            <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
-              Phase 2
-            </span>
-          </div>
-          <div className="space-y-0.5 mt-1">
-            {futureModules.map((m, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between px-3 py-1.5 rounded text-xs text-slate-500 cursor-not-allowed opacity-60 hover:opacity-80 transition-opacity"
-                title="Business module intentionally not activated in Phase 1 foundation"
-              >
-                <span className="truncate">{m.name}</span>
-                <Lock className="w-3 h-3 text-slate-600" />
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Footer Profile & Acceptance Test Action */}
