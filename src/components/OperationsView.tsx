@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Check, ChefHat, CreditCard, DollarSign, RefreshCw, X } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { Notice } from './ui';
 
 export const OperationsView: React.FC = () => {
   const { user, hasPermission } = useAuth();
-  const branchId = user?.branch_id || '';
+  // Stage 45: same fix as the till -- without a home branch this screen showed zeros everywhere.
+  const { branchId } = useBranchScope();
   const [orders,setOrders]=useState<any[]>([]); const [payments,setPayments]=useState<any[]>([]); const [kds,setKds]=useState<any[]>([]); const [shift,setShift]=useState<any|null>(null);
   const [opening,setOpening]=useState('0'); const [actual,setActual]=useState('0'); const [payMethod,setPayMethod]=useState('CASH'); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   const canOrders=hasPermission('orders.view'), canPayments=hasPermission('payments.view'), canKds=hasPermission('kds.view'), canShift=hasPermission('cash_shifts.view');

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserRound, Coins, Lock, Unlock, RefreshCw, Search, Printer, Copy, CheckCircle2, XCircle, StickyNote, ChefHat, Receipt as ReceiptIcon, Loader2 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { useBranchScope } from '../useBranchScope';
 import { useBranding } from '../context/BrandingContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -72,7 +73,10 @@ export const CashierPOSView: React.FC = () => {
   const { branding } = useBranding();
   const { language } = useLanguage();
   const ru = language === 'ru';
-  const branchId = user?.branch_id || '';
+  // Stage 45: the cashier screen read only the account's own branch, so an owner or a network
+  // manager -- who has none -- saw an empty till with no orders at all, on a system that had them.
+  // Same rule as the other branch-scoped screens.
+  const { branchId, setBranchId, branches } = useBranchScope();
   const isCashierRole = Boolean(user?.roleCodes?.includes('CASHIER')) && !user?.isSuperUser;
 
   // ---- POS operator session (short-lived token, only meaningfully required for CASHIER role)
